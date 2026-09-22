@@ -3,15 +3,20 @@
   "version": "0.1.0",
   "description": "CLI для управления окружениями pi",
   "type": "module",
-  "bin": { "pi-env": "dist/index.js" },
-  "engines": { "node": ">=20" },
+  "bin": {
+    "pi-env": "dist/index.js"
+  },
+  "engines": {
+    "node": ">=20"
+  },
   "scripts": {
     "build": "tsc",
     "test": "tsx --test test/*.test.ts",
     "start": "node dist/index.js"
   },
   "devDependencies": {
-    "typescript": "^5.5.0",
-    "tsx": "^4.8.0"
+    "@types/node": "^26.6.2",
+    "tsx": "^4.8.0",
+    "typescript": "^5.5.0"
   }
 }
