@@ -1,4 +1,4 @@
-import * as proc from 'node:process';
+import process from 'node:process';
 
 export interface KeyParse {
   keys: string[];
@@ -56,8 +56,8 @@ export interface Term {
 
 /** Тонкий слой raw-режима терминала. UI-логики здесь нет. */
 export function createTerm(): Term {
-  const out = proc.stdout;
-  const input = proc.stdin;
+  const out = process.stdout;
+  const input = process.stdin;
   const noColor = Boolean(process.env.NO_COLOR);
   const queue: string[] = [];
   let waiter: ((k: string) => void) | null = null;
@@ -90,14 +90,14 @@ export function createTerm(): Term {
       input.setRawMode(true);
       input.resume();
       input.on('data', onData);
-      proc.on('SIGWINCH', onWinch);
+      process.on('SIGWINCH', onWinch);
     },
     stop() {
       input.setRawMode(false);
       input.pause();
       input.removeListener('data', onData);
       out.write('\x1b[2J\x1b[0m\x1b[?25h'); // очистить, показать курсор
-      proc.removeListener('SIGWINCH', onWinch);
+      process.removeListener('SIGWINCH', onWinch);
     },
     width() {
       return out.columns || 80;
