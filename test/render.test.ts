@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert';
 import { render } from '../src/render.js';
+import { computeLayout } from '../src/layout.js';
 import { initialState } from '../src/state.js';
 import { Environment } from '../src/environments.js';
 
@@ -67,4 +68,56 @@ test('выбранный пункт подсвечивается цветом', 
 test('статус-строка показывает ошибку', () => {
   const s = render({ state: initialState(), envs, width: 62, height: 10, root: '/root', useColor: false, status: 'Окружения не найдены в /root' });
   assert.ok(s.includes('Окружения не найдены в /root'));
+});
+
+// Каждый \x1b в строке должен начинать полную CSI-последовательность
+function assertNoDanglingAnsi(line: string): void {
+  let i = 0;
+  while (i < line.length) {
+    if (line[i] !== '\x1b') {
+      i++;
+      continue;
+    }
+    const m = /^\x1b\[[0-9;]*[a-zA-Z]/.exec(line.slice(i));
+    assert.ok(m, `обрыв ANSI-последовательности: ${JSON.stringify(line)}`);
+    i += m[0].length;
+  }
+}
+
+test('узкий цветной вывод: ANSI не обрывается, рамка цела', () => {
+  const s = render({ state: initialState(), envs, width: 30, height: 8, root: '/root', useColor: true, status: null });
+  const lines = s.split('\n');
+  assert.equal(lines.length, 8);
+  for (const line of lines) {
+    assertNoDanglingAnsi(line);
+    // видимая ширина каждой строки равна ширине кадра
+    assert.equal(line.replace(/\x1b\[[0-9;]*m/g, '').length, 30);
+  }
+});
+
+// Позиция символа по видимому индексу (ANSI-последовательности не учитываются)
+function visibleIndex(line: string, v: number): number {
+  let count = 0;
+  for (let i = 0; i < line.length; i++) {
+    if (line[i] === '\x1b') {
+      const m = /^\x1b\[[0-9;]*[a-zA-Z]/.exec(line.slice(i));
+      if (m) {
+        i += m[0].length - 1;
+        continue;
+      }
+    }
+    count++;
+    if (count === v) return i;
+  }
+  return -1;
+}
+
+test('средняя граница подсвечивается при фокусе правой колонки', () => {
+  const L = computeLayout({ width: 80, height: 10 });
+  const s = render({ state: { ...initialState(), focus: 'right' }, envs, width: 80, height: 10, root: '/root', useColor: true, status: null });
+  const line = s.split('\n').find((l) => l.includes('> dev'));
+  assert.ok(line);
+  const mid = visibleIndex(line, 2 + L.leftWidth); // видимая позиция средней границы (левая граница + левая колонка)
+  assert.equal(line[mid], '│');
+  assert.equal(line.slice(mid - 4, mid), '\x1b[1m');
 });

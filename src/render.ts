@@ -18,15 +18,32 @@ function visibleWidth(s: string): number {
   return s.replace(/\x1b\[[0-9;]*m/g, '').length;
 }
 
+// Обрезка по видимым символам: точка разреза не делит ANSI-последовательность
+function truncateVisible(s: string, w: number): string {
+  let visible = 0;
+  for (let i = 0; i < s.length; i++) {
+    if (s[i] === '\x1b') {
+      const m = /^\x1b\[[0-9;]*[a-zA-Z]/.exec(s.slice(i));
+      if (m) {
+        i += m[0].length - 1;
+        continue;
+      }
+    }
+    visible++;
+    if (visible === w) return s.slice(0, i + 1);
+  }
+  return s;
+}
+
 function padRight(s: string, w: number): string {
   const v = visibleWidth(s);
-  if (v > w) return s.slice(0, w);
+  if (v > w) return truncateVisible(s, w);
   return s + ' '.repeat(w - v);
 }
 
 function center(s: string, w: number): string {
   const v = visibleWidth(s);
-  if (v > w) return s.slice(0, w);
+  if (v > w) return truncateVisible(s, w);
   if (v >= w) return s;
   const left = Math.floor((w - v) / 2);
   return ' '.repeat(left) + s + ' '.repeat(w - v - left);
@@ -161,7 +178,7 @@ export function render(a: RenderArgs): string {
         const hl = state.tab === 'envs' && state.focus === 'left' && useColor;
         const hr = state.tab === 'envs' && state.focus === 'right' && useColor;
         const bl = c(ANSI.bold, hl) + '│' + c(ANSI.reset, hl);
-        const bm = c(ANSI.bold, hl) + '│' + c(ANSI.reset, hl);
+        const bm = c(ANSI.bold, hl || hr) + '│' + c(ANSI.reset, hl || hr);
         const br = c(ANSI.bold, hr) + '│' + c(ANSI.reset, hr);
         lines.push(bl + l + bm + r + br);
       } else {
