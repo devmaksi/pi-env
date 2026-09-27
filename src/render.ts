@@ -78,10 +78,11 @@ export function render(a: RenderArgs): string {
   // Таб-бар
   const tabs = (Object.keys(TAB_NAMES) as Array<keyof typeof TAB_NAMES>).map((t) => {
     const active = t === state.tab;
+    const label = active ? '[' + TAB_NAMES[t] + ']' : TAB_NAMES[t];
     if (active) {
-      return c(ANSI.bright, useColor) + c(ANSI.bold, useColor) + TAB_NAMES[t] + c(ANSI.reset, useColor);
+      return c(ANSI.bright, useColor) + c(ANSI.bold, useColor) + label + c(ANSI.reset, useColor);
     }
-    return c(ANSI.dim, useColor) + TAB_NAMES[t] + c(ANSI.reset, useColor);
+    return c(ANSI.dim, useColor) + label + c(ANSI.reset, useColor);
   });
   lines.push('│' + padRight(tabs.join('    '), inner) + '│');
 
@@ -153,10 +154,11 @@ export function render(a: RenderArgs): string {
         'Цветной вывод: [' + (state.colorToggle ? 'x' : ' ') + ']',
       ];
       items.forEach((t, i) => {
+        const text = (i === state.selected ? '> ' : '  ') + t;
         if (i === state.selected) {
-          left.push(c(ANSI.inverse, useColor) + padRight(t, L.leftWidth) + c(ANSI.reset, useColor));
+          left.push(c(ANSI.inverse, useColor) + padRight(text, L.leftWidth) + c(ANSI.reset, useColor));
         } else {
-          left.push(t);
+          left.push(text);
         }
       });
       right.push(c(ANSI.dim, useColor) + 'Подробные настройки — этап 2' + c(ANSI.reset, useColor));

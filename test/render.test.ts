@@ -60,6 +60,20 @@ test('вкладка настроек: каталог и toggle', () => {
   assert.ok(s.includes('Подробные настройки — этап 2'));
 });
 
+test('без цвета: активная вкладка помечается [..]', () => {
+  const s = render({ state: initialState(), envs, width: 62, height: 10, ...base });
+  const tabLine = s.split('\n')[0];
+  assert.ok(tabLine.includes('[Окружения]'));
+  assert.ok(tabLine.includes('Настройки'));
+  assert.ok(!s.includes('\x1b'));
+});
+
+test('без цвета: выбранный пункт настроек помечается >', () => {
+  const s = render({ state: { ...initialState(), tab: 'settings', selected: 1 }, envs, width: 62, height: 10, ...base });
+  assert.ok(s.includes('> Цветной вывод'));
+  assert.ok(!s.includes('> Корневой каталог'));
+});
+
 test('выбранный пункт подсвечивается цветом', () => {
   const s = render({ state: initialState(), envs, width: 62, height: 10, root: '/root', useColor: true, status: null });
   assert.ok(s.includes('\x1b[7m'));
