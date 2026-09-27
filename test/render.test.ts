@@ -121,3 +121,17 @@ test('средняя граница подсвечивается при фоку
   assert.equal(line[mid], '│');
   assert.equal(line.slice(mid - 4, mid), '\x1b[1m');
 });
+
+test('вкладка «О программе» в широком режиме не делится на две колонки', () => {
+  const s = render({ state: { ...initialState(), tab: 'about' }, envs, width: 62, height: 10, ...base });
+  const lines = s.split('\n');
+  assert.equal(lines.length, 10);
+  assert.ok(!lines[1].includes('┬')); // разделитель не делит экран пополам
+  const strip = (l: string) => l.replace(/\x1b\[[0-9;]*m/g, '');
+  for (let i = 2; i < lines.length - 2; i++) {
+    // ровно две границы: средней перегородки нет
+    assert.equal(strip(lines[i]).split('│').length - 1, 2);
+  }
+  // строка не обрезана на половине ширины
+  assert.ok(s.includes('CLI для управления окружениями pi'));
+});

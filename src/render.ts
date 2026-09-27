@@ -69,6 +69,8 @@ export function render(a: RenderArgs): string {
   }
 
   const L = computeLayout({ width, height });
+  // «О программе» — центрированный текст на всю ширину, двухколоночная сетка его режет пополам
+  const twoCol = L.twoColumns && state.tab !== 'about';
   const inner = width - 2;
   const contentRows = height - 4; // таб-бар(1) + разделитель(1) + футер(2)
   const lines: string[] = [];
@@ -84,7 +86,7 @@ export function render(a: RenderArgs): string {
   lines.push('│' + padRight(tabs.join('    '), inner) + '│');
 
   // Разделитель под таб-баром
-  if (L.twoColumns && !state.sub) {
+  if (twoCol && !state.sub) {
     lines.push('├' + '─'.repeat(L.leftWidth) + '┬' + '─'.repeat(L.rightWidth) + '┤');
   } else {
     lines.push('├' + '─'.repeat(inner) + '┤');
@@ -172,7 +174,7 @@ export function render(a: RenderArgs): string {
     }
 
     for (let i = 0; i < contentRows; i++) {
-      if (L.twoColumns) {
+      if (twoCol) {
         const l = i < left.length ? padRight(left[i], L.leftWidth) : ' '.repeat(L.leftWidth);
         const r = i < right.length ? padRight(right[i], L.rightWidth) : ' '.repeat(L.rightWidth);
         const hl = state.tab === 'envs' && state.focus === 'left' && useColor;
