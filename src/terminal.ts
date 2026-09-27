@@ -1,17 +1,26 @@
 import process from 'node:process';
 
+export interface PrevState {
+  esc: number;
+  utf8: number[];
+}
+
+export const initialPrev: PrevState = { esc: 0, utf8: [] };
+
 export interface KeyParse {
   keys: string[];
-  esc: number;
+  prev: PrevState;
 }
+
 
 /**
  * Распознаёт клавиши из сырых байтов. Чистая функция: конечный автомат
  * с состоянием esc (0 — нет, 1 — прочитан ESC, 2 — прочитан ESC [).
  */
-export function parseKeys(chunk: Buffer, prevEsc: number): KeyParse {
+export function parseKeys(chunk: Buffer, prev: PrevState): KeyParse {
   const keys: string[] = [];
-  let esc = prevEsc;
+  let esc = prev.esc;
+  let utf8 = prev.utf8.slice(); // не мутируем входное состояние
   for (const b of chunk) {
     if (esc === 0) {
       if (b === 0x1b) { esc = 1; continue; }
@@ -19,6 +28,20 @@ export function parseKeys(chunk: Buffer, prevEsc: number): KeyParse {
       if (b === 0x09) { keys.push('tab'); continue; }
       if (b === 0x0d || b === 0x0a) { keys.push('enter'); continue; }
       if (b === 0x20) { keys.push('space'); continue; }
+      if (b === 0x7f) { keys.push('backspace'); continue; }
+      if (b < 0x20) continue;
+      // ponytail: побайтовый UTF-8; битый побег (лишний continuation-байт) просто отбрасывается
+      if (b >= 0x80) {
+        if (utf8.length === 0 && b < 0xc0) continue;
+        utf8.push(b);
+        const need = utf8[0] >= 0xf0 ? 4 : utf8[0] >= 0xe0 ? 3 : 2;
+        if (utf8.length === need) {
+          keys.push(new TextDecoder().decode(new Uint8Array(utf8)));
+          utf8 = [];
+        }
+        continue;
+      }
+      keys.push(String.fromCharCode(b));
       continue;
     }
     if (esc === 1) {
@@ -40,7 +63,7 @@ export function parseKeys(chunk: Buffer, prevEsc: number): KeyParse {
     keys.push('esc');
     esc = 0;
   }
-  return { keys, esc };
+  return { keys, prev: { esc, utf8 } };
 }
 
 export interface Term {
@@ -61,7 +84,7 @@ export function createTerm(): Term {
   const noColor = Boolean(process.env.NO_COLOR);
   const queue: string[] = [];
   let waiter: ((k: string) => void) | null = null;
-  let esc = 0;
+  let prev: PrevState = { esc: 0, utf8: [] };
   const resizes: Array<() => void> = [];
 
   function emit(): void {
@@ -73,8 +96,8 @@ export function createTerm(): Term {
   }
 
   function onData(chunk: Buffer): void {
-    const parsed = parseKeys(chunk, esc);
-    esc = parsed.esc;
+    const parsed = parseKeys(chunk, prev);
+    prev = parsed.prev;
     for (const k of parsed.keys) queue.push(k);
     emit();
   }

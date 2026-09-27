@@ -1,27 +1,23 @@
-import { test } from 'node:test';
-import assert from 'node:assert';
-import { parseKeys, createTerm } from '../src/terminal.js';
-
 test('parseKeys: стрелки', () => {
-  assert.deepEqual(parseKeys(Buffer.from([0x1b, 0x5b, 0x41]), 0).keys, ['up']);
-  assert.deepEqual(parseKeys(Buffer.from([0x1b, 0x5b, 0x42]), 0).keys, ['down']);
-  assert.deepEqual(parseKeys(Buffer.from([0x1b, 0x5b, 0x43]), 0).keys, ['right']);
-  assert.deepEqual(parseKeys(Buffer.from([0x1b, 0x5b, 0x44]), 0).keys, ['left']);
+  assert.deepEqual(parseKeys(Buffer.from([0x1b, 0x5b, 0x41]), initialPrev).keys, ['up']);
+  assert.deepEqual(parseKeys(Buffer.from([0x1b, 0x5b, 0x42]), initialPrev).keys, ['down']);
+  assert.deepEqual(parseKeys(Buffer.from([0x1b, 0x5b, 0x43]), initialPrev).keys, ['right']);
+  assert.deepEqual(parseKeys(Buffer.from([0x1b, 0x5b, 0x44]), initialPrev).keys, ['left']);
 });
 
 test('parseKeys: esc, enter, tab, space, ctrlc', () => {
-  assert.deepEqual(parseKeys(Buffer.from([0x1b]), 0).keys, ['esc']);
-  assert.deepEqual(parseKeys(Buffer.from([0x0d]), 0).keys, ['enter']);
-  assert.deepEqual(parseKeys(Buffer.from([0x0a]), 0).keys, ['enter']);
-  assert.deepEqual(parseKeys(Buffer.from([0x09]), 0).keys, ['tab']);
-  assert.deepEqual(parseKeys(Buffer.from([0x20]), 0).keys, ['space']);
-  assert.deepEqual(parseKeys(Buffer.from([0x03]), 0).keys, ['ctrlc']);
+  assert.deepEqual(parseKeys(Buffer.from([0x1b]), initialPrev).keys, ['esc']);
+  assert.deepEqual(parseKeys(Buffer.from([0x0d]), initialPrev).keys, ['enter']);
+  assert.deepEqual(parseKeys(Buffer.from([0x0a]), initialPrev).keys, ['enter']);
+  assert.deepEqual(parseKeys(Buffer.from([0x09]), initialPrev).keys, ['tab']);
+  assert.deepEqual(parseKeys(Buffer.from([0x20]), initialPrev).keys, ['space']);
+  assert.deepEqual(parseKeys(Buffer.from([0x03]), initialPrev).keys, ['ctrlc']);
 });
 
 test('parseKeys: последовательность разрезана по чанкам', () => {
-  const first = parseKeys(Buffer.from([0x1b, 0x5b]), 0);
+  const first = parseKeys(Buffer.from([0x1b, 0x5b]), initialPrev);
   assert.deepEqual(first.keys, []);
-  const second = parseKeys(Buffer.from([0x41]), first.esc);
+  const second = parseKeys(Buffer.from([0x41]), first.prev);
   assert.deepEqual(second.keys, ['up']);
 });
 
@@ -69,6 +65,34 @@ test('term: приложение работает в alternate screen', () => {
   }
 });
 
+import { test } from 'node:test';
+import assert from 'node:assert';
+import { parseKeys, createTerm, initialPrev } from '../src/terminal.js';
+
+test('parseKeys: печатные ASCII-символы', () => {
+  assert.deepEqual(parseKeys(Buffer.from('ab'), initialPrev).keys, ['a', 'b']);
+});
+
+test('parseKeys: backspace', () => {
+  assert.deepEqual(parseKeys(Buffer.from([0x7f]), initialPrev).keys, ['backspace']);
+});
+
+test('parseKeys: кириллица (2 и 3 байта)', () => {
+  assert.deepEqual(parseKeys(Buffer.from('яж'), initialPrev).keys, ['я', 'ж']);
+});
+
+test('parseKeys: символ UTF-8 разрезан по чанкам', () => {
+  const first = parseKeys(Buffer.from([0xd1]), initialPrev);
+  assert.deepEqual(first.keys, []);
+  const second = parseKeys(Buffer.from([0x8f]), first.prev);
+  assert.deepEqual(second.keys, ['я']);
+  assert.deepEqual(second.prev.utf8, []);
+});
+
+test('parseKeys: смешанная последовательность', () => {
+  assert.deepEqual(parseKeys(Buffer.from('a\u044f\x7f\x1b[\x41'), initialPrev).keys, ['a', 'я', 'backspace', 'up']);
+});
+
 test('parseKeys: неизвестная CSI-последовательность игнорируется', () => {
-  assert.deepEqual(parseKeys(Buffer.from([0x1b, 0x5b, 0x4f]), 0).keys, []);
+  assert.deepEqual(parseKeys(Buffer.from([0x1b, 0x5b, 0x4f]), initialPrev).keys, []);
 });
