@@ -86,7 +86,7 @@ export function createTerm(): Term {
   return {
     noColor,
     start() {
-      out.write('\x1b[?25l'); // скрыть курсор
+      out.write('\x1b[?1049h\x1b[?25l'); // alternate screen, скрыть курсор
       input.setRawMode(true);
       input.resume();
       input.on('data', onData);
@@ -96,7 +96,7 @@ export function createTerm(): Term {
       input.setRawMode(false);
       input.pause();
       input.removeListener('data', onData);
-      out.write('\x1b[2J\x1b[0m\x1b[?25h'); // очистить, показать курсор
+      out.write('\x1b[?25h\x1b[0m\x1b[?1049l'); // показать курсор, сброс атрибутов, возврат в основной экран
       process.removeListener('SIGWINCH', onWinch);
     },
     width() {
