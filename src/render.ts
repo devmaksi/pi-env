@@ -140,7 +140,7 @@ export function render(a: RenderArgs): string {
       } else if (cr.view === 'submitting') {
         left.push(c(ANSI.dim, useColor) + 'Создание…' + c(ANSI.reset, useColor));
         right.push(c(ANSI.dim, useColor) + 'Esc — отмена' + c(ANSI.reset, useColor));
-      } else {
+      } else if (cr.view === 'providers' || cr.view === 'models' || cr.view === 'tools' || cr.view === 'packages' || cr.view === 'skills') {
         const items: string[] =
           cr.view === 'providers' ? state.catalog.providers.map((p) => p.name)
           : cr.view === 'models' ? (state.catalog.providers.find((p) => p.name === cr.provider)?.models ?? []).map((m) => m.id)
@@ -165,6 +165,8 @@ export function render(a: RenderArgs): string {
         });
         right.push(c(ANSI.dim, useColor) + 'Space/Enter — выбрать' + c(ANSI.reset, useColor));
         right.push(c(ANSI.dim, useColor) + 'Esc — назад' + c(ANSI.reset, useColor));
+      } else {
+        left.push(c(ANSI.dim, useColor) + '…' + c(ANSI.reset, useColor));
       }
       if (!twoCol) for (const h of right) left.push(h);
     } else if (state.tab === 'envs') {

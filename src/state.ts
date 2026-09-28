@@ -1,4 +1,4 @@
-import { validateName } from './create.js';
+import { validateName, baseName, type EnvSettings } from './create.js';
 import type { Catalog } from './catalog.js';
 
 export type Tab = 'envs' | 'settings' | 'about';
@@ -11,7 +11,7 @@ export type ControlKey =
 /** Управление (ControlKey) или любой одиночный печатный символ. */
 export type Key = ControlKey | (string & {});
 
-export type CreateView = 'form' | 'providers' | 'models' | 'tools' | 'packages' | 'skills' | 'submitting';
+export type CreateView = 'form' | 'providers' | 'models' | 'tools' | 'packages' | 'skills' | 'submitting' | 'confirm-delete' | 'deleting';
 
 export interface CreateState {
   name: string;
@@ -25,6 +25,8 @@ export interface CreateState {
   view: CreateView;
   error: string | null;
   done: string | null;
+  mode: 'create' | 'edit';
+  origName: string | null;
 }
 
 export interface AppState {
@@ -41,6 +43,11 @@ export interface AppState {
 export const TABS: readonly Tab[] = ['envs', 'settings', 'about'];
 export const SETTINGS_COUNT = 2;
 export const FORM_ROWS = 6; // имя, модель, инструменты, расширения, скиллы, действие
+
+/** Число строк формы: в edit-режиме добавляется «Удалить». */
+export function formRows(mode: 'create' | 'edit'): number {
+  return mode === 'edit' ? FORM_ROWS + 1 : FORM_ROWS;
+}
 export const MAX_NAME = 40;
 
 export function initialState(catalog: Catalog = emptyCatalog()): AppState {
@@ -57,12 +64,42 @@ export function emptyCatalog(): Catalog {
 export function freshCreate(): CreateState {
   return {
     name: '', caret: 0, cursor: 0, provider: null, model: null,
+    mode: 'create', origName: null,
     tools: [], packages: [], skills: [], view: 'form', error: null, done: null,
   };
 }
 
+/** Чистая форма редактирования: предзаполнение из settings окружения. */
+export function freshEdit(name: string, settings: EnvSettings, catalog: Catalog): CreateState {
+  const ext = settings.extensions ?? [];
+  const sk = settings.skills ?? [];
+  return {
+    mode: 'edit',
+    origName: name,
+    name,
+    caret: name.length,
+    cursor: 0,
+    provider: settings.defaultProvider ?? null,
+    model: settings.defaultModel ?? null,
+    tools: catalog.tools.filter((t) => ext.includes(`extensions/${t.name}`)).map((t) => t.name),
+    packages: catalog.packages.filter((p) => (settings.packages ?? []).includes(p.name)).map((p) => p.name),
+    skills: catalog.skills.filter((s) => {
+      const base = baseName(s.path);
+      return sk.includes(`skills/${base}`) || sk.includes(`skills/${s.name}`);
+    }).map((s) => s.name),
+    view: 'form',
+    error: null,
+    done: null,
+  };
+}
+
 /** Клавиша или сервисное действие (результат создания). */
-export type Action = Key | { type: 'create-result'; ok: boolean; message: string };
+export type Action =
+  | Key
+  | { type: 'create-result'; ok: boolean; message: string }
+  | { type: 'edit-start'; name: string; settings: EnvSettings }
+  | { type: 'run-result'; ok: boolean }
+  | { type: 'delete-result'; ok: boolean; message: string };
 
 export function listLength(tab: Tab, envCount: number): number {
   if (tab === 'envs') return envCount + 1; // окружения + «Создать»
@@ -73,6 +110,14 @@ export function listLength(tab: Tab, envCount: number): number {
 /** Переход состояния по действию. Чистая функция. */
 export function reducer(state: AppState, action: Action, envNames: string[], twoColumns: boolean): AppState {
   if (action === 'ctrlc') return { ...state, quit: true };
+
+  if (typeof action === 'object') {
+    if (action.type === 'edit-start') {
+      if (state.sub !== null || state.tab !== 'envs') return state;
+      return { ...state, sub: 'create', create: freshEdit(action.name, action.settings, state.catalog) };
+    }
+    if (action.type === 'run-result') return { ...state, sub: null };
+  }
 
   if (state.sub === 'create' && state.create !== null) {
     const next = createReducer(state.create, action, state.catalog, envNames);
@@ -129,8 +174,12 @@ function createReducer(
 ): CreateState | null {
   if (action !== 'ctrlc' && typeof action === 'object') {
     if (action.type === 'create-result') {
-      if (action.ok) return { ...c, view: 'form', cursor: FORM_ROWS - 1, done: action.message, error: null };
+      if (action.ok) return { ...c, view: 'form', cursor: formRows(c.mode) - 1, done: action.message, error: null };
       return { ...c, view: 'form', error: action.message };
+    }
+    if (action.type === 'delete-result') {
+      if (action.ok) return null; // закрыть форму — назад к списку
+      return { ...c, view: 'form', cursor: formRows(c.mode) - 1, error: action.message };
     }
   }
 
@@ -165,6 +214,12 @@ function createReducer(
     }
     case 'submitting':
       return c.view === 'submitting' && action === 'esc' ? { ...c, view: 'form' } : c;
+    case 'confirm-delete':
+      if (action === 'esc') return { ...c, view: 'form', cursor: formRows(c.mode) - 1 };
+      if (action === 'enter') return { ...c, view: 'deleting' };
+      return c;
+    case 'deleting':
+      return action === 'esc' ? { ...c, view: 'form' } : c;
   }
 }
 
@@ -172,7 +227,7 @@ function formReducer(c: CreateState, action: Action, envNames: string[]): Create
   if (action === 'esc') return null;
   if (action === 'up' || action === 'down') {
     const delta = action === 'up' ? -1 : 1;
-    return { ...c, cursor: (c.cursor + delta + FORM_ROWS) % FORM_ROWS };
+    return { ...c, cursor: (c.cursor + delta + formRows(c.mode)) % formRows(c.mode) };
   }
   if (c.cursor === 0) {
     if (action === 'left') return { ...c, caret: Math.max(0, c.caret - 1) };
@@ -198,9 +253,13 @@ function formReducer(c: CreateState, action: Action, envNames: string[]): Create
     if (c.cursor === 2) return { ...c, view: 'tools', cursor: 0 };
     if (c.cursor === 3) return { ...c, view: 'packages', cursor: 0 };
     if (c.cursor === 4) return { ...c, view: 'skills', cursor: 0 };
-    const err = validateName(c.name, envNames);
-    if (err !== null) return { ...c, error: err };
-    return { ...c, view: 'submitting' };
+    if (c.cursor === 5) {
+      const others = c.mode === 'edit' ? envNames.filter((n) => n !== c.origName) : envNames;
+      const err = validateName(c.name, others);
+      if (err !== null) return { ...c, error: err };
+      return { ...c, view: 'submitting' };
+    }
+    if (c.cursor === 6 && c.mode === 'edit') return { ...c, view: 'confirm-delete' };
   }
   return c;
 }
