@@ -70,7 +70,7 @@ export function render(a: RenderArgs): string {
 
   const L = computeLayout({ width, height });
   // «О программе» — центрированный текст на всю ширину, двухколоночная сетка его режет пополам
-  const twoCol = L.twoColumns && state.tab !== 'about';
+  const twoCol = L.twoColumns && state.tab !== 'about' && state.sub !== 'run';
   const inner = width - 2;
   const contentRows = height - 4; // таб-бар(1) + разделитель(1) + футер(2)
   const lines: string[] = [];
@@ -87,18 +87,15 @@ export function render(a: RenderArgs): string {
   lines.push('│' + padRight(tabs.join('    '), inner) + '│');
 
   // Разделитель под таб-баром
-  if (twoCol && !state.sub) {
+  if (twoCol) {
     lines.push('├' + '─'.repeat(L.leftWidth) + '┬' + '─'.repeat(L.rightWidth) + '┤');
   } else {
     lines.push('├' + '─'.repeat(inner) + '┤');
   }
 
-  if (state.sub) {
+  if (state.sub === 'run') {
     // Суб-экран: центрированная рамка на всю ширину
-    const title =
-      state.sub === 'run'
-        ? 'Запуск окружения ' + (envs[state.selected]?.name ?? '') + ' — этап 2'
-        : 'Создание окружения — этап 2';
+    const title = 'Запуск окружения ' + (envs[state.selected]?.name ?? '') + ' — этап 2';
     const hint = 'Esc — назад';
     const boxW = Math.min(inner - 2, Math.max(visibleWidth(title), visibleWidth(hint)) + 6);
     const box = [
@@ -116,7 +113,61 @@ export function render(a: RenderArgs): string {
     const left: string[] = [];
     const right: string[] = [];
 
-    if (state.tab === 'envs') {
+    if (state.sub === 'create' && state.create) {
+      const cr = state.create;
+      if (cr.view === 'form') {
+        const caret = cr.caret < cr.name.length
+          ? cr.name.slice(0, cr.caret) + '▌' + cr.name.slice(cr.caret)
+          : cr.name + '▌';
+        const model = cr.provider && cr.model ? cr.provider + '/' + cr.model : cr.provider ?? '—';
+        const rows = [
+          'Имя: ' + caret,
+          'Модель: ' + model,
+          'Свои инструменты: ' + cr.tools.length,
+          'Расширения: ' + cr.packages.length,
+          'Скиллы: ' + cr.skills.length,
+          cr.done !== null ? 'Готово' : 'Создать',
+        ];
+        rows.forEach((t, i) => {
+          const text = (i === cr.cursor ? '> ' : '  ') + t;
+          left.push(i === cr.cursor ? c(ANSI.inverse, useColor) + padRight(text, L.leftWidth) + c(ANSI.reset, useColor) : text);
+        });
+        right.push(c(ANSI.dim, useColor) + 'Enter — открыть список / создать' + c(ANSI.reset, useColor));
+        right.push(c(ANSI.dim, useColor) + 'Space — отметить в списке' + c(ANSI.reset, useColor));
+        right.push(c(ANSI.dim, useColor) + 'Esc — закрыть' + c(ANSI.reset, useColor));
+        if (cr.error) right.push(c(ANSI.bold, useColor) + '⚠ ' + cr.error + c(ANSI.reset, useColor));
+        if (cr.done !== null) right.push(c(ANSI.bold, useColor) + '✓ Создано: ' + cr.done + c(ANSI.reset, useColor));
+      } else if (cr.view === 'submitting') {
+        left.push(c(ANSI.dim, useColor) + 'Создание…' + c(ANSI.reset, useColor));
+        right.push(c(ANSI.dim, useColor) + 'Esc — отмена' + c(ANSI.reset, useColor));
+      } else {
+        const items: string[] =
+          cr.view === 'providers' ? state.catalog.providers.map((p) => p.name)
+          : cr.view === 'models' ? (state.catalog.providers.find((p) => p.name === cr.provider)?.models ?? []).map((m) => m.id)
+          : cr.view === 'tools' ? state.catalog.tools.map((t) => t.name)
+          : cr.view === 'packages' ? state.catalog.packages.map((p) => p.name)
+          : state.catalog.skills.map((sk) => sk.name);
+        const titles = {
+          providers: 'Провайдер',
+          models: 'Модель' + (cr.provider ? ' (' + cr.provider + ')' : ''),
+          tools: 'Свои инструменты',
+          packages: 'Расширения (пакеты)',
+          skills: 'Скиллы',
+        } as const;
+        left.push(c(ANSI.bold, useColor) + titles[cr.view] + c(ANSI.reset, useColor));
+        const current = cr.view === 'providers' ? cr.provider : cr.view === 'models' ? cr.model : null;
+        const checked = new Set(cr.view === 'tools' ? cr.tools : cr.view === 'packages' ? cr.packages : cr.skills);
+        if (items.length === 0) left.push(c(ANSI.dim, useColor) + '— пусто —' + c(ANSI.reset, useColor));
+        items.forEach((n, i) => {
+          const sel = (current !== null && current === n) || checked.has(n);
+          const text = (i === cr.cursor ? '> ' : '  ') + (sel ? '✓ ' : '  ') + n;
+          left.push(i === cr.cursor ? c(ANSI.inverse, useColor) + padRight(text, L.leftWidth) + c(ANSI.reset, useColor) : text);
+        });
+        right.push(c(ANSI.dim, useColor) + 'Space/Enter — выбрать' + c(ANSI.reset, useColor));
+        right.push(c(ANSI.dim, useColor) + 'Esc — назад' + c(ANSI.reset, useColor));
+      }
+      if (!twoCol) for (const h of right) left.push(h);
+    } else if (state.tab === 'envs') {
       interface Row { text: string; selected: boolean; isSep: boolean }
       const rows: Row[] = [];
       envs.forEach((e, i) => {
@@ -179,8 +230,8 @@ export function render(a: RenderArgs): string {
       if (twoCol) {
         const l = i < left.length ? padRight(left[i], L.leftWidth) : ' '.repeat(L.leftWidth);
         const r = i < right.length ? padRight(right[i], L.rightWidth) : ' '.repeat(L.rightWidth);
-        const hl = state.tab === 'envs' && state.focus === 'left' && useColor;
-        const hr = state.tab === 'envs' && state.focus === 'right' && useColor;
+        const hl = state.tab === 'envs' && state.sub === null && state.focus === 'left' && useColor;
+        const hr = state.tab === 'envs' && state.sub === null && state.focus === 'right' && useColor;
         const bl = c(ANSI.bold, hl) + '│' + c(ANSI.reset, hl);
         const bm = c(ANSI.bold, hl || hr) + '│' + c(ANSI.reset, hl || hr);
         const br = c(ANSI.bold, hr) + '│' + c(ANSI.reset, hr);
