@@ -1,4 +1,4 @@
-import { copyFileSync, existsSync, mkdirSync, readdirSync, statSync, writeFileSync } from 'node:fs';
+import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, statSync, unlinkSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { SkillItem, ToolItem } from './catalog.js';
 
@@ -13,6 +13,35 @@ export interface CreateRequest {
 
 export type CreateResult = { ok: true; path: string } | { ok: false; error: string };
 
+
+export interface EnvSettings {
+  defaultProvider?: string;
+  defaultModel?: string;
+  extensions?: string[];
+  skills?: string[];
+  packages?: string[];
+}
+
+/** Читает settings.json окружения. null — файла нет или он бит. */
+export function readSettings(envDir: string): EnvSettings | null {
+  const p = join(envDir, 'settings.json');
+  if (!existsSync(p)) return null;
+  try {
+    const raw = JSON.parse(readFileSync(p, 'utf8')) as Record<string, unknown>;
+    const str = (v: unknown): string | undefined => (typeof v === 'string' ? v : undefined);
+    const arr = (v: unknown): string[] | undefined =>
+      Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string') : undefined;
+    const out: EnvSettings = {};
+    const dp = str(raw.defaultProvider); if (dp !== undefined) out.defaultProvider = dp;
+    const dm = str(raw.defaultModel); if (dm !== undefined) out.defaultModel = dm;
+    const ex = arr(raw.extensions); if (ex !== undefined) out.extensions = ex;
+    const sk = arr(raw.skills); if (sk !== undefined) out.skills = sk;
+    const pk = arr(raw.packages); if (pk !== undefined) out.packages = pk;
+    return out;
+  } catch {
+    return null;
+  }
+}
 /** Проверка имени окружения. Возвращает текст ошибки (русский) или null. */
 export function validateName(name: string, existing: string[]): string | null {
   if (name.trim() === '') return 'Введите имя окружения';
@@ -73,7 +102,90 @@ export function createEnvironment(root: string, req: CreateRequest): CreateResul
   return { ok: true, path: envDir };
 }
 
-function baseName(p: string): string {
+/**
+ * Обновляет окружение <root>/<oldName>: переименовывает при смене имени,
+ * синхронизирует extensions/ и skills/ по полному каталогу main-агента
+ * (выбранное копируется, невыбранное среди пунктов каталога удаляется,
+ * чужие файлы и каталоги не трогаются), переписывает settings.json.
+ */
+export function updateEnvironment(
+  root: string,
+  oldName: string,
+  req: CreateRequest,
+  allTools: ToolItem[],
+  allSkills: SkillItem[],
+): CreateResult {
+  const invalid = validateName(req.name, []);
+  if (invalid !== null) return { ok: false, error: invalid };
+  const oldDir = join(root, oldName);
+  if (!existsSync(oldDir)) return { ok: false, error: 'Окружение не найдено' };
+  let envDir = oldDir;
+  if (req.name !== oldName) {
+    const newDir = join(root, req.name);
+    if (existsSync(newDir)) return { ok: false, error: 'Окружение с таким именем уже есть' };
+    try {
+      renameSync(oldDir, newDir);
+    } catch {
+      return { ok: false, error: `Не удалось переименовать окружение в ${req.name}` };
+    }
+    envDir = newDir;
+  }
+
+  const selectedTools = new Set((req.tools ?? []).map((t) => baseName(t.path)));
+  for (const t of allTools) {
+    const file = join(envDir, 'extensions', t.name);
+    if (selectedTools.has(t.name) && !existsSync(file)) {
+      mkdirSync(join(envDir, 'extensions'), { recursive: true });
+      copyFileSync(t.path, file);
+    } else if (!selectedTools.has(t.name) && existsSync(file)) {
+      unlinkSync(file);
+    }
+  }
+
+  const selectedSkills = new Set((req.skills ?? []).map((s) => baseName(s.path)));
+  for (const s of allSkills) {
+    const dir = join(envDir, 'skills', s.name);
+    if (selectedSkills.has(s.name) && !existsSync(dir)) {
+      copyRecursive(s.path, dir);
+    } else if (!selectedSkills.has(s.name) && existsSync(dir)) {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  }
+
+  const settings: Record<string, unknown> = {};
+  if (req.defaultProvider && req.defaultModel) {
+    settings.defaultProvider = req.defaultProvider;
+    settings.defaultModel = req.defaultModel;
+  }
+  const extDir = join(envDir, 'extensions');
+  const extFiles = existsSync(extDir)
+    ? readdirSync(extDir).filter((f) => statSync(join(extDir, f)).isFile())
+    : [];
+  if (extFiles.length > 0) settings.extensions = extFiles.sort().map((f) => `extensions/${f}`);
+  const skillDir = join(envDir, 'skills');
+  const skillDirs = existsSync(skillDir)
+    ? readdirSync(skillDir, { withFileTypes: true }).filter((e) => e.isDirectory()).map((e) => e.name)
+    : [];
+  if (skillDirs.length > 0) settings.skills = skillDirs.sort().map((d) => `skills/${d}`);
+  const packages = uniqueStrings(req.packages ?? []);
+  if (packages.length > 0) settings.packages = packages;
+  writeFileSync(join(envDir, 'settings.json'), JSON.stringify(settings, null, 2) + '\n');
+  return { ok: true, path: envDir };
+}
+
+/** Удаляет каталог окружения <root>/<name> вместе с содержимым. */
+export function deleteEnvironment(root: string, name: string): CreateResult {
+  const envDir = join(root, name);
+  if (!existsSync(envDir)) return { ok: false, error: 'Окружение не найдено' };
+  try {
+    rmSync(envDir, { recursive: true, force: true });
+  } catch {
+    return { ok: false, error: `Не удалось удалить окружение ${name}` };
+  }
+  return { ok: true, path: envDir };
+}
+
+export function baseName(p: string): string {
   const i = Math.max(p.lastIndexOf('/'), p.lastIndexOf('\\'));
   return i >= 0 ? p.slice(i + 1) : p;
 }
