@@ -811,7 +811,7 @@ git commit -m "feat: render — форма редактирования (Сох�
 - Consumes: `readSettings`, `updateEnvironment`, `deleteEnvironment` (Task 1); `edit-start`/`run-result`/`delete-result` (Task 2); `Environment`, `Term.stop/start` (существующие).
 - Produces: поведение: Enter на окружении → дочерний `pi` (cwd = process.cwd(), `PI_CODING_AGENT_DIR` = путь окружения, stdio inherit) и возврат; E на окружении → форма редактирования; сохранение → updateEnvironment (rename включительно); подтверждённое удаление → deleteEnvironment + выбор на соседнее; ошибка spawn → статус-строка.
 
-- [ ] **Step 1: Implement in `src/run.ts`**
+- [x] **Step 1: Implement in `src/run.ts`**
 
 1. Импорт: `import { spawn } from 'node:child_process';` и добавить в импорт create.js `readSettings, updateEnvironment, deleteEnvironment`.
 2. В `run()`: `let statusMsg: string | null = null;` рядом с `let state`.
@@ -900,17 +900,17 @@ function launchPi(term: Term, env: Environment): Promise<{ ok: boolean; message:
 }
 ```
 
-- [ ] **Step 2: Run the whole suite (чистое ядро не задето, но проверяем)**
+- [x] **Step 2: Run the whole suite (чистое ядро не задето, но проверяем)**
 
 Run: `npm test`
 Expected: PASS (0 fail).
 
-- [ ] **Step 3: Build**
+- [x] **Step 3: Build**
 
 Run: `npm run build`
 Expected: компиляция без ошибок.
 
-- [ ] **Step 4: Ручная E2E под pty**
+- [x] **Step 4: Ручная E2E под pty**
 
 Сценарий (запускать из рабочей директории проекта, root — временный):
 1. `npx tsx src/index.ts --root /tmp/pi-env-e2e` (создать `/tmp/pi-env-e2e/dev` с `settings.json` и `extensions/x.ts` вручную) — список показывает `dev`, в инфо-панели подсказка «E — редактировать».
@@ -920,14 +920,14 @@ Expected: компиляция без ошибок.
 5. Создать окружение, `Enter` → запускается реальный `pi` с `PI_CODING_AGENT_DIR=/tmp/pi-env-e2e/<имя>` (проверить, что pi стартует и видит каталог); выход из `pi` (Ctrl+D / quit) → возврат в TUI со списком.
 6. Запуск при отсутствии `pi` в PATH (`PATH=/usr/bin npx tsx src/index.ts --root /tmp/pi-env-e2e` — если `pi` не в /usr/bin) → статус-строка «Не удалось запустить pi: …», TUI жив.
 
-- [ ] **Step 5: Обновить AGENTS.md**
+- [x] **Step 5: Обновить AGENTS.md**
 
 1. Раздел «Текущий статус»: в «Работает» добавить «запуск окружения (дочерний `pi` с передачей терминала), редактирование окружения (E: модель, инструменты, пакеты, скиллы, переименование, удаление с подтверждением)»; строку «Заглушки: запуск окружения, полные настройки — этап 2» заменить на «Заглушки: полные настройки — этап 2».
 2. Раздел «Клавиши»: Enter — «окружение → запуск, «Создать» → форма создания; в списках формы — выбрать пункт»; добавить строку: `E — редактировать выбранное окружение (форма с предзаполнением: имя, модель, инструменты, пакеты, скиллы; сохранение, переименование, удаление с подтверждением)`.
 3. Раздел «Структура»: строку `src/create.ts — validateName, createEnvironment` расширить: `src/create.ts — validateName, createEnvironment, readSettings, updateEnvironment, deleteEnvironment`.
 4. Раздел «Дорожная карта»: «Этап 2: запуск окружения (spawn `pi` с `PI_CODING_AGENT_DIR`), редактирование окружений. Создание — готово.» заменить на «Этап 2: готов (запуск, создание, редактирование с переименованием и удалением).»; «Этап 3+: полные настройки, удаление окружений, детальная инфо-панель.» — убрать «удаление окружений» (уже сделано).
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add src/run.ts AGENTS.md
