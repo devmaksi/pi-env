@@ -92,6 +92,18 @@ export interface Catalog {
 }
 
 /**
+ * Полная каталожная картина main-агента для формы создания окружения.
+ */
+export function loadCatalog(agentDir: string): Catalog {
+  return {
+    providers: listProviders(agentDir),
+    tools: listCustomTools(agentDir),
+    packages: listPackages(agentDir),
+    skills: listSkills(agentDir),
+  };
+}
+
+/**
  * Самодельные инструменты: файлы в extensions/ main-агента.
  * ponytail: только верхний уровень, директории-расширения не разворачиваются
  */
