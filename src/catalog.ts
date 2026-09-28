@@ -84,6 +84,13 @@ export interface PkgItem {
   skills: string[];
 }
 
+export interface Catalog {
+  providers: Provider[];
+  tools: ToolItem[];
+  packages: PkgItem[];
+  skills: SkillItem[];
+}
+
 /**
  * Самодельные инструменты: файлы в extensions/ main-агента.
  * ponytail: только верхний уровень, директории-расширения не разворачиваются
