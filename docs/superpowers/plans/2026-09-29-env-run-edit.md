@@ -662,6 +662,7 @@ git commit -m "feat: state — режим редактирования (edit-sta
 **Files:**
 - Modify: `src/render.ts`
 - Test: `test/render-create.test.ts`
+- Modify: `test/render.test.ts` (замена старого теста «суб-экран запуска» — суб-экран больше не существует)
 
 **Interfaces:**
 - Consumes: `CreateState.mode/origName`, `CreateView 'confirm-delete' | 'deleting'` (Task 2).
@@ -720,6 +721,14 @@ test('инфо-панель окружения: подсказка E — ред�
 
 test('суб-экран запуска больше не рендерится', () => {
   const s = render({ state: { ...initialState(catalog), sub: 'run' as const }, envs, width: 80, height: 10, root: '/root', useColor: false, status: null });
+  assert.ok(!s.includes('Запуск окружения'));
+});
+```
+В `test/render.test.ts` заменить существующий тест «суб-экран запуска» (строки 50–53) на:
+
+```ts
+test('суб-экран запуска больше не рендерится', () => {
+  const s = render({ state: { ...initialState(), sub: 'run' }, envs, width: 62, height: 10, ...base });
   assert.ok(!s.includes('Запуск окружения'));
 });
 ```
@@ -786,7 +795,7 @@ Expected: PASS (0 fail).
 - [ ] **Step 6: Commit**
 
 ```bash
-git add src/render.ts test/render-create.test.ts
+git add src/render.ts test/render-create.test.ts test/render.test.ts
 git commit -m "feat: render — форма редактирования (Сохранить/Удалить), экраны подтверждения, легенда E"
 ```
 
