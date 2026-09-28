@@ -43,7 +43,7 @@
   - `deleteEnvironment(root: string, name: string): CreateResult`
   - `baseName(p: string): string` (уже есть, становится exported)
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Append to `test/create.test.ts` (imports дополнить: `readSettings, updateEnvironment, deleteEnvironment` из `../src/create.js`, `existsSync` в существующий импорт `node:fs`):
 
@@ -246,12 +246,12 @@ test('deleteEnvironment: не найдено — ошибка', () => {
 });
 ```
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [x] **Step 2: Run tests to verify they fail**
 
 Run: `npx tsx --test test/create.test.ts`
 Expected: FAIL — `readSettings`, `updateEnvironment`, `deleteEnvironment` are not exported from `../src/create.js` (import error).
 
-- [ ] **Step 3: Implement in `src/create.ts`**
+- [x] **Step 3: Implement in `src/create.ts`**
 
 Imports: добавить `readFileSync, unlinkSync, renameSync, rmSync` в существующий импорт `node:fs`.
 
@@ -371,17 +371,17 @@ export function deleteEnvironment(root: string, name: string): CreateResult {
 
 `baseName` в `create.ts` сделать `export function baseName` (без изменения тела).
 
-- [ ] **Step 4: Run tests to verify they pass**
+- [x] **Step 4: Run tests to verify they pass**
 
 Run: `npx tsx --test test/create.test.ts`
 Expected: PASS (все тесты файла, включая прежние).
 
-- [ ] **Step 5: Run the whole suite**
+- [x] **Step 5: Run the whole suite**
 
 Run: `npm test`
 Expected: PASS (0 fail).
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add src/create.ts test/create.test.ts
@@ -406,7 +406,7 @@ git commit -m "feat: create.ts — readSettings, updateEnvironment (синхро
   - `Action` += `{ type: 'edit-start'; name: string; settings: EnvSettings }`, `{ type: 'run-result'; ok: boolean }`, `{ type: 'delete-result'; ok: boolean; message: string }`
   - reducer: `edit-start` (только envs + без суб-экрана), `run-result` (sub → null), `delete-result` (ok — закрыть форму; ошибка — в форму с `error`)
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Append to `test/state.test.ts` (import дополнить: `freshCreate` и `type AppState` из `../src/state.js`; `EnvSettings` не нужен прямо — литералы):
 
@@ -527,12 +527,12 @@ test('edit: курсор цикла на 7 строках', () => {
 
 (Вверху файла добавить `import type { AppState } from '../src/state.js';` к существующему импорту, если ещё не импортирован.)
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [x] **Step 2: Run tests to verify they fail**
 
 Run: `npx tsx --test test/state.test.ts`
 Expected: FAIL — `freshEdit` не экспортируется / `edit-start` действие не обрабатывается (тесты падают с неверными значениями).
 
-- [ ] **Step 3: Implement in `src/state.ts`**
+- [x] **Step 3: Implement in `src/state.ts`**
 
 1. Импорт: `import { validateName, baseName, type EnvSettings } from './create.js';`
 2. `CreateView` += `'confirm-delete' | 'deleting'`.
@@ -638,17 +638,17 @@ export function freshEdit(name: string, settings: EnvSettings, catalog: Catalog)
   }
 ```
 
-- [ ] **Step 4: Run tests to verify they pass**
+- [x] **Step 4: Run tests to verify they pass**
 
 Run: `npx tsx --test test/state.test.ts`
 Expected: PASS (весь файл).
 
-- [ ] **Step 5: Run the whole suite**
+- [x] **Step 5: Run the whole suite**
 
 Run: `npm test`
 Expected: PASS (0 fail).
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add src/state.ts test/state.test.ts
@@ -668,7 +668,7 @@ git commit -m "feat: state — режим редактирования (edit-sta
 - Consumes: `CreateState.mode/origName`, `CreateView 'confirm-delete' | 'deleting'` (Task 2).
 - Produces: визуал — форма edit (7 строк: «Сохранить», «Удалить»), экраны «Удалить окружение «X»?» / «Удаление…», «✓ Обновлено:», статус-строка с «E — правка», правая панель списка окружений с подсказкой «E — редактировать». Суб-экран «Запуск окружения … — этап 2» удаляется.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Append to `test/render-create.test.ts`:
 
@@ -733,12 +733,12 @@ test('суб-экран запуска больше не рендерится', 
 });
 ```
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [x] **Step 2: Run tests to verify they fail**
 
 Run: `npx tsx --test test/render-create.test.ts`
 Expected: FAIL (нет «Сохранить»/«Удалить», есть «Запуск окружения», нет «E — правка»).
 
-- [ ] **Step 3: Implement in `src/render.ts`**
+- [x] **Step 3: Implement in `src/render.ts`**
 
 1. `twoCol`: убрать `&& state.sub !== 'run'` → `const twoCol = L.twoColumns && state.tab !== 'about';`
 2. Удалить блок `if (state.sub === 'run') { ... }` (рамка «Запуск окружения») вместе с его `else`-веткой: содержимое `else` становится телом основного блока (переименовать: просто убрать внешний `if/else`, сохранив код `else`).
@@ -782,17 +782,17 @@ Expected: FAIL (нет «Сохранить»/«Удалить», есть «З�
 
 6. Статус-строка: `const legend2 = 'Space toggle  E — правка  Esc назад/выход';`
 
-- [ ] **Step 4: Run tests to verify they pass**
+- [x] **Step 4: Run tests to verify they pass**
 
 Run: `npx tsx --test test/render-create.test.ts test/render.test.ts`
 Expected: PASS.
 
-- [ ] **Step 5: Run the whole suite**
+- [x] **Step 5: Run the whole suite**
 
 Run: `npm test`
 Expected: PASS (0 fail).
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add src/render.ts test/render-create.test.ts test/render.test.ts

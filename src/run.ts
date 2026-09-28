@@ -1,10 +1,11 @@
 import { homedir } from 'node:os';
 import { join } from 'node:path';
+import { spawn } from 'node:child_process';
 import { scan, Environment } from './environments.js';
 import { loadCatalog, ToolItem, SkillItem } from './catalog.js';
 import { computeLayout } from './layout.js';
 import { render } from './render.js';
-import { createEnvironment, type CreateRequest } from './create.js';
+import { createEnvironment, readSettings, updateEnvironment, deleteEnvironment, type CreateRequest } from './create.js';
 import { AppState, initialState, Key, reducer } from './state.js';
 import { createTerm, Term } from './terminal.js';
 
@@ -13,14 +14,39 @@ function defaultAgentDir(): string {
 }
 
 /**
+ * Запускает pi в окружении, передав ему терминал.
+ * ponytail: кодов выхода не различаем — любой exit означает возврат в TUI.
+ */
+function launchPi(term: Term, env: Environment): Promise<{ ok: boolean; message: string }> {
+  return new Promise((resolve) => {
+    term.stop();
+    let done = false;
+    const finish = (ok: boolean, message: string) => {
+      if (done) return;
+      done = true;
+      term.start();
+      resolve({ ok, message });
+    };
+    const child = spawn('pi', [], {
+      cwd: process.cwd(),
+      env: { ...process.env, PI_CODING_AGENT_DIR: env.path },
+      stdio: 'inherit',
+    });
+    child.on('error', (e: Error) => finish(false, `Не удалось запустить pi: ${e.message}`));
+    child.on('exit', () => finish(true, ''));
+  });
+}
+
+/**
  * Цикл приложения: чтение клавиши → reducer → отрисовка.
- * Побочный эффект: отправка формы создания (submitting) вызывает
- * createEnvironment и возвращает результат в reducer.
+ * Побочные эффекты: отправка формы (submitting) — createEnvironment/updateEnvironment,
+ * удаление (deleting) — deleteEnvironment, запуск (sub 'run') — дочерний pi.
  */
 export async function run(root: string): Promise<void> {
   const term: Term = createTerm();
   const catalog = loadCatalog(defaultAgentDir());
   let state: AppState = initialState(catalog);
+  let statusMsg: string | null = null;
 
   function load(): { envs: Environment[]; status: string | null } {
     const scanned = scan(root);
@@ -34,9 +60,17 @@ export async function run(root: string): Promise<void> {
     return computeLayout({ width: term.width(), height: term.height() }).twoColumns;
   }
 
-  function dispatch(key: Key): void {
+  async function dispatch(key: Key): Promise<void> {
+    statusMsg = null;
     const { envs } = load();
-    state = reducer(state, key, envs.map((e) => e.name), twoColumns());
+    const names = envs.map((e) => e.name);
+    if (key === 'e' && state.tab === 'envs' && state.sub === null && state.selected < envs.length) {
+      const settings = readSettings(envs[state.selected].path) ?? {};
+      state = reducer(state, { type: 'edit-start', name: envs[state.selected].name, settings }, names, twoColumns());
+    } else {
+      state = reducer(state, key, names, twoColumns());
+    }
+
     if (state.create && state.create.view === 'submitting') {
       const cr = state.create;
       const req: CreateRequest = {
@@ -51,9 +85,28 @@ export async function run(root: string): Promise<void> {
           .filter((s): s is SkillItem => s !== undefined),
         packages: cr.packages,
       };
-      const res = createEnvironment(root, req);
+      const res = cr.mode === 'edit'
+        ? updateEnvironment(root, cr.origName ?? cr.name, req, catalog.tools, catalog.skills)
+        : createEnvironment(root, req);
       const message = res.ok ? res.path : res.error;
-      state = reducer(state, { type: 'create-result', ok: res.ok, message }, envs.map((e) => e.name), twoColumns());
+      state = reducer(state, { type: 'create-result', ok: res.ok, message }, names, twoColumns());
+    }
+
+    if (state.create && state.create.view === 'deleting') {
+      const name = state.create.name;
+      const res = deleteEnvironment(root, name);
+      state = reducer(state, { type: 'delete-result', ok: res.ok, message: res.ok ? name : res.error }, names, twoColumns());
+      if (res.ok) {
+        const n = load().envs.length;
+        state = { ...state, selected: Math.max(0, Math.min(state.selected, n - 1)) };
+      }
+    }
+
+    if (state.sub === 'run' && state.tab === 'envs' && state.selected < envs.length) {
+      const env = envs[state.selected];
+      const res = await launchPi(term, env);
+      state = reducer(state, { type: 'run-result', ok: res.ok }, names, twoColumns());
+      if (!res.ok) statusMsg = res.message;
     }
   }
 
@@ -69,7 +122,7 @@ export async function run(root: string): Promise<void> {
       width: w,
       height: h,
       useColor: state.colorToggle && !term.noColor,
-      status,
+      status: statusMsg ?? status,
     }));
   }
 
@@ -79,7 +132,7 @@ export async function run(root: string): Promise<void> {
 
   for (;;) {
     const key = await term.key();
-    dispatch(key as Key);
+    await dispatch(key as Key);
     if (state.quit) break;
     repaint();
   }
