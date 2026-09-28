@@ -70,7 +70,7 @@ export function render(a: RenderArgs): string {
 
   const L = computeLayout({ width, height });
   // «О программе» — центрированный текст на всю ширину, двухколоночная сетка его режет пополам
-  const twoCol = L.twoColumns && state.tab !== 'about' && state.sub !== 'run';
+  const twoCol = L.twoColumns && state.tab !== 'about';
   const inner = width - 2;
   const contentRows = height - 4; // таб-бар(1) + разделитель(1) + футер(2)
   const lines: string[] = [];
@@ -93,23 +93,6 @@ export function render(a: RenderArgs): string {
     lines.push('├' + '─'.repeat(inner) + '┤');
   }
 
-  if (state.sub === 'run') {
-    // Суб-экран: центрированная рамка на всю ширину
-    const title = 'Запуск окружения ' + (envs[state.selected]?.name ?? '') + ' — этап 2';
-    const hint = 'Esc — назад';
-    const boxW = Math.min(inner - 2, Math.max(visibleWidth(title), visibleWidth(hint)) + 6);
-    const box = [
-      '╭' + '─'.repeat(boxW) + '╮',
-      '│' + center(title, boxW) + '│',
-      '│' + center(hint, boxW) + '│',
-      '╰' + '─'.repeat(boxW) + '╯',
-    ];
-    const top = Math.max(0, Math.floor((contentRows - box.length) / 2));
-    for (let i = 0; i < contentRows; i++) {
-      const row = i - top >= 0 && i - top < box.length ? box[i - top] : '';
-      lines.push('│' + center(row, inner) + '│');
-    }
-  } else {
     const left: string[] = [];
     const right: string[] = [];
 
@@ -126,8 +109,9 @@ export function render(a: RenderArgs): string {
           'Свои инструменты: ' + cr.tools.length,
           'Расширения: ' + cr.packages.length,
           'Скиллы: ' + cr.skills.length,
-          cr.done !== null ? 'Готово' : 'Создать',
+          cr.done !== null ? 'Готово' : cr.mode === 'edit' ? 'Сохранить' : 'Создать',
         ];
+        if (cr.mode === 'edit' && cr.done === null) rows.push('Удалить');
         rows.forEach((t, i) => {
           const text = (i === cr.cursor ? '> ' : '  ') + t;
           left.push(i === cr.cursor ? c(ANSI.inverse, useColor) + padRight(text, L.leftWidth) + c(ANSI.reset, useColor) : text);
@@ -136,7 +120,14 @@ export function render(a: RenderArgs): string {
         right.push(c(ANSI.dim, useColor) + 'Space — отметить в списке' + c(ANSI.reset, useColor));
         right.push(c(ANSI.dim, useColor) + 'Esc — закрыть' + c(ANSI.reset, useColor));
         if (cr.error) right.push(c(ANSI.bold, useColor) + '⚠ ' + cr.error + c(ANSI.reset, useColor));
-        if (cr.done !== null) right.push(c(ANSI.bold, useColor) + '✓ Создано: ' + cr.done + c(ANSI.reset, useColor));
+        if (cr.done !== null) right.push(c(ANSI.bold, useColor) + (cr.mode === 'edit' ? '✓ Обновлено: ' : '✓ Создано: ') + cr.done + c(ANSI.reset, useColor));
+      } else if (cr.view === 'confirm-delete') {
+        left.push(c(ANSI.bold, useColor) + 'Удалить окружение «' + cr.name + '»?' + c(ANSI.reset, useColor));
+        right.push(c(ANSI.dim, useColor) + 'Enter — подтвердить' + c(ANSI.reset, useColor));
+        right.push(c(ANSI.dim, useColor) + 'Esc — отмена' + c(ANSI.reset, useColor));
+      } else if (cr.view === 'deleting') {
+        left.push(c(ANSI.dim, useColor) + 'Удаление…' + c(ANSI.reset, useColor));
+        right.push(c(ANSI.dim, useColor) + 'Esc — отмена' + c(ANSI.reset, useColor));
       } else if (cr.view === 'submitting') {
         left.push(c(ANSI.dim, useColor) + 'Создание…' + c(ANSI.reset, useColor));
         right.push(c(ANSI.dim, useColor) + 'Esc — отмена' + c(ANSI.reset, useColor));
@@ -165,8 +156,6 @@ export function render(a: RenderArgs): string {
         });
         right.push(c(ANSI.dim, useColor) + 'Space/Enter — выбрать' + c(ANSI.reset, useColor));
         right.push(c(ANSI.dim, useColor) + 'Esc — назад' + c(ANSI.reset, useColor));
-      } else {
-        left.push(c(ANSI.dim, useColor) + '…' + c(ANSI.reset, useColor));
       }
       if (!twoCol) for (const h of right) left.push(h);
     } else if (state.tab === 'envs') {
@@ -197,6 +186,7 @@ export function render(a: RenderArgs): string {
         right.push('settings.json ' + (e.hasSettings ? '✓' : '—'));
         right.push('skills ' + (e.hasSkills ? '✓' : '—'));
         right.push('extensions ' + (e.hasExtensions ? '✓' : '—'));
+        right.push(c(ANSI.dim, useColor) + 'E — редактировать' + c(ANSI.reset, useColor));
         right.push(c(ANSI.dim, useColor) + 'Детализация — этап 2' + c(ANSI.reset, useColor));
       } else {
         right.push(c(ANSI.dim, useColor) + 'Выберите окружение' + c(ANSI.reset, useColor));
@@ -243,11 +233,10 @@ export function render(a: RenderArgs): string {
         lines.push('│' + l + '│');
       }
     }
-  }
 
   // Статус-строка
   const legend1 = inner >= 49 ? '↑↓ перемещение  ←→ колонки  TAB вкладки  Enter ОК' : '↑↓ TAB Enter Space Esc';
-  const legend2 = 'Space toggle  Esc назад/выход';
+  const legend2 = 'Space toggle  E — правка  Esc назад/выход';
   const f1 = c(ANSI.dim, useColor) + legend1 + c(ANSI.reset, useColor);
   const f2 = a.status !== null
     ? c(ANSI.bold, useColor) + a.status + c(ANSI.reset, useColor)

@@ -93,3 +93,54 @@ test('узкий режим: форма рендерится одной коло
   assert.ok(s.includes('Имя: prod▌'));
   assert.ok(s.includes('Создать'));
 });
+
+function editState(over: Partial<AppState['create']> = {}): AppState {
+  return { ...initialState(catalog), sub: 'create', create: { ...freshCreate(), mode: 'edit' as const, origName: 'dev', name: 'dev', ...over } };
+}
+
+test('форма edit: 7 строк — Сохранить и Удалить', () => {
+  const s = render({ state: editState(), envs, width: 62, height: 12, root: '/root', useColor: false, status: null });
+  assert.ok(s.includes('Сохранить'));
+  assert.ok(s.includes('Удалить'));
+  assert.ok(!s.includes('Создать'));
+});
+
+test('форма create: строки Удалить/Сохранить нет', () => {
+  const s = render({ state: createState(), envs, width: 62, height: 12, root: '/root', useColor: false, status: null });
+  assert.ok(!s.includes('Удалить'));
+  assert.ok(!s.includes('Сохранить'));
+  assert.ok(s.includes('Создать'));
+});
+
+test('confirm-delete: вопрос и подсказки', () => {
+  const s = render({ state: editState({ view: 'confirm-delete' }), envs, width: 62, height: 10, root: '/root', useColor: false, status: null });
+  assert.ok(s.includes('Удалить окружение «dev»?'));
+  assert.ok(s.includes('Enter — подтвердить'));
+  assert.ok(s.includes('Esc — отмена'));
+});
+
+test('deleting: пометка процесса', () => {
+  const s = render({ state: editState({ view: 'deleting' }), envs, width: 62, height: 10, root: '/root', useColor: false, status: null });
+  assert.ok(s.includes('Удаление…'));
+});
+
+test('edit: после сохранения — Обновлено, не Создано', () => {
+  const s = render({ state: editState({ done: '/root/dev' }), envs, width: 62, height: 10, root: '/root', useColor: false, status: null });
+  assert.ok(s.includes('Обновлено: /root/dev'));
+  assert.ok(!s.includes('Создано'));
+});
+
+test('статус-строка: подсказка E — правка', () => {
+  const s = render({ state: initialState(catalog), envs, width: 80, height: 10, root: '/root', useColor: false, status: null });
+  assert.ok(s.includes('E — правка'));
+});
+
+test('инфо-панель окружения: подсказка E — редактировать', () => {
+  const s = render({ state: initialState(catalog), envs, width: 80, height: 10, root: '/root', useColor: false, status: null });
+  assert.ok(s.includes('E — редактировать'));
+});
+
+test('суб-экран запуска больше не рендерится', () => {
+  const s = render({ state: { ...initialState(catalog), sub: 'run' as const }, envs, width: 80, height: 10, root: '/root', useColor: false, status: null });
+  assert.ok(!s.includes('Запуск окружения'));
+});

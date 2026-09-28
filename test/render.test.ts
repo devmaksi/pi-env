@@ -29,7 +29,7 @@ test('широкий режим: рамка, таб-бар, разделител
 });
 
 test('широкий режим: список, курсор, инфо-панель', () => {
-  const s = render({ state: initialState(), envs, width: 62, height: 10, ...base });
+  const s = render({ state: initialState(), envs, width: 62, height: 11, ...base });
   assert.ok(s.includes('> dev'));
   assert.ok(s.includes('  prod'));
   assert.ok(s.includes('Создать'));
@@ -47,10 +47,9 @@ test('узкий режим: нет правого столбца', () => {
   assert.ok(s.includes('> dev'));
 });
 
-test('суб-экран запуска', () => {
+test('суб-экран запуска больше не рендерится', () => {
   const s = render({ state: { ...initialState(), sub: 'run' }, envs, width: 62, height: 10, ...base });
-  assert.ok(s.includes('Запуск окружения dev — этап 2'));
-  assert.ok(s.includes('Esc — назад'));
+  assert.ok(!s.includes('Запуск окружения'));
 });
 
 test('вкладка настроек: каталог и toggle', () => {
