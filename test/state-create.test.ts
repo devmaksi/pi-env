@@ -9,8 +9,8 @@ const catalog: Catalog = {
   ],
   tools: [{ name: 'searxng-search.ts', path: '/x/searxng-search.ts' }],
   packages: [
-    { source: 'npm:pkg-a', name: 'pkg-a', path: '/p/a', extensions: ['./index.ts'], skills: [] },
-    { source: 'npm:pkg-b', name: 'pkg-b', path: '/p/b', extensions: ['./exts'], skills: [] },
+    { source: 'npm:pkg-a', name: 'pkg-a', path: '/p/a', version: '1.0.0', description: 'Пакет A', extensions: ['./index.ts'], skills: [] },
+    { source: 'npm:pkg-b', name: 'pkg-b', path: '/p/b', version: '2.0.0', description: null, extensions: ['./exts'], skills: [] },
   ],
   skills: [{ name: 'own-skill', path: '/s/own' }],
 };

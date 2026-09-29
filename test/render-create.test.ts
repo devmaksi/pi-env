@@ -10,7 +10,7 @@ const catalog: Catalog = {
     { name: 'openai', models: [{ id: 'gpt-4o' }] },
   ],
   tools: [{ name: 'searxng-search.ts', path: '/x/searxng.ts' }],
-  packages: [{ source: 'npm:pkg-a', name: 'pkg-a', path: '/p/a', extensions: ['./index.ts'], skills: [] }],
+  packages: [{ source: 'npm:pkg-a', name: 'pkg-a', path: '/p/a', version: '1.2.3', description: 'Тестовый пакет', extensions: ['./index.ts'], skills: [] }],
   skills: [{ name: 'own-skill', path: '/s/own' }],
 };
 

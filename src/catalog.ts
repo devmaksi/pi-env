@@ -80,6 +80,8 @@ export interface PkgItem {
   source: string;
   name: string;
   path: string;
+  version: string | null;
+  description: string | null;
   extensions: string[];
   skills: string[];
 }
@@ -137,11 +139,35 @@ export function listPackages(agentDir: string): PkgItem[] {
       source,
       name: typeof (pkg as { name?: unknown }).name === 'string' ? (pkg as { name: string }).name : source,
       path,
+      version: typeof (pkg as { version?: unknown }).version === 'string' ? (pkg as { version: string }).version : null,
+      description: typeof (pkg as { description?: unknown }).description === 'string' ? (pkg as { description: string }).description : null,
       extensions: strArray(piObj.extensions),
       skills: strArray(piObj.skills),
     });
   }
   return out.sort((a, b) => a.name.localeCompare(b.name));
+}
+
+/**
+ * Разбор вывода `npm outdated --json`: имя пакета → latest-версия.
+ * Только устаревшие пакеты попадают в вывод. Мусор/пусто → {}.
+ */
+export function parseOutdated(raw: string): Record<string, string> {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    return {};
+  }
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return {};
+  const out: Record<string, string> = {};
+  for (const [name, value] of Object.entries(parsed as Record<string, unknown>)) {
+    if (value && typeof value === 'object') {
+      const latest = (value as { latest?: unknown }).latest;
+      if (typeof latest === 'string') out[name] = latest;
+    }
+  }
+  return out;
 }
 
 /**

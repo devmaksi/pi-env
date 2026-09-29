@@ -87,7 +87,7 @@ test('Ctrl+C — выход', () => {
 const catalog2 = {
   providers: [{ name: 'cpp', models: [{ id: 'Bonsai-2' }] }],
   tools: [{ name: 'searxng.ts', path: '/a/extensions/searxng.ts' }],
-  packages: [{ source: 'npm:pkg-a', name: 'pkg-a', path: '/p/a', extensions: [], skills: [] }],
+  packages: [{ source: 'npm:pkg-a', name: 'pkg-a', path: '/p/a', version: '1.0.0', description: null, extensions: [], skills: [] }],
   skills: [
     { name: 'own-skill', path: '/s/own-skill' },
     { name: 'zzz', path: '/s/zzz' },

@@ -3,7 +3,7 @@ import assert from 'node:assert';
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { listProviders, listCustomTools, listPackages, listSkills } from '../src/catalog.js';
+import { listProviders, listCustomTools, listPackages, listSkills, parseOutdated } from '../src/catalog.js';
 
 function makeAgentDir(): string {
   const dir = mkdtempSync(join(tmpdir(), 'pi-env-test-'));
@@ -113,6 +113,8 @@ test('listPackages: npm- и локальные источники, поле pi',
   try {
     makePkg(join(dir, 'npm', 'node_modules'), 'pkg-a', {
       name: 'pkg-a',
+      version: '1.2.3',
+      description: 'Тестовый пакет',
       pi: { extensions: ['./index.ts'], skills: ['./skills'] },
     });
     const localPath = makePkg(dir, 'local-pkg', { name: 'local-pkg', pi: { extensions: ['./exts'] } });
@@ -129,6 +131,11 @@ test('listPackages: npm- и локальные источники, поле pi',
     assert.equal(a.source, 'npm:pkg-a');
     assert.deepEqual(a.extensions, ['./index.ts']);
     assert.deepEqual(a.skills, ['./skills']);
+    assert.equal(a.version, '1.2.3');
+    assert.equal(a.description, 'Тестовый пакет');
+    const l = pkgs.find((p) => p.name === 'local-pkg')!;
+    assert.equal(l.version, null);
+    assert.equal(l.description, null);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
@@ -178,4 +185,19 @@ test('listSkills: коллизия имён — добавляется преф�
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
+});
+
+test('parseOutdated: валидный JSON → имя → latest', () => {
+  assert.deepEqual(
+    parseOutdated('{"pkg-a":{"current":"1.0.0","latest":"2.0.0"},"pkg-b":{"latest":"1.1.0"}}'),
+    { 'pkg-a': '2.0.0', 'pkg-b': '1.1.0' },
+  );
+});
+
+test('parseOutdated: {}, мусорный JSON, массив, числовой latest, null → {}', () => {
+  assert.deepEqual(parseOutdated('{}'), {});
+  assert.deepEqual(parseOutdated('не json'), {});
+  assert.deepEqual(parseOutdated('[1,2]'), {});
+  assert.deepEqual(parseOutdated('{"a":{"latest":5}}'), {});
+  assert.deepEqual(parseOutdated('null'), {});
 });
