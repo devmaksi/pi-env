@@ -11,8 +11,13 @@ export type ControlKey =
 /** Управление (ControlKey) или любой одиночный печатный символ. */
 export type Key = ControlKey | (string & {});
 
-export type CreateView = 'form' | 'providers' | 'models' | 'tools' | 'packages' | 'skills' | 'submitting' | 'confirm-delete' | 'deleting';
+export type CreateView = 'form' | 'providers' | 'models' | 'tools' | 'packages' | 'skills' | 'submitting' | 'updating' | 'confirm-delete' | 'deleting' | 'confirm-remove' | 'removing';
 
+/** Строка-кнопка в конце списка расширений. */
+export const UPDATE_ALL_ROW = 'Обновить все';
+
+/** Статус проверки расширений на обновления. */
+export type PkgCheck = 'idle' | 'checking' | 'done' | 'error';
 export interface CreateState {
   name: string;
   caret: number;
@@ -27,6 +32,7 @@ export interface CreateState {
   done: string | null;
   mode: 'create' | 'edit';
   origName: string | null;
+  removing: string | null;
 }
 
 export interface AppState {
@@ -38,6 +44,8 @@ export interface AppState {
   quit: boolean;
   catalog: Catalog;
   create: CreateState | null;
+  pkgCheck: PkgCheck;
+  pkgLatest: Record<string, string>;
 }
 
 export const TABS: readonly Tab[] = ['envs', 'settings', 'about'];
@@ -53,7 +61,7 @@ export const MAX_NAME = 40;
 export function initialState(catalog: Catalog = emptyCatalog()): AppState {
   return {
     tab: 'envs', focus: 'left', selected: 0, sub: null, colorToggle: true, quit: false,
-    catalog, create: null,
+    catalog, create: null, pkgCheck: 'idle', pkgLatest: {},
   };
 }
 
@@ -66,6 +74,7 @@ export function freshCreate(): CreateState {
     name: '', caret: 0, cursor: 0, provider: null, model: null,
     mode: 'create', origName: null,
     tools: [], packages: [], skills: [], view: 'form', error: null, done: null,
+    removing: null,
   };
 }
 
@@ -90,6 +99,7 @@ export function freshEdit(name: string, settings: EnvSettings, catalog: Catalog)
     view: 'form',
     error: null,
     done: null,
+    removing: null,
   };
 }
 
@@ -99,7 +109,10 @@ export type Action =
   | { type: 'create-result'; ok: boolean; message: string }
   | { type: 'edit-start'; name: string; settings: EnvSettings }
   | { type: 'run-result'; ok: boolean }
-  | { type: 'delete-result'; ok: boolean; message: string };
+  | { type: 'delete-result'; ok: boolean; message: string }
+  | { type: 'updates-result'; ok: boolean; latest: Record<string, string> }
+  | { type: 'update-result'; ok: boolean; message: string }
+  | { type: 'remove-result'; ok: boolean; message: string };
 
 export function listLength(tab: Tab, envCount: number): number {
   if (tab === 'envs') return envCount + 1; // окружения + «Создать»
@@ -117,6 +130,13 @@ export function reducer(state: AppState, action: Action, envNames: string[], two
       return { ...state, sub: 'create', create: freshEdit(action.name, action.settings, state.catalog) };
     }
     if (action.type === 'run-result') return { ...state, sub: null };
+    if (action.type === 'updates-result') {
+      return {
+        ...state,
+        pkgCheck: action.ok ? 'done' : 'error',
+        pkgLatest: action.ok ? action.latest : state.pkgLatest,
+      };
+    }
   }
 
   if (state.sub === 'create' && state.create !== null) {
@@ -181,6 +201,20 @@ function createReducer(
       if (action.ok) return null; // закрыть форму — назад к списку
       return { ...c, view: 'form', cursor: formRows(c.mode) - 1, error: action.message };
     }
+    if (action.type === 'update-result') {
+      return { ...c, view: 'packages', cursor: 0, error: action.ok ? null : action.message };
+    }
+    if (action.type === 'remove-result') {
+      if (!action.ok) return { ...c, view: 'packages', removing: null, error: action.message };
+      return {
+        ...c,
+        view: 'packages',
+        cursor: 0,
+        removing: null,
+        error: null,
+        packages: c.removing !== null ? c.packages.filter((n) => n !== c.removing) : c.packages,
+      };
+    }
   }
 
   switch (c.view) {
@@ -198,18 +232,28 @@ function createReducer(
       }));
     }
     case 'tools':
-    case 'packages':
     case 'skills': {
       const field = c.view;
-      const row = field === 'tools' ? 2 : field === 'packages' ? 3 : 4;
+      const row = field === 'tools' ? 2 : 4;
       const items =
         field === 'tools' ? catalog.tools.map((t) => t.name)
-        : field === 'packages' ? catalog.packages.map((p) => p.name)
         : catalog.skills.map((s) => s.name);
       return listViewReducer(c, action, items, 'form', row, (name) => {
         const sel = c[field];
         const next = sel.includes(name) ? sel.filter((x) => x !== name) : [...sel, name];
         return { ...c, [field]: next };
+      });
+    }
+    case 'packages': {
+      const names = catalog.packages.map((p) => p.name);
+      if ((action === 'x' || action === 'X') && c.cursor < names.length) {
+        return { ...c, view: 'confirm-remove', removing: names[c.cursor] };
+      }
+      return listViewReducer(c, action, [...names, UPDATE_ALL_ROW], 'form', 3, (item) => {
+        if (item === UPDATE_ALL_ROW) return { ...c, view: 'updating' };
+        const sel = c.packages;
+        const next = sel.includes(item) ? sel.filter((x) => x !== item) : [...sel, item];
+        return { ...c, packages: next };
       });
     }
     case 'submitting':
@@ -220,6 +264,15 @@ function createReducer(
       return c;
     case 'deleting':
       return action === 'esc' ? { ...c, view: 'form' } : c;
+    case 'updating':
+      return action === 'esc' ? { ...c, view: 'packages', cursor: 0 } : c;
+    case 'confirm-remove':
+      if (action === 'esc') return { ...c, view: 'packages', removing: null };
+      if (action === 'enter') return { ...c, view: 'removing' };
+      return c;
+    case 'removing':
+      // Esc не отменяет процесс — имя храним до прихода remove-result
+      return action === 'esc' ? { ...c, view: 'packages' } : c;
   }
 }
 

@@ -7,7 +7,7 @@ const envs = (n: number) => Array.from({ length: n }, (_, i) => `env${i}`);
 test('initialState', () => {
   assert.deepEqual(initialState(), {
     tab: 'envs', focus: 'left', selected: 0, sub: null, colorToggle: true, quit: false,
-    catalog: emptyCatalog(), create: null,
+    catalog: emptyCatalog(), create: null, pkgCheck: 'idle', pkgLatest: {},
   });
 });
 

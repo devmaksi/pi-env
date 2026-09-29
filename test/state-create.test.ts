@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert';
-import { initialState, reducer, freshCreate, type Catalog } from '../src/state.js';
+import { initialState, reducer, freshCreate, type AppState, type Catalog } from '../src/state.js';
 
 const catalog: Catalog = {
   providers: [
@@ -146,7 +146,7 @@ test('списки: курсор зациклен', () => {
   s = reducer(s, 'down', [], true); // packages (строка 3)
   s = reducer(s, 'enter', [], true);
   s = reducer(s, 'up', [], true);
-  assert.equal(s.create!.cursor, 1); // заходит на pkg-b
+  assert.equal(s.create!.cursor, 2); // заходит на строку «Обновить все»
   s = reducer(s, 'down', [], true);
   assert.equal(s.create!.cursor, 0);
 });
@@ -215,4 +215,106 @@ test('ввод имени не влияет при курсоре вне стр�
   s = reducer(s, 'down', [], true); // row 1
   s = reducer(s, 'a', [], true);
   assert.equal(s.create!.name, '');
+});
+
+function openPackages(s: AppState): AppState {
+  let t = s;
+  t = reducer(t, 'down', [], true);
+  t = reducer(t, 'down', [], true);
+  t = reducer(t, 'down', [], true);
+  t = reducer(t, 'enter', [], true);
+  assert.equal(t.create!.view, 'packages');
+  return t;
+}
+
+test('packages: кнопка «Обновить все» в конце списка, Enter → updating, Esc назад', () => {
+  let s = openPackages(withCreate());
+  s = reducer(s, 'down', [], true); // pkg-b
+  s = reducer(s, 'down', [], true); // кнопка
+  assert.equal(s.create!.cursor, 2);
+  s = reducer(s, 'enter', [], true);
+  assert.equal(s.create!.view, 'updating');
+  s = reducer(s, 'esc', [], true);
+  assert.equal(s.create!.view, 'packages');
+  assert.equal(s.create!.cursor, 0);
+});
+
+test('packages: X → confirm-remove → removing; Esc отменяет', () => {
+  let s = openPackages(withCreate());
+  s = reducer(s, 'x', [], true);
+  assert.equal(s.create!.view, 'confirm-remove');
+  assert.equal(s.create!.removing, 'pkg-a');
+  s = reducer(s, 'esc', [], true);
+  assert.equal(s.create!.view, 'packages');
+  assert.equal(s.create!.removing, null);
+  s = reducer(s, 'X', [], true); // верхний регистр тоже
+  s = reducer(s, 'enter', [], true);
+  assert.equal(s.create!.view, 'removing');
+  s = reducer(s, 'esc', [], true);
+  assert.equal(s.create!.view, 'packages');
+  assert.equal(s.create!.removing, 'pkg-a'); // процесс идёт — имя храним до результата
+});
+
+test('packages: X на строке кнопки ничего не делает', () => {
+  let s = openPackages(withCreate());
+  s = reducer(s, 'down', [], true);
+  s = reducer(s, 'down', [], true); // строка кнопки
+  s = reducer(s, 'x', [], true);
+  assert.equal(s.create!.view, 'packages');
+});
+
+test('remove-result: ошибка → error, успех → пакет снят с отметок', () => {
+  let s = openPackages(withCreate());
+  s = reducer(s, 'enter', [], true); // отметить pkg-a
+  s = reducer(s, 'x', [], true);
+  s = reducer(s, 'enter', [], true);
+  s = reducer(s, { type: 'remove-result', ok: false, message: 'нет сети' }, [], true);
+  assert.equal(s.create!.view, 'packages');
+  assert.equal(s.create!.removing, null);
+  assert.deepEqual(s.create!.packages, ['pkg-a']);
+  assert.equal(s.create!.error, 'нет сети');
+  s = reducer(s, 'x', [], true);
+  s = reducer(s, 'enter', [], true);
+  s = reducer(s, { type: 'remove-result', ok: true, message: 'pkg-a' }, [], true);
+  assert.equal(s.create!.view, 'packages');
+  assert.equal(s.create!.cursor, 0);
+  assert.equal(s.create!.removing, null);
+  assert.deepEqual(s.create!.packages, []);
+  assert.equal(s.create!.error, null);
+});
+
+test('поздний remove-result после Esc применяется безопасно', () => {
+  let s = openPackages(withCreate());
+  s = reducer(s, 'enter', [], true); // pkg-a
+  s = reducer(s, 'down', [], true);
+  s = reducer(s, 'enter', [], true); // pkg-b
+  s = reducer(s, 'up', [], true);
+  s = reducer(s, 'x', [], true);
+  s = reducer(s, 'enter', [], true);
+  s = reducer(s, 'esc', [], true); // ушли, процесс ещё идёт
+  s = reducer(s, { type: 'remove-result', ok: true, message: 'pkg-a' }, [], true);
+  assert.equal(s.create!.view, 'packages');
+  assert.deepEqual(s.create!.packages, ['pkg-b']);
+});
+
+test('update-result: успех → к списку, ошибка → error', () => {
+  let s = openPackages(withCreate());
+  s = reducer(s, 'down', [], true);
+  s = reducer(s, 'down', [], true);
+  s = reducer(s, 'enter', [], true);
+  assert.equal(s.create!.view, 'updating');
+  s = reducer(s, { type: 'update-result', ok: false, message: 'нет сети' }, [], true);
+  assert.equal(s.create!.view, 'packages');
+  assert.equal(s.create!.error, 'нет сети');
+});
+
+test('updates-result: карта latest и статус проверки', () => {
+  let s = withCreate();
+  assert.equal(s.pkgCheck, 'idle');
+  s = reducer(s, { type: 'updates-result', ok: true, latest: { 'pkg-a': '2.0.0' } }, [], true);
+  assert.equal(s.pkgCheck, 'done');
+  assert.deepEqual(s.pkgLatest, { 'pkg-a': '2.0.0' });
+  s = reducer(s, { type: 'updates-result', ok: false, latest: {} }, [], true);
+  assert.equal(s.pkgCheck, 'error');
+  assert.deepEqual(s.pkgLatest, { 'pkg-a': '2.0.0' });
 });
