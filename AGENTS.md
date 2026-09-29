@@ -31,7 +31,8 @@
   по умолчанию `~/.pi/agent`): models.json + models-store.json, файлы
   extensions/, пакеты settings.json → packages, скиллы + пакетные скиллы.
   Результат: `<root>/<имя>/` с `settings.json`, скопированными инструментами
-  (extensions/) и скиллами (skills/); пакеты — по source в settings.packages.
+  (extensions/), скиллами (skills/) и каталогом моделей (models.json,
+  models-store.json, auth.json); пакеты — по source в settings.packages.
 - Заглушки: полные настройки — этап 2.
 
 ## Стек
@@ -56,8 +57,9 @@
 - `src/catalog.ts` — `loadCatalog` + `listProviders/listCustomTools/`
   `listPackages/listSkills` (чистые, чтение каталога main-агента)
 - `src/create.ts` — `validateName`, `createEnvironment` (создание каталога,
-  копирование, запись settings.json), `readSettings`, `updateEnvironment`
-  (синхронизация + переименование), `deleteEnvironment`
+  копирование инструментов/скиллов/каталога моделей, запись settings.json),
+  `readSettings`, `updateEnvironment` (синхронизация + переименование),
+  `deleteEnvironment`
 - `src/state.ts` — `AppState`, `reducer`, машина создания `CreateState` (чистые)
 - `src/render.ts` — `render(args)` → строки ANSI (чистая)
 - `src/run.ts` — цикл приложения

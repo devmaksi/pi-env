@@ -85,9 +85,10 @@ export async function run(root: string): Promise<void> {
           .filter((s): s is SkillItem => s !== undefined),
         packages: cr.packages,
       };
+      const agentDir = defaultAgentDir();
       const res = cr.mode === 'edit'
-        ? updateEnvironment(root, cr.origName ?? cr.name, req, catalog.tools, catalog.skills)
-        : createEnvironment(root, req);
+        ? updateEnvironment(root, cr.origName ?? cr.name, req, catalog.tools, catalog.skills, agentDir)
+        : createEnvironment(root, req, agentDir);
       const message = res.ok ? res.path : res.error;
       state = reducer(state, { type: 'create-result', ok: res.ok, message }, names, twoColumns());
     }

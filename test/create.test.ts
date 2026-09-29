@@ -33,6 +33,46 @@ test('createEnvironment: базовое окружение без опций', (
     rmSync(root, { recursive: true, force: true });
   }
 });
+test('createEnvironment: каталог моделей копируется из main-агента', () => {
+  const root = tmpDir();
+  const agent = tmpDir();
+  const modelsJson = '{"providers":{"cpp":{"models":[{"id":"Qwen3.8-27B"}]}}}';
+  const storeJson = '{"llama.cpp":{"models":[{"id":"Qwen3.8-27B"}]}}';
+  try {
+    writeFileSync(join(agent, 'models.json'), modelsJson);
+    writeFileSync(join(agent, 'models-store.json'), storeJson);
+    writeFileSync(join(agent, 'auth.json'), '{"llama.cpp":{}}');
+
+    const res = createEnvironment(root, {
+      name: 'env1',
+      defaultProvider: 'llama.cpp',
+      defaultModel: 'Qwen3.8-27B',
+    }, agent);
+    assert.equal(res.ok, true);
+    const envDir = join(root, 'env1');
+    assert.equal(readFileSync(join(envDir, 'models.json'), 'utf8'), modelsJson);
+    assert.equal(readFileSync(join(envDir, 'models-store.json'), 'utf8'), storeJson);
+    assert.equal(readFileSync(join(envDir, 'auth.json'), 'utf8'), '{"llama.cpp":{}}');
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+    rmSync(agent, { recursive: true, force: true });
+  }
+});
+
+test('createEnvironment: каталога моделей в main-агенте нет — файлы не создаются', () => {
+  const root = tmpDir();
+  const agent = tmpDir();
+  try {
+    const res = createEnvironment(root, { name: 'env1' }, agent);
+    assert.equal(res.ok, true);
+    assert.equal(existsSync(join(root, 'env1', 'models.json')), false);
+    assert.equal(existsSync(join(root, 'env1', 'models-store.json')), false);
+    assert.equal(existsSync(join(root, 'env1', 'auth.json')), false);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+    rmSync(agent, { recursive: true, force: true });
+  }
+});
 
 test('createEnvironment: модель + инструменты + скиллы + пакеты', () => {
   const root = tmpDir();
@@ -291,6 +331,28 @@ test('updateEnvironment: абсолютный путь в extensions не син
     } finally {
       rmSync(file, { force: true });
     }
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+    rmSync(agent, { recursive: true, force: true });
+  }
+});
+
+test('updateEnvironment: каталог моделей синхронизируется из main-агента', () => {
+  const root = tmpDir();
+  const agent = tmpDir();
+  try {
+    const envDir = join(root, 'env1');
+    mkdirSync(envDir);
+    writeFileSync(join(envDir, 'models.json'), '{"old":1}');
+    writeFileSync(join(agent, 'models.json'), '{"providers":{"cpp":{}}}');
+    writeFileSync(join(agent, 'models-store.json'), '{"llama.cpp":{"models":[]}}');
+    writeFileSync(join(agent, 'auth.json'), '{}');
+
+    const res = updateEnvironment(root, 'env1', { name: 'env1' }, [], [], agent);
+    assert.equal(res.ok, true);
+    assert.equal(readFileSync(join(envDir, 'models.json'), 'utf8'), '{"providers":{"cpp":{}}}');
+    assert.equal(readFileSync(join(envDir, 'models-store.json'), 'utf8'), '{"llama.cpp":{"models":[]}}');
+    assert.equal(readFileSync(join(envDir, 'auth.json'), 'utf8'), '{}');
   } finally {
     rmSync(root, { recursive: true, force: true });
     rmSync(agent, { recursive: true, force: true });

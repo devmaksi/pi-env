@@ -52,9 +52,10 @@ export function validateName(name: string, existing: string[]): string | null {
 
 /**
  * Создаёт окружение <root>/<name>: settings.json + скопированные
- * инструменты (extensions/), скиллы (skills/) и список пакетов.
+ * инструменты (extensions/), скиллы (skills/), список пакетов и
+ * каталог моделей (models.json, models-store.json, auth.json) из main-агента.
  */
-export function createEnvironment(root: string, req: CreateRequest): CreateResult {
+export function createEnvironment(root: string, req: CreateRequest, agentDir?: string): CreateResult {
   const invalid = validateName(req.name, []);
   if (invalid !== null) {
     return { ok: false, error: invalid };
@@ -68,6 +69,7 @@ export function createEnvironment(root: string, req: CreateRequest): CreateResul
   } catch {
     return { ok: false, error: `Не удалось создать каталог ${envDir}` };
   }
+  if (agentDir !== undefined) copyModelFiles(agentDir, envDir);
 
   const settings: Record<string, unknown> = {};
   if (req.defaultProvider && req.defaultModel) {
@@ -106,7 +108,8 @@ export function createEnvironment(root: string, req: CreateRequest): CreateResul
  * Обновляет окружение <root>/<oldName>: переименовывает при смене имени,
  * синхронизирует extensions/ и skills/ по полному каталогу main-агента
  * (выбранное копируется, невыбранное среди пунктов каталога удаляется,
- * чужие файлы и каталоги не трогаются), переписывает settings.json.
+ * чужие файлы и каталоги не трогаются), синхронизирует каталог моделей
+ * (models.json, models-store.json, auth.json), переписывает settings.json.
  */
 export function updateEnvironment(
   root: string,
@@ -114,6 +117,7 @@ export function updateEnvironment(
   req: CreateRequest,
   allTools: ToolItem[],
   allSkills: SkillItem[],
+  agentDir?: string,
 ): CreateResult {
   const invalid = validateName(req.name, []);
   if (invalid !== null) return { ok: false, error: invalid };
@@ -130,6 +134,8 @@ export function updateEnvironment(
     }
     envDir = newDir;
   }
+  if (agentDir !== undefined) copyModelFiles(agentDir, envDir);
+
 
   const selectedTools = new Set((req.tools ?? []).map((t) => baseName(t.path)));
   for (const t of allTools) {
@@ -211,6 +217,14 @@ function copyRecursive(src: string, dest: string): void {
   } else {
     mkdirSync(parentDir(dest), { recursive: true });
     copyFileSync(src, dest);
+  }
+}
+
+/** Копирует каталог моделей (models.json, models-store.json, auth.json) main-агента в окружение. */
+function copyModelFiles(agentDir: string, envDir: string): void {
+  for (const name of ['models.json', 'models-store.json', 'auth.json']) {
+    const src = join(agentDir, name);
+    if (existsSync(src)) copyFileSync(src, join(envDir, name));
   }
 }
 
