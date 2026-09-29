@@ -1,6 +1,7 @@
 import { Environment } from './environments.js';
 import { computeLayout, NARROW_MIN, LOW_MIN } from './layout.js';
-import { AppState } from './state.js';
+import { UPDATE_ALL_ROW, type AppState, type PkgCheck } from './state.js';
+import type { PkgItem } from './catalog.js';
 
 const ANSI = {
   bright: '\x1b[96m',
@@ -131,23 +132,62 @@ export function render(a: RenderArgs): string {
       } else if (cr.view === 'submitting') {
         left.push(c(ANSI.dim, useColor) + 'Создание…' + c(ANSI.reset, useColor));
         right.push(c(ANSI.dim, useColor) + 'Esc — отмена' + c(ANSI.reset, useColor));
-      } else if (cr.view === 'providers' || cr.view === 'models' || cr.view === 'tools' || cr.view === 'packages' || cr.view === 'skills') {
+      } else if (cr.view === 'confirm-remove') {
+        left.push(c(ANSI.bold, useColor) + 'Удалить расширение «' + (cr.removing ?? '') + '»?' + c(ANSI.reset, useColor));
+        right.push(c(ANSI.dim, useColor) + 'Enter — подтвердить' + c(ANSI.reset, useColor));
+        right.push(c(ANSI.dim, useColor) + 'Esc — отмена' + c(ANSI.reset, useColor));
+      } else if (cr.view === 'removing') {
+        left.push(c(ANSI.dim, useColor) + 'Удаление…' + c(ANSI.reset, useColor));
+        right.push(c(ANSI.dim, useColor) + 'Esc — назад' + c(ANSI.reset, useColor));
+      } else if (cr.view === 'updating') {
+        left.push(c(ANSI.dim, useColor) + 'Обновление…' + c(ANSI.reset, useColor));
+        right.push(c(ANSI.dim, useColor) + 'Esc — назад' + c(ANSI.reset, useColor));
+      } else if (cr.view === 'packages') {
+        const pkgs = state.catalog.packages;
+        const latest = state.pkgLatest;
+        left.push(c(ANSI.bold, useColor) + 'Расширения (пакеты)' + c(ANSI.reset, useColor));
+        if (pkgs.length === 0) left.push(c(ANSI.dim, useColor) + '— пусто —' + c(ANSI.reset, useColor));
+        pkgs.forEach((p, i) => {
+          const name = p.name.length > 22 ? p.name.slice(0, 21) + '…' : p.name;
+          const text = (i === cr.cursor ? '> ' : '  ') + (cr.packages.includes(p.name) ? '✓ ' : '  ') + name + '  ' + pkgMarker(p, state.pkgCheck, latest);
+          left.push(i === cr.cursor ? c(ANSI.inverse, useColor) + padRight(text, L.leftWidth) + c(ANSI.reset, useColor) : text);
+        });
+        const btn = pkgs.length;
+        const btext = (btn === cr.cursor ? '> ' : '  ') + '↑ ' + UPDATE_ALL_ROW;
+        left.push(btn === cr.cursor ? c(ANSI.inverse, useColor) + padRight(btext, L.leftWidth) + c(ANSI.reset, useColor) : btext);
+        const cur = pkgs[cr.cursor];
+        if (cur !== undefined) {
+          right.push(c(ANSI.bold, useColor) + cur.name + c(ANSI.reset, useColor));
+          right.push('Источник: ' + cur.source);
+          right.push('Версия: ' + (cur.version ?? '—'));
+          right.push(updateLine(cur, state.pkgCheck, latest));
+          right.push('Расширений: ' + cur.extensions.length + '  Скиллов: ' + cur.skills.length);
+          if (cur.description) right.push(truncateVisible(cur.description, L.rightWidth - 1));
+          right.push('В окружении: ' + (cr.packages.includes(cur.name) ? '✓' : '—'));
+        } else {
+          right.push('Обновить все');
+          right.push('pi update --extensions');
+          right.push('Enter — выполнить');
+        }
+        if (cr.error) right.push(c(ANSI.bold, useColor) + '⚠ ' + cr.error + c(ANSI.reset, useColor));
+        right.push(c(ANSI.dim, useColor) + 'Space/Enter — выбрать' + c(ANSI.reset, useColor));
+        right.push(c(ANSI.dim, useColor) + 'X — удалить' + c(ANSI.reset, useColor));
+        right.push(c(ANSI.dim, useColor) + 'Esc — назад' + c(ANSI.reset, useColor));
+      } else if (cr.view === 'providers' || cr.view === 'models' || cr.view === 'tools' || cr.view === 'skills') {
         const items: string[] =
           cr.view === 'providers' ? state.catalog.providers.map((p) => p.name)
           : cr.view === 'models' ? (state.catalog.providers.find((p) => p.name === cr.provider)?.models ?? []).map((m) => m.id)
           : cr.view === 'tools' ? state.catalog.tools.map((t) => t.name)
-          : cr.view === 'packages' ? state.catalog.packages.map((p) => p.name)
           : state.catalog.skills.map((sk) => sk.name);
         const titles = {
           providers: 'Провайдер',
           models: 'Модель' + (cr.provider ? ' (' + cr.provider + ')' : ''),
           tools: 'Свои инструменты',
-          packages: 'Расширения (пакеты)',
           skills: 'Скиллы',
         } as const;
         left.push(c(ANSI.bold, useColor) + titles[cr.view] + c(ANSI.reset, useColor));
         const current = cr.view === 'providers' ? cr.provider : cr.view === 'models' ? cr.model : null;
-        const checked = new Set(cr.view === 'tools' ? cr.tools : cr.view === 'packages' ? cr.packages : cr.skills);
+        const checked = new Set(cr.view === 'tools' ? cr.tools : cr.skills);
         if (items.length === 0) left.push(c(ANSI.dim, useColor) + '— пусто —' + c(ANSI.reset, useColor));
         items.forEach((n, i) => {
           const sel = (current !== null && current === n) || checked.has(n);
@@ -245,4 +285,28 @@ export function render(a: RenderArgs): string {
   lines.push('│' + padRight(f2, inner) + '│');
 
   return lines.join('\n');
+}
+
+function isPinned(source: string): boolean {
+  // npm:name@ver или npm:@scope/name@ver; скоуп без версии — не pinned
+  return new RegExp('^npm:(?:@[^/]+/)?[^@]+@[^@/]+$').test(source);
+}
+
+function pkgMarker(p: PkgItem, check: PkgCheck, latest: Record<string, string>): string {
+  if (isPinned(p.source)) return 'закреплено';
+  if (!p.source.startsWith('npm:')) return 'локальный';
+  if (check === 'checking') return '…';
+  if (check === 'error') return '?';
+  const latestVer = latest[p.name];
+  return latestVer !== undefined && latestVer !== p.version ? '↑ ' + latestVer : '·';
+}
+
+function updateLine(p: PkgItem, check: PkgCheck, latest: Record<string, string>): string {
+  if (isPinned(p.source)) return 'закреплено';
+  if (!p.source.startsWith('npm:')) return 'локальный';
+  if (check === 'checking') return '…';
+  if (check === 'error') return '? проверка не удалась';
+  const latestVer = latest[p.name];
+  if (latestVer !== undefined && latestVer !== p.version) return '↑ ' + latestVer + ', установлена ' + (p.version ?? '?');
+  return 'актуально';
 }

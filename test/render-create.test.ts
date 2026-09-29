@@ -18,8 +18,8 @@ const envs: Environment[] = [
   { name: 'dev', path: '/root/dev', hasSettings: true, hasSkills: true, hasExtensions: false },
 ];
 
-function createState(over: Partial<AppState['create']> = {}): AppState {
-  return { ...initialState(catalog), sub: 'create', create: { ...freshCreate(), ...over } };
+function createState(over: Partial<AppState['create']> = {}, app: Partial<AppState> = {}): AppState {
+  return { ...initialState(catalog), ...app, sub: 'create', create: { ...freshCreate(), ...over } };
 }
 
 test('форма создания: все пять пунктов + действие', () => {
@@ -143,4 +143,71 @@ test('инфо-панель окружения: подсказка E — ред�
 test('суб-экран запуска больше не рендерится', () => {
   const s = render({ state: { ...initialState(catalog), sub: 'run' as const }, envs, width: 80, height: 10, root: '/root', useColor: false, status: null });
   assert.ok(!s.includes('Запуск окружения'));
+});
+
+test('список расширений: ↑ latest у устаревшего', () => {
+  const s = render({ state: createState({ view: 'packages' }, { pkgCheck: 'done', pkgLatest: { 'pkg-a': '2.0.0' } }), envs, width: 100, height: 12, root: '/root', useColor: false, status: null });
+  assert.ok(s.includes('↑ 2.0.0'));
+});
+
+test('список расширений: · у актуального, … при проверке, ? при ошибке', () => {
+  const done = render({ state: createState({ view: 'packages' }, { pkgCheck: 'done', pkgLatest: {} }), envs, width: 100, height: 12, root: '/root', useColor: false, status: null });
+  assert.ok(done.includes('·'));
+  const checking = render({ state: createState({ view: 'packages' }, { pkgCheck: 'checking' }), envs, width: 100, height: 12, root: '/root', useColor: false, status: null });
+  assert.ok(checking.includes('…'));
+  const err = render({ state: createState({ view: 'packages' }, { pkgCheck: 'error' }), envs, width: 100, height: 12, root: '/root', useColor: false, status: null });
+  assert.ok(err.includes('?'));
+});
+
+test('список расширений: строка кнопки, панель справа, легенда X', () => {
+  const s = render({ state: createState({ view: 'packages' }), envs, width: 100, height: 14, root: '/root', useColor: false, status: null });
+  assert.ok(s.includes('Обновить все'));
+  assert.ok(s.includes('Источник: npm:pkg-a'));
+  assert.ok(s.includes('Версия: 1.2.3'));
+  assert.ok(s.includes('Расширений: 1  Скиллов: 0'));
+  assert.ok(s.includes('X — удалить'));
+});
+
+test('список расширений: панель — описание, отметка «в окружении», статус обновления', () => {
+  const s = render({ state: createState({ view: 'packages', packages: ['pkg-a'] }, { pkgCheck: 'done', pkgLatest: { 'pkg-a': '2.0.0' } }), envs, width: 100, height: 14, root: '/root', useColor: false, status: null });
+  assert.ok(s.includes('Тестовый пакет'));
+  assert.ok(s.includes('В окружении: ✓'));
+  assert.ok(s.includes('установлена 1.2.3'));
+});
+
+test('список расширений: курсор на кнопке — описание действия', () => {
+  const s = render({ state: createState({ view: 'packages', cursor: 1 }), envs, width: 100, height: 12, root: '/root', useColor: false, status: null });
+  assert.ok(s.includes('pi update --extensions'));
+});
+
+test('список расширений: pinned и локальные маркеры', () => {
+  const catalog2: Catalog = {
+    ...catalog,
+    packages: [
+      { source: 'npm:pkg-a@1.2.3', name: 'pkg-a', path: '/p/a', version: '1.2.3', description: null, extensions: [], skills: [] },
+      { source: '/local/p', name: 'local-p', path: '/local/p', version: null, description: null, extensions: [], skills: [] },
+    ],
+  };
+  const s = render({ state: { ...initialState(catalog2), sub: 'create', create: { ...freshCreate(), view: 'packages' } }, envs, width: 100, height: 12, root: '/root', useColor: false, status: null });
+  assert.ok(s.includes('закреплено'));
+  assert.ok(s.includes('локальный'));
+});
+
+test('confirm-remove: вопрос и подсказки', () => {
+  const s = render({ state: createState({ view: 'confirm-remove', removing: 'pkg-a' }), envs, width: 62, height: 10, root: '/root', useColor: false, status: null });
+  assert.ok(s.includes('Удалить расширение «pkg-a»?'));
+  assert.ok(s.includes('Enter — подтвердить'));
+  assert.ok(s.includes('Esc — отмена'));
+});
+
+test('removing/updating: пометки процесса', () => {
+  const s1 = render({ state: createState({ view: 'removing' }), envs, width: 62, height: 10, root: '/root', useColor: false, status: null });
+  assert.ok(s1.includes('Удаление…'));
+  const s2 = render({ state: createState({ view: 'updating' }), envs, width: 62, height: 10, root: '/root', useColor: false, status: null });
+  assert.ok(s2.includes('Обновление…'));
+});
+
+test('список расширений: ошибка visible в правой колонке', () => {
+  const s = render({ state: createState({ view: 'packages', error: 'нет сети' }), envs, width: 100, height: 12, root: '/root', useColor: false, status: null });
+  assert.ok(s.includes('⚠ нет сети'));
 });
