@@ -3,7 +3,7 @@ import assert from 'node:assert';
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { listProviders, listCustomTools, listPackages, listSkills, parseOutdated } from '../src/catalog.js';
+import { listProviders, listCustomTools, listPackages, listSkills, parseOutdated, parsePackageCatalog, normalizePkgSource, type PkgItem } from '../src/catalog.js';
 
 function makeAgentDir(): string {
   const dir = mkdtempSync(join(tmpdir(), 'pi-env-test-'));
@@ -200,4 +200,60 @@ test('parseOutdated: {}, мусорный JSON, массив, числовой l
   assert.deepEqual(parseOutdated('[1,2]'), {});
   assert.deepEqual(parseOutdated('{"a":{"latest":5}}'), {});
   assert.deepEqual(parseOutdated('null'), {});
+});
+
+const CATALOG_HTML = [
+  '<html><body>',
+  '<article class="surface-panel content-card" data-package-card="true" data-package-name="pi-mcp-adapter" data-package-types="extension" data-package-downloads="1287931" data-package-date="1790791514874" data-package-sort-name="pi-mcp-adapter"><div class="packages-card-body"><h3 class="packages-name"><a href="/packages/pi-mcp-adapter">pi-mcp-adapter</a></h3><p class="packages-desc">MCP (Model Context Protocol) adapter extension for Pi coding agent</p><div class="packages-meta"><span>nicobailon</span><span>1.3M/mo</span><span>1d ago</span></div></div></article>',
+  '<article class="surface-panel content-card" data-package-card="true" data-package-name="@scope/skill-pkg" data-package-types="skill" data-package-downloads="42" data-package-date="1790791514874" data-package-sort-name="skill-pkg"><div class="packages-card-body"><h3 class="packages-name"><a href="/packages/@scope/skill-pkg">@scope/skill-pkg</a></h3><p class="packages-desc">A skill &amp; templates package</p><div class="packages-meta"><span>someone</span><span>42/mo</span><span>2d ago</span></div></div></article>',
+  '<article class="surface-panel content-card" data-package-card="true" data-package-name="no-meta-pkg" data-package-types="" data-package-downloads="0" data-package-date="1790791514874" data-package-sort-name="no-meta-pkg"><div class="packages-card-body"><h3 class="packages-name"><a href="/packages/no-meta-pkg">no-meta-pkg</a></h3></div></article>',
+  '</body></html>',
+].join('');
+
+test('parsePackageCatalog: карточки распадаются на имя/типы/загрузки/описание/автор', () => {
+  const pkgs = parsePackageCatalog(CATALOG_HTML);
+  assert.deepEqual(
+    pkgs.map((p) => p.name),
+    ['pi-mcp-adapter', '@scope/skill-pkg', 'no-meta-pkg'],
+  );
+  const a = pkgs.find((p) => p.name === 'pi-mcp-adapter')!;
+  assert.deepEqual(a.types, ['extension']);
+  assert.equal(a.downloads, 1_287_931);
+  assert.equal(a.description, 'MCP (Model Context Protocol) adapter extension for Pi coding agent');
+  assert.equal(a.author, 'nicobailon');
+  const b = pkgs.find((p) => p.name === '@scope/skill-pkg')!;
+  assert.deepEqual(b.types, ['skill']);
+  assert.equal(b.description, 'A skill & templates package');
+  assert.equal(b.author, 'someone');
+});
+
+test('parsePackageCatalog: сортировка по загрузкам (по убыванию)', () => {
+  const pkgs = parsePackageCatalog(CATALOG_HTML);
+  assert.ok(pkgs[0].downloads >= pkgs[1].downloads);
+  assert.ok(pkgs[1].downloads >= pkgs[2].downloads);
+});
+
+test('parsePackageCatalog: отсутствующие описание/автор — null, загрузки — 0', () => {
+  const pkgs = parsePackageCatalog(CATALOG_HTML);
+  const c = pkgs.find((p) => p.name === 'no-meta-pkg')!;
+  assert.equal(c.description, null);
+  assert.equal(c.author, null);
+  assert.equal(c.downloads, 0);
+  assert.deepEqual(c.types, []);
+});
+
+test('parsePackageCatalog: мусорный/пустой HTML — пустой список', () => {
+  assert.deepEqual(parsePackageCatalog(''), []);
+  assert.deepEqual(parsePackageCatalog('<html><body>нет карточек</body></html>'), []);
+  assert.deepEqual(parsePackageCatalog('<article data-package-card="true"></article>'), []);
+});
+
+test('normalizePkgSource: по источнику, по legacy-имени, чужой — как есть', () => {
+  const pkgs: PkgItem[] = [
+    { source: 'npm:pkg-a', name: 'pkg-a', path: '/p/a', version: '1.0.0', description: null, extensions: [], skills: [] },
+  ];
+  assert.equal(normalizePkgSource('npm:pkg-a', pkgs), 'npm:pkg-a');
+  assert.equal(normalizePkgSource('pkg-a', pkgs), 'npm:pkg-a');
+  assert.equal(normalizePkgSource('npm:other', pkgs), 'npm:other');
+  assert.equal(normalizePkgSource('other', pkgs), 'other');
 });

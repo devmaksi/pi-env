@@ -170,6 +170,71 @@ export function parseOutdated(raw: string): Record<string, string> {
   return out;
 }
 
+/** Пакет из каталога pi.dev/packages. */
+export interface CatalogPkg {
+  name: string;
+  types: string[];
+  downloads: number;
+  description: string | null;
+  author: string | null;
+}
+
+/**
+ * Разбор HTML страницы https://pi.dev/packages в список пакетов.
+ * ponytail: регулярки под текущую разметку pi.dev; при смене разметки список будет пустым
+ */
+export function parsePackageCatalog(html: string): CatalogPkg[] {
+  const out: CatalogPkg[] = [];
+  const cardRe = /<article\b[^>]*data-package-name="([^"]+)"[^>]*>/g;
+  let m: RegExpExecArray | null;
+  while ((m = cardRe.exec(html)) !== null) {
+    const tagEnd = cardRe.lastIndex;
+    const next = html.indexOf('<article', tagEnd);
+    const slice = html.slice(tagEnd, next === -1 ? undefined : next);
+    const types = /data-package-types="([^"]*)"/.exec(m[0]);
+    const downloads = /data-package-downloads="(\d+)"/.exec(m[0]);
+    const desc = /<p class="packages-desc">([^<]*)<\/p>/.exec(slice);
+    const meta = /class="packages-meta"><span>([^<]*)<\/span>/.exec(slice);
+    out.push({
+      name: m[1],
+      types: types && types[1] !== '' ? types[1].split(' ').filter((t) => t !== '') : [],
+      downloads: downloads ? Number(downloads[1]) : 0,
+      description: desc ? decodeEntities(desc[1]) : null,
+      author: meta ? decodeEntities(meta[1]) : null,
+    });
+  }
+  return out.sort((a, b) => b.downloads - a.downloads || a.name.localeCompare(b.name));
+}
+
+function decodeEntities(s: string): string {
+  return s
+    .replace(/&#39;/g, "'")
+    .replace(/&quot;/g, '"')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&amp;/g, '&');
+}
+
+/** Адрес каталога пакетов pi. */
+export const PACKAGE_CATALOG_URL = 'https://pi.dev/packages';
+
+/** Скачивает и парсит каталог пакетов; ошибка сети/HTTP — исключение. */
+export async function fetchPackageCatalog(url: string = PACKAGE_CATALOG_URL): Promise<CatalogPkg[]> {
+  const res = await fetch(url, { signal: AbortSignal.timeout(20_000) });
+  if (!res.ok) throw new Error('HTTP ' + res.status);
+  return parsePackageCatalog(await res.text());
+}
+
+/**
+ * Приводит запись settings.packages к каноническому источнику пакета
+ * каталога: сначала совпадение по источнику, затем по имени (legacy),
+ * иначе запись остаётся как есть.
+ */
+export function normalizePkgSource(source: string, packages: PkgItem[]): string {
+  const p = packages.find((x) => x.source === source || x.name === source);
+  return p !== undefined ? p.source : source;
+}
+
 /**
  * Скиллы: свои (каталог skills/ main-агента) и пакетные (распаковка
  * pi.skills). Имя — каталог скилла; при коллизии — префикс короткого
