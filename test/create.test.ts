@@ -225,15 +225,16 @@ test('updateEnvironment: синхронизация — новое копиру�
       tools: [{ name: 't2.ts', path: join(agent, 'extensions', 't2.ts') }],
       skills: [{ name: 's2', path: join(agent, 'skills', 's2') }],
       packages: ['npm:a'],
-    },
-    [
-      { name: 't1.ts', path: join(agent, 'extensions', 't1.ts') },
-      { name: 't2.ts', path: join(agent, 'extensions', 't2.ts') },
-    ],
-    [
-      { name: 's1', path: join(agent, 'skills', 's1') },
-      { name: 's2', path: join(agent, 'skills', 's2') },
-    ]);
+    }, {
+      allTools: [
+        { name: 't1.ts', path: join(agent, 'extensions', 't1.ts') },
+        { name: 't2.ts', path: join(agent, 'extensions', 't2.ts') },
+      ],
+      allSkills: [
+        { name: 's1', path: join(agent, 'skills', 's1') },
+        { name: 's2', path: join(agent, 'skills', 's2') },
+      ],
+    });
     assert.equal(res.ok, true);
 
     assert.equal(existsSync(join(envDir, 'extensions', 't1.ts')), false);
@@ -261,7 +262,7 @@ test('updateEnvironment: модель без провайдера — оба п�
     mkdirSync(envDir, { recursive: true });
     writeFileSync(join(envDir, 'settings.json'),
       JSON.stringify({ defaultProvider: 'cpp', defaultModel: 'm1' }));
-    const res = updateEnvironment(root, 'env1', { name: 'env1', defaultProvider: 'cpp' }, [], []);
+    const res = updateEnvironment(root, 'env1', { name: 'env1', defaultProvider: 'cpp' }, { allTools: [], allSkills: [] });
     assert.equal(res.ok, true);
     const settings = JSON.parse(readFileSync(join(envDir, 'settings.json'), 'utf8'));
     assert.equal(settings.defaultProvider, undefined);
@@ -277,7 +278,7 @@ test('updateEnvironment: переименование каталога', () => {
     const envDir = join(root, 'old');
     mkdirSync(envDir, { recursive: true });
     writeFileSync(join(envDir, 'settings.json'), '{}');
-    const res = updateEnvironment(root, 'old', { name: 'new' }, [], []);
+    const res = updateEnvironment(root, 'old', { name: 'new' }, { allTools: [], allSkills: [] });
     assert.equal(res.ok, true);
     assert.equal(existsSync(join(root, 'old')), false);
     assert.ok(existsSync(join(root, 'new', 'settings.json')));
@@ -291,7 +292,7 @@ test('updateEnvironment: новое имя занято — ошибка, кат
   try {
     mkdirSync(join(root, 'old'), { recursive: true });
     mkdirSync(join(root, 'new'), { recursive: true });
-    const res = updateEnvironment(root, 'old', { name: 'new' }, [], []);
+    const res = updateEnvironment(root, 'old', { name: 'new' }, { allTools: [], allSkills: [] });
     assert.equal(res.ok, false);
     if (!res.ok) assert.match(res.error, /уже есть/i);
     assert.ok(existsSync(join(root, 'old')));
@@ -303,7 +304,7 @@ test('updateEnvironment: новое имя занято — ошибка, кат
 test('updateEnvironment: окружение не найдено — ошибка', () => {
   const root = tmpDir();
   try {
-    const res = updateEnvironment(root, 'nope', { name: 'nope' }, [], []);
+    const res = updateEnvironment(root, 'nope', { name: 'nope' }, { allTools: [], allSkills: [] });
     assert.equal(res.ok, false);
     if (!res.ok) assert.match(res.error, /не найдено/i);
   } finally {
@@ -323,7 +324,7 @@ test('updateEnvironment: абсолютный путь в extensions не син
       writeFileSync(join(envDir, 'extensions', 'abs.ts'), 'abs');
       writeFileSync(join(envDir, 'settings.json'),
         JSON.stringify({ extensions: [file] }));
-      const res = updateEnvironment(root, 'env1', { name: 'env1' }, [], []);
+      const res = updateEnvironment(root, 'env1', { name: 'env1' }, { allTools: [], allSkills: [] });
       assert.equal(res.ok, true);
       assert.ok(existsSync(join(envDir, 'extensions', 'abs.ts')));
       const settings = JSON.parse(readFileSync(join(envDir, 'settings.json'), 'utf8'));
@@ -348,7 +349,7 @@ test('updateEnvironment: каталог моделей синхронизиру�
     writeFileSync(join(agent, 'models-store.json'), '{"llama.cpp":{"models":[]}}');
     writeFileSync(join(agent, 'auth.json'), '{}');
 
-    const res = updateEnvironment(root, 'env1', { name: 'env1' }, [], [], agent);
+    const res = updateEnvironment(root, 'env1', { name: 'env1' }, { allTools: [], allSkills: [], agentDir: agent });
     assert.equal(res.ok, true);
     assert.equal(readFileSync(join(envDir, 'models.json'), 'utf8'), '{"providers":{"cpp":{}}}');
     assert.equal(readFileSync(join(envDir, 'models-store.json'), 'utf8'), '{"llama.cpp":{"models":[]}}');

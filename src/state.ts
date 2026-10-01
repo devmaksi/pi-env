@@ -71,6 +71,16 @@ export interface AppState {
 
 export const TABS: readonly Tab[] = ['envs', 'extensions', 'settings', 'about'];
 export const SETTINGS_COUNT = 2;
+
+/** Индексы строк формы. */
+export const ROW_NAME = 0;
+export const ROW_MODEL = 1;
+export const ROW_TOOLS = 2;
+export const ROW_PACKAGES = 3;
+export const ROW_SKILLS = 4;
+export const ROW_ACTION = 5;
+export const ROW_DELETE = 6;
+
 export const FORM_ROWS = 6; // имя, модель, инструменты, расширения, скиллы, действие
 
 /** Число строк формы: в edit-режиме добавляется «Удалить». */
@@ -296,20 +306,20 @@ function createReducer(
     case 'form':
       return formReducer(c, action, envNames);
     case 'providers':
-      return listViewReducer(c, action, catalog.providers.map((p) => p.name), 'form', 1, (name) => {
-        if (name === c.provider) return { ...c, provider: null, model: null, view: 'form', cursor: 1 };
-        return { ...c, provider: name, view: 'models', cursor: 0 };
+      return listViewReducer(c, action, catalog.providers.map((p) => p.name), 'form', ROW_MODEL, (name) => {
+        if (name === c.provider) return { ...c, provider: null, model: null, view: 'form', cursor: ROW_MODEL };
+        return { ...c, provider: name, view: 'models', cursor: ROW_NAME };
       });
     case 'models': {
       const provider = catalog.providers.find((p) => p.name === c.provider);
-      return listViewReducer(c, action, (provider?.models ?? []).map((m) => m.id), 'providers', 0, (id) => ({
-        ...c, model: c.model === id ? null : id, view: 'form', cursor: 1,
+      return listViewReducer(c, action, (provider?.models ?? []).map((m) => m.id), 'providers', ROW_NAME, (id) => ({
+        ...c, model: c.model === id ? null : id, view: 'form', cursor: ROW_MODEL,
       }));
     }
     case 'tools':
     case 'skills': {
       const field = c.view;
-      const row = field === 'tools' ? 2 : 4;
+      const row = field === 'tools' ? ROW_TOOLS : ROW_SKILLS;
       const items =
         field === 'tools' ? catalog.tools.map((t) => t.name)
         : catalog.skills.map((s) => s.name);
@@ -327,7 +337,7 @@ function createReducer(
         return c; // env-only: удаление из main-агента не применимо
       }
       const items = [...sources, UPDATE_ALL_ROW, ...(c.mode === 'edit' ? [INSTALL_ROW] : [])];
-      return listViewReducer(c, action, items, 'form', 3, (item) => {
+      return listViewReducer(c, action, items, 'form', ROW_PACKAGES, (item) => {
         if (item === UPDATE_ALL_ROW) return { ...c, view: 'updating' };
         if (item === INSTALL_ROW) return { ...c, view: 'install', cursor: 0, installStatus: 'loading' };
         const sel = c.packages;
@@ -353,7 +363,7 @@ function createReducer(
       // Esc не отменяет процесс — имя храним до прихода remove-result
       return action === 'esc' ? { ...c, view: 'packages' } : c;
     case 'install':
-      return listViewReducer(c, action, c.installCatalog.map((p) => p.name), 'packages', 0, (name) => ({
+      return listViewReducer(c, action, c.installCatalog.map((p) => p.name), 'packages', ROW_NAME, (name) => ({
         ...c, view: 'installing', installing: name,
       }));
     case 'installing':
@@ -367,7 +377,7 @@ function formReducer(c: CreateState, action: Action, envNames: string[]): Create
     const delta = action === 'up' ? -1 : 1;
     return { ...c, cursor: (c.cursor + delta + formRows(c.mode)) % formRows(c.mode) };
   }
-  if (c.cursor === 0) {
+  if (c.cursor === ROW_NAME) {
     if (action === 'left') return { ...c, caret: Math.max(0, c.caret - 1) };
     if (action === 'right') return { ...c, caret: Math.min(c.name.length, c.caret + 1) };
     if (action === 'backspace') {
@@ -387,17 +397,17 @@ function formReducer(c: CreateState, action: Action, envNames: string[]): Create
   }
   if (action === 'enter') {
     if (c.done !== null) return null; // «Готово»
-    if (c.cursor === 1) return { ...c, view: 'providers', cursor: 0 };
-    if (c.cursor === 2) return { ...c, view: 'tools', cursor: 0 };
-    if (c.cursor === 3) return { ...c, view: 'packages', cursor: 0 };
-    if (c.cursor === 4) return { ...c, view: 'skills', cursor: 0 };
-    if (c.cursor === 5) {
+    if (c.cursor === ROW_MODEL) return { ...c, view: 'providers', cursor: ROW_NAME };
+    if (c.cursor === ROW_TOOLS) return { ...c, view: 'tools', cursor: ROW_NAME };
+    if (c.cursor === ROW_PACKAGES) return { ...c, view: 'packages', cursor: ROW_NAME };
+    if (c.cursor === ROW_SKILLS) return { ...c, view: 'skills', cursor: ROW_NAME };
+    if (c.cursor === ROW_ACTION) {
       const others = c.mode === 'edit' ? envNames.filter((n) => n !== c.origName) : envNames;
       const err = validateName(c.name, others);
       if (err !== null) return { ...c, error: err };
       return { ...c, view: 'submitting' };
     }
-    if (c.cursor === 6 && c.mode === 'edit') return { ...c, view: 'confirm-delete' };
+    if (c.cursor === ROW_DELETE && c.mode === 'edit') return { ...c, view: 'confirm-delete' };
   }
   return c;
 }

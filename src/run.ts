@@ -6,7 +6,7 @@ import { loadCatalog, parseOutdated, fetchPackageCatalog, normalizePkgSource, To
 import { computeLayout } from './layout.js';
 import { render } from './render.js';
 import { createEnvironment, readSettings, updateEnvironment, deleteEnvironment, type CreateRequest } from './create.js';
-import { AppState, initialState, Key, reducer } from './state.js';
+import { AppState, initialState, Key, reducer, type Action } from './state.js';
 import { createTerm, Term } from './terminal.js';
 
 function defaultAgentDir(): string {
@@ -35,6 +35,15 @@ function launchPi(term: Term, env: Environment): Promise<{ ok: boolean; message:
     child.on('error', (e: Error) => finish(false, `Не удалось запустить pi: ${e.message}`));
     child.on('exit', () => finish(true, ''));
   });
+}
+
+/** Таймауты дочерних процессов, мс. */
+const PI_TIMEOUT_MS = 5 * 60_000;
+const NPM_TIMEOUT_MS = 10_000;
+
+/** Окружение для pi-команд: каталог агента и вывод без цвета. */
+function piEnv(dir: string): NodeJS.ProcessEnv {
+  return { ...process.env, PI_CODING_AGENT_DIR: dir, NO_COLOR: '1' };
 }
 
 /** Запускает команду, собирает stdout/stderr; таймаут — убийство процесса. */
@@ -88,79 +97,65 @@ export async function run(root: string): Promise<void> {
     return computeLayout({ width: term.width(), height: term.height() }).twoColumns;
   }
 
+  function envNames(): string[] {
+    return load().envs.map((e) => e.name);
+  }
+
+  /** Перечитывает каталог main-агента; ошибка — остаётся старый. */
+  function reloadCatalog(): void {
+    try {
+      catalog = loadCatalog(agentDir);
+      state = { ...state, catalog };
+    } catch { /* каталог не перечитан — остаётся старый */ }
+  }
+
+  /** pi <args> в main-агенте. */
+  async function runPi(args: string[]): Promise<{ ok: boolean; stdout: string; stderr: string }> {
+    return runCmd('pi', args, PI_TIMEOUT_MS, { cwd: process.cwd(), env: piEnv(agentDir) });
+  }
+
+  /** Общий финал pi-команды: результат в reducer, перечитка каталога, отрисовка. */
+  function afterPiCommand(r: { ok: boolean }, action: Action): void {
+    state = reducer(state, action, envNames(), twoColumns());
+    if (r.ok) {
+      reloadCatalog();
+      void checkUpdates();
+    }
+    repaint();
+  }
+
   /** npm outdated в каталоге npm main-агента → карта имени → latest. */
   async function checkUpdates(): Promise<void> {
     state = { ...state, pkgCheck: 'checking' };
-    const names = load().envs.map((e) => e.name);
-    const raw = await runCmd('npm', ['outdated', '--json', '--prefix', join(agentDir, 'npm')], 10_000);
-    state = reducer(state, { type: 'updates-result', ok: raw.ok, latest: parseOutdated(raw.stdout) }, names, twoColumns());
+    const raw = await runCmd('npm', ['outdated', '--json', '--prefix', join(agentDir, 'npm')], NPM_TIMEOUT_MS);
+    state = reducer(state, { type: 'updates-result', ok: raw.ok, latest: parseOutdated(raw.stdout) }, envNames(), twoColumns());
     repaint();
   }
 
   /** pi update --extensions: обновление всех установленных пакетов. */
   async function doUpdateAll(): Promise<void> {
-    const names = load().envs.map((e) => e.name);
-    const r = await runCmd('pi', ['update', '--extensions'], 5 * 60_000, {
-      cwd: process.cwd(),
-      env: { ...process.env, PI_CODING_AGENT_DIR: agentDir, NO_COLOR: '1' },
-    });
+    const r = await runPi(['update', '--extensions']);
     if (r.ok) statusMsg = 'Расширения обновлены';
-    state = reducer(state, { type: 'update-result', ok: r.ok, message: r.ok ? 'Расширения обновлены' : r.stderr || 'ошибка обновления' }, names, twoColumns());
-    if (r.ok) {
-      try {
-        catalog = loadCatalog(agentDir);
-        state = { ...state, catalog };
-      } catch { /* каталог не перечитан — остаётся старый */ }
-      void checkUpdates();
-    }
-    repaint();
+    afterPiCommand(r, { type: 'update-result', ok: r.ok, message: r.ok ? 'Расширения обновлены' : r.stderr || 'ошибка обновления' });
   }
 
   /** pi remove <source>: полное удаление пакета из main-агента. */
   async function doRemove(source: string): Promise<void> {
-    const names = load().envs.map((e) => e.name);
-    const r = await runCmd('pi', ['remove', source], 5 * 60_000, {
-      cwd: process.cwd(),
-      env: { ...process.env, PI_CODING_AGENT_DIR: agentDir, NO_COLOR: '1' },
-    });
+    const r = await runPi(['remove', source]);
     if (r.ok) statusMsg = 'Расширение удалено: ' + source;
-    state = reducer(state, { type: 'remove-result', ok: r.ok, message: r.ok ? source : r.stderr || 'ошибка удаления' }, names, twoColumns());
-    if (r.ok) {
-      try {
-        catalog = loadCatalog(agentDir);
-        state = { ...state, catalog };
-      } catch { /* каталог не перечитан — остаётся старый */ }
-      void checkUpdates();
-    }
-    repaint();
+    afterPiCommand(r, { type: 'remove-result', ok: r.ok, message: r.ok ? source : r.stderr || 'ошибка удаления' });
   }
 
   /** pi update <source>: обновление одного пакета main-агента. */
   async function doUpdateOne(source: string): Promise<void> {
-    const names = load().envs.map((e) => e.name);
-    const r = await runCmd('pi', ['update', source], 5 * 60_000, {
-      cwd: process.cwd(),
-      env: { ...process.env, PI_CODING_AGENT_DIR: agentDir, NO_COLOR: '1' },
-    });
+    const r = await runPi(['update', source]);
     if (r.ok) statusMsg = 'Обновлено: ' + source;
-    state = reducer(state, { type: 'update-result', ok: r.ok, message: r.ok ? source : r.stderr || 'ошибка обновления' }, names, twoColumns());
-    if (r.ok) {
-      try {
-        catalog = loadCatalog(agentDir);
-        state = { ...state, catalog };
-      } catch { /* каталог не перечитан — остаётся старый */ }
-      void checkUpdates();
-    }
-    repaint();
+    afterPiCommand(r, { type: 'update-result', ok: r.ok, message: r.ok ? source : r.stderr || 'ошибка обновления' });
   }
 
   /** pi install <source>: установка пакета в указанный каталог агента (main или окружение). */
   async function doInstall(installDir: string, source: string, envName: string | null): Promise<void> {
-    const names = load().envs.map((e) => e.name);
-    const r = await runCmd('pi', ['install', source], 5 * 60_000, {
-      cwd: process.cwd(),
-      env: { ...process.env, PI_CODING_AGENT_DIR: installDir, NO_COLOR: '1' },
-    });
+    const r = await runCmd('pi', ['install', source], PI_TIMEOUT_MS, { cwd: process.cwd(), env: piEnv(installDir) });
     if (r.ok) statusMsg = 'Установлено: ' + source;
     let sources: string[] | undefined;
     if (r.ok) {
@@ -168,14 +163,11 @@ export async function run(root: string): Promise<void> {
         const settings = readSettings(join(root, envName)) ?? {};
         sources = (settings.packages ?? []).map((s) => normalizePkgSource(s, catalog.packages));
       } else {
-        try {
-          catalog = loadCatalog(agentDir);
-          state = { ...state, catalog };
-        } catch { /* каталог не перечитан — остаётся старый */ }
+        reloadCatalog();
         void checkUpdates();
       }
     }
-    state = reducer(state, { type: 'install-result', ok: r.ok, message: r.ok ? source : r.stderr || 'ошибка установки', sources }, names, twoColumns());
+    state = reducer(state, { type: 'install-result', ok: r.ok, message: r.ok ? source : r.stderr || 'ошибка установки', sources }, envNames(), twoColumns());
     repaint();
   }
 
@@ -262,7 +254,7 @@ export async function run(root: string): Promise<void> {
         packages: cr.packages,
       };
       const res = cr.mode === 'edit'
-        ? updateEnvironment(root, cr.origName ?? cr.name, req, catalog.tools, catalog.skills, agentDir)
+        ? updateEnvironment(root, cr.origName ?? cr.name, req, { allTools: catalog.tools, allSkills: catalog.skills, agentDir })
         : createEnvironment(root, req, agentDir);
       const message = res.ok ? res.path : res.error;
       state = reducer(state, { type: 'create-result', ok: res.ok, message }, names, twoColumns());

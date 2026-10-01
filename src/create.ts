@@ -104,6 +104,13 @@ export function createEnvironment(root: string, req: CreateRequest, agentDir?: s
   return { ok: true, path: envDir };
 }
 
+/** Контекст обновления: полный каталог main-агента. */
+export interface UpdateContext {
+  allTools: ToolItem[];
+  allSkills: SkillItem[];
+  agentDir?: string;
+}
+
 /**
  * Обновляет окружение <root>/<oldName>: переименовывает при смене имени,
  * синхронизирует extensions/ и skills/ по полному каталогу main-агента
@@ -115,9 +122,7 @@ export function updateEnvironment(
   root: string,
   oldName: string,
   req: CreateRequest,
-  allTools: ToolItem[],
-  allSkills: SkillItem[],
-  agentDir?: string,
+  ctx: UpdateContext,
 ): CreateResult {
   const invalid = validateName(req.name, []);
   if (invalid !== null) return { ok: false, error: invalid };
@@ -134,11 +139,10 @@ export function updateEnvironment(
     }
     envDir = newDir;
   }
-  if (agentDir !== undefined) copyModelFiles(agentDir, envDir);
-
+  if (ctx.agentDir !== undefined) copyModelFiles(ctx.agentDir, envDir);
 
   const selectedTools = new Set((req.tools ?? []).map((t) => baseName(t.path)));
-  for (const t of allTools) {
+  for (const t of ctx.allTools) {
     const file = join(envDir, 'extensions', t.name);
     if (selectedTools.has(t.name) && !existsSync(file)) {
       mkdirSync(join(envDir, 'extensions'), { recursive: true });
@@ -149,7 +153,7 @@ export function updateEnvironment(
   }
 
   const selectedSkills = new Set((req.skills ?? []).map((s) => baseName(s.path)));
-  for (const s of allSkills) {
+  for (const s of ctx.allSkills) {
     const dir = join(envDir, 'skills', s.name);
     if (selectedSkills.has(s.name) && !existsSync(dir)) {
       copyRecursive(s.path, dir);
