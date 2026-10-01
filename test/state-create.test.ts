@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert';
-import { initialState, reducer, freshCreate, type AppState, type Catalog } from '../src/state.js';
+import { initialState, reducer, freshCreate, freshEdit, type AppState, type Catalog } from '../src/state.js';
+import type { CatalogPkg } from '../src/catalog.js';
 
 const catalog: Catalog = {
   providers: [
@@ -119,7 +120,7 @@ test('toggle инструментов/пакетов/скиллов по Space �
   s = reducer(s, 'enter', [], true);
   s = reducer(s, 'down', [], true); // pkg-b
   s = reducer(s, 'enter', [], true);
-  assert.deepEqual(s.create!.packages, ['pkg-b']);
+  assert.deepEqual(s.create!.packages, ['npm:pkg-b']);
   s = reducer(s, 'esc', [], true);
   s = reducer(s, 'down', [], true); // skills
   s = reducer(s, 'enter', [], true);
@@ -271,7 +272,7 @@ test('remove-result: ошибка → error, успех → пакет снят 
   s = reducer(s, { type: 'remove-result', ok: false, message: 'нет сети' }, [], true);
   assert.equal(s.create!.view, 'packages');
   assert.equal(s.create!.removing, null);
-  assert.deepEqual(s.create!.packages, ['pkg-a']);
+  assert.deepEqual(s.create!.packages, ['npm:pkg-a']);
   assert.equal(s.create!.error, 'нет сети');
   s = reducer(s, 'x', [], true);
   s = reducer(s, 'enter', [], true);
@@ -294,7 +295,7 @@ test('поздний remove-result после Esc применяется без�
   s = reducer(s, 'esc', [], true); // ушли, процесс ещё идёт
   s = reducer(s, { type: 'remove-result', ok: true, message: 'pkg-a' }, [], true);
   assert.equal(s.create!.view, 'packages');
-  assert.deepEqual(s.create!.packages, ['pkg-b']);
+  assert.deepEqual(s.create!.packages, ['npm:pkg-b']);
 });
 
 test('update-result: успех → к списку, ошибка → error', () => {
@@ -317,4 +318,69 @@ test('updates-result: карта latest и статус проверки', () =>
   s = reducer(s, { type: 'updates-result', ok: false, latest: {} }, [], true);
   assert.equal(s.pkgCheck, 'error');
   assert.deepEqual(s.pkgLatest, { 'pkg-a': '2.0.0' });
+});
+
+test('freshEdit: пакеты — источники, legacy-имя нормализуется, чужой остаётся', () => {
+  const c = freshEdit('dev', { packages: ['npm:pkg-a', 'pkg-b', 'npm:env-only'] }, catalog);
+  assert.deepEqual(c.packages, ['npm:pkg-a', 'npm:pkg-b', 'npm:env-only']);
+  assert.equal(c.mode, 'edit');
+  assert.equal(c.origName, 'dev');
+});
+
+test('edit packages: строки env-only и кнопка «Установить» в конце', () => {
+  let s = { ...initialState(catalog), sub: 'create' as const, create: freshEdit('dev', { packages: ['npm:env-only'] }, catalog) };
+  s = openPackages(s);
+  // строки: pkg-a(0), pkg-b(1), env-only(2), Обновить все(3), Установить(4)
+  s = reducer(s, 'down', [], true);
+  s = reducer(s, 'down', [], true);
+  s = reducer(s, 'down', [], true);
+  assert.equal(s.create!.cursor, 3);
+  s = reducer(s, 'down', [], true);
+  assert.equal(s.create!.cursor, 4);
+  s = reducer(s, 'enter', [], true);
+  assert.equal(s.create!.view, 'install');
+  assert.equal(s.create!.installStatus, 'loading');
+});
+
+test('create packages: строки «Установить» нет', () => {
+  let s = openPackages(withCreate());
+  s = reducer(s, 'down', [], true); // pkg-b
+  s = reducer(s, 'down', [], true); // «Обновить все»
+  assert.equal(s.create!.cursor, 2);
+  s = reducer(s, 'down', [], true); // цикл — «Установить» нет
+  assert.equal(s.create!.cursor, 0);
+});
+
+test('install: навигация, Enter → installing, результат ok → packages с sources', () => {
+  const items: CatalogPkg[] = [
+    { name: 'pi-a', types: ['extension'], downloads: 5, description: null, author: null },
+    { name: 'pi-b', types: ['skill'], downloads: 9, description: null, author: null },
+  ];
+  let s = {
+    ...initialState(catalog),
+    sub: 'create' as const,
+    create: { ...freshEdit('dev', {}, catalog), view: 'install' as const, installCatalog: items, installStatus: 'ready' as const },
+  };
+  s = reducer(s, 'down', [], true);
+  assert.equal(s.create!.cursor, 1);
+  s = reducer(s, 'enter', [], true);
+  assert.equal(s.create!.view, 'installing');
+  assert.equal(s.create!.installing, 'pi-b');
+  s = reducer(s, { type: 'install-result', ok: true, message: 'npm:pi-b', sources: ['npm:env-only', 'npm:pi-b'] }, [], true);
+  assert.equal(s.create!.view, 'packages');
+  assert.deepEqual(s.create!.packages, ['npm:env-only', 'npm:pi-b']);
+  assert.equal(s.create!.cursor, 0);
+  assert.equal(s.create!.installing, null);
+});
+
+test('install-result: ошибка → в install с сообщением', () => {
+  const s = {
+    ...initialState(catalog),
+    sub: 'create' as const,
+    create: { ...freshEdit('dev', {}, catalog), view: 'installing' as const, installing: 'pi-a' },
+  };
+  const t = reducer(s, { type: 'install-result', ok: false, message: 'нет сети' }, [], true);
+  assert.equal(t.create!.view, 'install');
+  assert.equal(t.create!.error, 'нет сети');
+  assert.equal(t.create!.installing, null);
 });

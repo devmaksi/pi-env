@@ -1,7 +1,8 @@
 import { validateName, baseName, type EnvSettings } from './create.js';
-import type { Catalog } from './catalog.js';
+import type { Catalog, CatalogPkg } from './catalog.js';
+import { normalizePkgSource } from './catalog.js';
 
-export type Tab = 'envs' | 'settings' | 'about';
+export type Tab = 'envs' | 'extensions' | 'settings' | 'about';
 export type Sub = 'create' | 'run' | null;
 
 export type ControlKey =
@@ -11,10 +12,26 @@ export type ControlKey =
 /** Управление (ControlKey) или любой одиночный печатный символ. */
 export type Key = ControlKey | (string & {});
 
-export type CreateView = 'form' | 'providers' | 'models' | 'tools' | 'packages' | 'skills' | 'submitting' | 'updating' | 'confirm-delete' | 'deleting' | 'confirm-remove' | 'removing';
+export type CreateView = 'form' | 'providers' | 'models' | 'tools' | 'packages' | 'skills' | 'submitting' | 'updating' | 'confirm-delete' | 'deleting' | 'confirm-remove' | 'removing' | 'install' | 'installing';
+
+/** Подэкраны вкладки «Расширения». */
+export type ExtView = 'catalog' | 'installing' | 'updating' | 'confirm-remove' | 'removing';
+
+export interface ExtState {
+  view: ExtView;
+  cursor: number;
+  updating: string | null;
+  installing: string | null;
+  removing: string | null;
+  catalog: CatalogPkg[];
+  catalogStatus: 'loading' | 'ready' | 'error';
+}
 
 /** Строка-кнопка в конце списка расширений. */
 export const UPDATE_ALL_ROW = 'Обновить все';
+
+/** Кнопка «Установить» в конце списка пакетов. */
+export const INSTALL_ROW = 'Установить';
 
 /** Статус проверки расширений на обновления. */
 export type PkgCheck = 'idle' | 'checking' | 'done' | 'error';
@@ -32,6 +49,9 @@ export interface CreateState {
   done: string | null;
   mode: 'create' | 'edit';
   origName: string | null;
+  installCatalog: CatalogPkg[];
+  installStatus: 'idle' | 'loading' | 'ready' | 'error';
+  installing: string | null;
   removing: string | null;
 }
 
@@ -44,11 +64,12 @@ export interface AppState {
   quit: boolean;
   catalog: Catalog;
   create: CreateState | null;
+  ext: ExtState | null;
   pkgCheck: PkgCheck;
   pkgLatest: Record<string, string>;
 }
 
-export const TABS: readonly Tab[] = ['envs', 'settings', 'about'];
+export const TABS: readonly Tab[] = ['envs', 'extensions', 'settings', 'about'];
 export const SETTINGS_COUNT = 2;
 export const FORM_ROWS = 6; // имя, модель, инструменты, расширения, скиллы, действие
 
@@ -61,7 +82,7 @@ export const MAX_NAME = 40;
 export function initialState(catalog: Catalog = emptyCatalog()): AppState {
   return {
     tab: 'envs', focus: 'left', selected: 0, sub: null, colorToggle: true, quit: false,
-    catalog, create: null, pkgCheck: 'idle', pkgLatest: {},
+    catalog, create: null, ext: null, pkgCheck: 'idle', pkgLatest: {},
   };
 }
 
@@ -74,7 +95,7 @@ export function freshCreate(): CreateState {
     name: '', caret: 0, cursor: 0, provider: null, model: null,
     mode: 'create', origName: null,
     tools: [], packages: [], skills: [], view: 'form', error: null, done: null,
-    removing: null,
+    removing: null, installCatalog: [], installStatus: 'idle', installing: null,
   };
 }
 
@@ -91,7 +112,7 @@ export function freshEdit(name: string, settings: EnvSettings, catalog: Catalog)
     provider: settings.defaultProvider ?? null,
     model: settings.defaultModel ?? null,
     tools: catalog.tools.filter((t) => ext.includes(`extensions/${t.name}`)).map((t) => t.name),
-    packages: catalog.packages.filter((p) => (settings.packages ?? []).includes(p.name)).map((p) => p.name),
+    packages: (settings.packages ?? []).map((s) => normalizePkgSource(s, catalog.packages)),
     skills: catalog.skills.filter((s) => {
       const base = baseName(s.path);
       return sk.includes(`skills/${base}`) || sk.includes(`skills/${s.name}`);
@@ -99,7 +120,7 @@ export function freshEdit(name: string, settings: EnvSettings, catalog: Catalog)
     view: 'form',
     error: null,
     done: null,
-    removing: null,
+    removing: null, installCatalog: [], installStatus: 'idle', installing: null,
   };
 }
 
@@ -112,10 +133,12 @@ export type Action =
   | { type: 'delete-result'; ok: boolean; message: string }
   | { type: 'updates-result'; ok: boolean; latest: Record<string, string> }
   | { type: 'update-result'; ok: boolean; message: string }
-  | { type: 'remove-result'; ok: boolean; message: string };
+  | { type: 'remove-result'; ok: boolean; message: string }
+  | { type: 'install-result'; ok: boolean; message: string; sources?: string[] };
 
-export function listLength(tab: Tab, envCount: number): number {
+export function listLength(tab: Tab, envCount: number, pkgCount = 0): number {
   if (tab === 'envs') return envCount + 1; // окружения + «Создать»
+  if (tab === 'extensions') return pkgCount + 2; // пакеты + «Обновить все» + «Установить»
   if (tab === 'settings') return SETTINGS_COUNT;
   return 0;
 }
@@ -137,6 +160,14 @@ export function reducer(state: AppState, action: Action, envNames: string[], two
         pkgLatest: action.ok ? action.latest : state.pkgLatest,
       };
     }
+    if (state.sub === null && state.ext !== null) {
+      const extView = state.ext.view;
+      const matches =
+        (action.type === 'update-result' && extView === 'updating') ||
+        (action.type === 'remove-result' && extView === 'removing') ||
+        (action.type === 'install-result' && extView === 'installing');
+      if (matches) return { ...state, ext: null, selected: clampSelected(state, envNames) };
+    }
   }
 
   if (state.sub === 'create' && state.create !== null) {
@@ -145,6 +176,27 @@ export function reducer(state: AppState, action: Action, envNames: string[], two
     return { ...state, create: next };
   }
 
+  if (state.tab === 'extensions' && state.ext !== null) {
+    const ext = state.ext;
+    if (ext.view === 'catalog') {
+      const n = ext.catalog.length;
+      if (action === 'up' || action === 'down') {
+        if (n === 0) return state;
+        const delta = action === 'up' ? -1 : 1;
+        return { ...state, ext: { ...ext, cursor: (ext.cursor + delta + n) % n } };
+      }
+      if (action === 'esc') return { ...state, ext: null };
+      if ((action === 'enter' || action === 'space') && n > 0) {
+        return { ...state, ext: { ...ext, view: 'installing', installing: ext.catalog[ext.cursor].name } };
+      }
+    } else if (ext.view === 'confirm-remove') {
+      if (action === 'esc') return { ...state, ext: null };
+      if (action === 'enter') return { ...state, ext: { ...ext, view: 'removing' } };
+    } else {
+      // updating/installing/removing — клавиши процесс не отменяют
+      return state;
+    }
+  }
   if (action === 'esc') {
     if (state.sub !== null) return { ...state, sub: null };
     return { ...state, quit: true };
@@ -152,11 +204,11 @@ export function reducer(state: AppState, action: Action, envNames: string[], two
   if (action === 'tab') {
     const idx = TABS.indexOf(state.tab);
     const next = TABS[(idx + 1) % TABS.length];
-    return { ...state, tab: next, focus: 'left', selected: 0, sub: null };
+    return { ...state, tab: next, focus: 'left', selected: 0, sub: null, ext: null };
   }
   if (action === 'up' || action === 'down') {
     if (state.sub !== null) return state;
-    const len = listLength(state.tab, envNames.length);
+    const len = listLength(state.tab, envNames.length, state.catalog.packages.length);
     if (len === 0) return state;
     const delta = action === 'up' ? -1 : 1;
     const selected = Math.min(len - 1, Math.max(0, state.selected + delta));
@@ -167,13 +219,30 @@ export function reducer(state: AppState, action: Action, envNames: string[], two
     return { ...state, focus: state.focus === 'left' ? 'right' : 'left' };
   }
   if (action === 'enter') {
-    if (state.sub !== null || state.tab !== 'envs') return state;
-    if (state.selected < envNames.length) return { ...state, sub: 'run' };
-    return { ...state, sub: 'create', create: freshCreate() };
+    if (state.sub !== null) return state;
+    if (state.tab === 'envs') {
+      if (state.selected < envNames.length) return { ...state, sub: 'run' };
+      return { ...state, sub: 'create', create: freshCreate() };
+    }
+    if (state.tab === 'extensions' && state.ext === null) {
+      const n = state.catalog.packages.length;
+      if (state.selected < n) {
+        return { ...state, ext: freshExt({ view: 'updating', updating: state.catalog.packages[state.selected].name }) };
+      }
+      if (state.selected === n) return { ...state, ext: freshExt({ view: 'updating', updating: null }) };
+      return { ...state, ext: freshExt({ view: 'catalog', catalogStatus: 'loading' }) };
+    }
+    return state;
   }
   if (action === 'space') {
     if (state.tab !== 'settings' || state.sub !== null || state.selected !== 1) return state;
     return { ...state, colorToggle: !state.colorToggle };
+  }
+  if ((action === 'x' || action === 'X') && state.tab === 'extensions' && state.sub === null && state.ext === null) {
+    const n = state.catalog.packages.length;
+    if (state.selected < n) {
+      return { ...state, ext: freshExt({ view: 'confirm-remove', removing: state.catalog.packages[state.selected].name }) };
+    }
   }
   return state;
 }
@@ -206,14 +275,20 @@ function createReducer(
     }
     if (action.type === 'remove-result') {
       if (!action.ok) return { ...c, view: 'packages', removing: null, error: action.message };
+      // removing хранит имя, а packages — источники: переводим
+      const src = c.removing !== null ? catalog.packages.find((p) => p.name === c.removing)?.source ?? null : null;
       return {
         ...c,
         view: 'packages',
         cursor: 0,
         removing: null,
         error: null,
-        packages: c.removing !== null ? c.packages.filter((n) => n !== c.removing) : c.packages,
+        packages: src !== null ? c.packages.filter((n) => n !== src) : c.packages,
       };
+    }
+    if (action.type === 'install-result') {
+      if (!action.ok) return { ...c, view: 'install', installing: null, error: action.message };
+      return { ...c, view: 'packages', cursor: 0, installing: null, error: null, packages: action.sources ?? c.packages };
     }
   }
 
@@ -245,12 +320,16 @@ function createReducer(
       });
     }
     case 'packages': {
-      const names = catalog.packages.map((p) => p.name);
-      if ((action === 'x' || action === 'X') && c.cursor < names.length) {
-        return { ...c, view: 'confirm-remove', removing: names[c.cursor] };
+      const sources = packageListSources(c, catalog);
+      if ((action === 'x' || action === 'X') && c.cursor < sources.length) {
+        const p = catalog.packages.find((x) => x.source === sources[c.cursor]);
+        if (p !== undefined) return { ...c, view: 'confirm-remove', removing: p.name };
+        return c; // env-only: удаление из main-агента не применимо
       }
-      return listViewReducer(c, action, [...names, UPDATE_ALL_ROW], 'form', 3, (item) => {
+      const items = [...sources, UPDATE_ALL_ROW, ...(c.mode === 'edit' ? [INSTALL_ROW] : [])];
+      return listViewReducer(c, action, items, 'form', 3, (item) => {
         if (item === UPDATE_ALL_ROW) return { ...c, view: 'updating' };
+        if (item === INSTALL_ROW) return { ...c, view: 'install', cursor: 0, installStatus: 'loading' };
         const sel = c.packages;
         const next = sel.includes(item) ? sel.filter((x) => x !== item) : [...sel, item];
         return { ...c, packages: next };
@@ -273,6 +352,12 @@ function createReducer(
     case 'removing':
       // Esc не отменяет процесс — имя храним до прихода remove-result
       return action === 'esc' ? { ...c, view: 'packages' } : c;
+    case 'install':
+      return listViewReducer(c, action, c.installCatalog.map((p) => p.name), 'packages', 0, (name) => ({
+        ...c, view: 'installing', installing: name,
+      }));
+    case 'installing':
+      return c;
   }
 }
 
@@ -339,4 +424,21 @@ function listViewReducer(
     return onPick(items[c.cursor]);
   }
   return c;
+}
+
+/** Пустое состояние вкладки «Расширения» с переопределением полей. */
+export function freshExt(partial: Partial<ExtState>): ExtState {
+  return { view: 'catalog', cursor: 0, updating: null, installing: null, removing: null, catalog: [], catalogStatus: 'loading', ...partial };
+}
+
+/** Строки пакета в форме: каталог main-агента + только-в-окружении. */
+export function packageListSources(c: CreateState, catalog: Catalog): string[] {
+  const sources = catalog.packages.map((p) => p.source);
+  for (const s of c.packages) if (!sources.includes(s)) sources.push(s);
+  return sources;
+}
+
+function clampSelected(state: AppState, envNames: string[]): number {
+  const len = listLength(state.tab, envNames.length, state.catalog.packages.length);
+  return Math.max(0, Math.min(state.selected, len - 1));
 }
