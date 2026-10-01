@@ -2,7 +2,7 @@ import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { spawn } from 'node:child_process';
 import { scan, Environment } from './environments.js';
-import { loadCatalog, parseOutdated, ToolItem, SkillItem } from './catalog.js';
+import { loadCatalog, parseOutdated, fetchPackageCatalog, normalizePkgSource, ToolItem, SkillItem, type CatalogPkg } from './catalog.js';
 import { computeLayout } from './layout.js';
 import { render } from './render.js';
 import { createEnvironment, readSettings, updateEnvironment, deleteEnvironment, type CreateRequest } from './create.js';
@@ -135,11 +135,73 @@ export async function run(root: string): Promise<void> {
     repaint();
   }
 
+  /** pi update <source>: обновление одного пакета main-агента. */
+  async function doUpdateOne(source: string): Promise<void> {
+    const names = load().envs.map((e) => e.name);
+    const r = await runCmd('pi', ['update', source], 5 * 60_000, {
+      cwd: process.cwd(),
+      env: { ...process.env, PI_CODING_AGENT_DIR: agentDir, NO_COLOR: '1' },
+    });
+    if (r.ok) statusMsg = 'Обновлено: ' + source;
+    state = reducer(state, { type: 'update-result', ok: r.ok, message: r.ok ? source : r.stderr || 'ошибка обновления' }, names, twoColumns());
+    if (r.ok) {
+      try {
+        catalog = loadCatalog(agentDir);
+        state = { ...state, catalog };
+      } catch { /* каталог не перечитан — остаётся старый */ }
+      void checkUpdates();
+    }
+    repaint();
+  }
+
+  /** pi install <source>: установка пакета в указанный каталог агента (main или окружение). */
+  async function doInstall(installDir: string, source: string, envName: string | null): Promise<void> {
+    const names = load().envs.map((e) => e.name);
+    const r = await runCmd('pi', ['install', source], 5 * 60_000, {
+      cwd: process.cwd(),
+      env: { ...process.env, PI_CODING_AGENT_DIR: installDir, NO_COLOR: '1' },
+    });
+    if (r.ok) statusMsg = 'Установлено: ' + source;
+    let sources: string[] | undefined;
+    if (r.ok) {
+      if (envName !== null) {
+        const settings = readSettings(join(root, envName)) ?? {};
+        sources = (settings.packages ?? []).map((s) => normalizePkgSource(s, catalog.packages));
+      } else {
+        try {
+          catalog = loadCatalog(agentDir);
+          state = { ...state, catalog };
+        } catch { /* каталог не перечитан — остаётся старый */ }
+        void checkUpdates();
+      }
+    }
+    state = reducer(state, { type: 'install-result', ok: r.ok, message: r.ok ? source : r.stderr || 'ошибка установки', sources }, names, twoColumns());
+    repaint();
+  }
+
+  /** Скачивает каталог пакетов pi.dev в открытый пикер (вкладка или форма). */
+  async function loadPackageCatalog(): Promise<void> {
+    let pkgs: CatalogPkg[] | null;
+    try {
+      pkgs = await fetchPackageCatalog();
+    } catch {
+      pkgs = null;
+    }
+    if (state.ext !== null && state.ext.view === 'catalog' && state.ext.catalogStatus === 'loading') {
+      state = { ...state, ext: { ...state.ext, catalog: pkgs ?? [], catalogStatus: pkgs === null ? 'error' : 'ready' } };
+    } else if (state.create !== null && state.create.view === 'install' && state.create.installStatus === 'loading') {
+      state = { ...state, create: { ...state.create, installCatalog: pkgs ?? [], installStatus: pkgs === null ? 'error' : 'ready' } };
+    }
+    repaint();
+  }
+
   async function dispatch(key: Key): Promise<void> {
     statusMsg = null;
     const { envs } = load();
     const names = envs.map((e) => e.name);
     const prevView = state.create?.view ?? null;
+    const prevExt = state.ext;
+    const prevTab = state.tab;
     if (key === 'e' && state.tab === 'envs' && state.sub === null && state.selected < envs.length) {
       const settings = readSettings(envs[state.selected].path) ?? {};
       state = reducer(state, { type: 'edit-start', name: envs[state.selected].name, settings }, names, twoColumns());
@@ -156,7 +218,33 @@ export async function run(root: string): Promise<void> {
         void doUpdateAll();
       } else if (v === 'packages' && prevView === 'form' && state.pkgCheck !== 'checking') {
         void checkUpdates();
+      } else if (v === 'install' && prevView === 'packages' && state.create.installStatus === 'loading') {
+        void loadPackageCatalog();
+      } else if (v === 'installing' && prevView === 'install') {
+        const envName = state.create.origName ?? state.create.name;
+        void doInstall(join(root, envName), 'npm:' + (state.create.installing ?? ''), envName);
       }
+    }
+    if (state.ext !== null) {
+      const e = state.ext;
+      if (e.view === 'catalog' && prevExt === null && e.catalogStatus === 'loading') {
+        void loadPackageCatalog();
+      } else if (e.view === 'installing' && prevExt !== null && prevExt.view === 'catalog') {
+        void doInstall(agentDir, 'npm:' + (e.installing ?? ''), null);
+      } else if (e.view === 'removing' && prevExt !== null && prevExt.view === 'confirm-remove') {
+        const pkg = catalog.packages.find((p) => p.name === e.removing);
+        if (pkg) void doRemove(pkg.source);
+      } else if (e.view === 'updating' && prevExt === null) {
+        if (e.updating === null) void doUpdateAll();
+        else {
+          const pkg = catalog.packages.find((p) => p.name === e.updating);
+          if (pkg) void doUpdateOne(pkg.source);
+        }
+      }
+    }
+
+    if (prevTab !== 'extensions' && state.tab === 'extensions' && state.ext === null && state.pkgCheck === 'idle') {
+      void checkUpdates();
     }
 
     if (state.create && state.create.view === 'submitting') {
