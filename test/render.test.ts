@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert';
 import { render } from '../src/render.js';
 import { computeLayout } from '../src/layout.js';
-import { initialState } from '../src/state.js';
+import { initialState, freshExt, type Catalog } from '../src/state.js';
 import { Environment } from '../src/environments.js';
 
 const envs: Environment[] = [
@@ -147,4 +147,56 @@ test('вкладка «О программе» в широком режиме н
   }
   // строка не обрезана на половине ширины
   assert.ok(s.includes('CLI для управления окружениями pi'));
+});
+
+const extCatalog: Catalog = {
+  providers: [],
+  tools: [],
+  skills: [],
+  packages: [
+    { source: 'npm:pkg-a', name: 'pkg-a', path: '/p/a', version: '1.0.0', description: 'Пакет A', extensions: ['./index.ts'], skills: [] },
+  ],
+};
+
+test('вкладка «Расширения»: список пакетов, кнопки, инфо-панель', () => {
+  const s = render({ state: { ...initialState(extCatalog), tab: 'extensions' as const }, envs, width: 100, height: 12, ...base });
+  assert.ok(s.includes('[Расширения]'));
+  assert.ok(s.includes('pkg-a'));
+  assert.ok(s.includes('Обновить все'));
+  assert.ok(s.includes('Установить'));
+  assert.ok(s.includes('Источник: npm:pkg-a'));
+  assert.ok(s.includes('Версия: 1.0.0'));
+});
+
+test('вкладка «Расширения»: курсор на «Установить» — подсказка каталога', () => {
+  const s = render({ state: { ...initialState(extCatalog), tab: 'extensions' as const, selected: 2 }, envs, width: 100, height: 12, ...base });
+  assert.ok(s.includes('pi.dev/packages'));
+});
+
+test('вкладка «Расширения»: каталог — загрузка, ошибка, список с инфо-панелью', () => {
+  const loading = render({ state: { ...initialState(extCatalog), tab: 'extensions' as const, ext: freshExt() }, envs, width: 100, height: 12, ...base });
+  assert.ok(loading.includes('Загрузка'));
+  const err = render({ state: { ...initialState(extCatalog), tab: 'extensions' as const, ext: freshExt({ catalogStatus: 'error' }) }, envs, width: 100, height: 12, ...base });
+  assert.ok(err.includes('Не удалось загрузить'));
+  const items = [{ name: 'pi-a', types: ['extension'], downloads: 100, description: 'Описание A', author: 'author-x' }];
+  const ready = render({ state: { ...initialState(extCatalog), tab: 'extensions' as const, ext: freshExt({ catalogStatus: 'ready', catalog: items }) }, envs, width: 100, height: 14, ...base });
+  assert.ok(ready.includes('Установка расширения'));
+  assert.ok(ready.includes('pi-a'));
+  assert.ok(ready.includes('Загрузок: 100'));
+  assert.ok(ready.includes('Описание A'));
+  assert.ok(ready.includes('pi install npm:pi-a'));
+});
+
+test('вкладка «Расширения»: пометки процессов и подтверждение удаления', () => {
+  const installing = render({ state: { ...initialState(extCatalog), tab: 'extensions' as const, ext: freshExt({ view: 'installing', installing: 'pi-a' }) }, envs, width: 100, height: 10, ...base });
+  assert.ok(installing.includes('Установка: pi-a…'));
+  const upd = render({ state: { ...initialState(extCatalog), tab: 'extensions' as const, ext: freshExt({ view: 'updating', updating: 'pkg-a' }) }, envs, width: 100, height: 10, ...base });
+  assert.ok(upd.includes('Обновление: pkg-a…'));
+  const updAll = render({ state: { ...initialState(extCatalog), tab: 'extensions' as const, ext: freshExt({ view: 'updating' }) }, envs, width: 100, height: 10, ...base });
+  assert.ok(updAll.includes('Обновление…'));
+  const rm = render({ state: { ...initialState(extCatalog), tab: 'extensions' as const, ext: freshExt({ view: 'removing' }) }, envs, width: 100, height: 10, ...base });
+  assert.ok(rm.includes('Удаление…'));
+  const conf = render({ state: { ...initialState(extCatalog), tab: 'extensions' as const, ext: freshExt({ view: 'confirm-remove', removing: 'pkg-a' }) }, envs, width: 100, height: 10, ...base });
+  assert.ok(conf.includes('Удалить расширение «pkg-a»?'));
+  assert.ok(conf.includes('Enter — подтвердить'));
 });

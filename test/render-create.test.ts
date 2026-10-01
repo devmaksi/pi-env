@@ -169,7 +169,7 @@ test('список расширений: строка кнопки, панель
 });
 
 test('список расширений: панель — описание, отметка «в окружении», статус обновления', () => {
-  const s = render({ state: createState({ view: 'packages', packages: ['pkg-a'] }, { pkgCheck: 'done', pkgLatest: { 'pkg-a': '2.0.0' } }), envs, width: 100, height: 14, root: '/root', useColor: false, status: null });
+  const s = render({ state: createState({ view: 'packages', packages: ['npm:pkg-a'] }, { pkgCheck: 'done', pkgLatest: { 'pkg-a': '2.0.0' } }), envs, width: 100, height: 14, root: '/root', useColor: false, status: null });
   assert.ok(s.includes('Тестовый пакет'));
   assert.ok(s.includes('В окружении: ✓'));
   assert.ok(s.includes('установлена 1.2.3'));
@@ -210,4 +210,28 @@ test('removing/updating: пометки процесса', () => {
 test('список расширений: ошибка visible в правой колонке', () => {
   const s = render({ state: createState({ view: 'packages', error: 'нет сети' }), envs, width: 100, height: 12, root: '/root', useColor: false, status: null });
   assert.ok(s.includes('⚠ нет сети'));
+});
+
+test('edit packages: env-only строка с меткой и кнопка «Установить»', () => {
+  const s = render({ state: editState({ view: 'packages', packages: ['npm:env-only'], cursor: 1 }), envs, width: 100, height: 14, root: '/root', useColor: false, status: null });
+  assert.ok(s.includes('env-only'));
+  assert.ok(s.includes('в окружении'));
+  assert.ok(s.includes('Обновить все'));
+  assert.ok(s.includes('Установить'));
+  assert.ok(s.includes('только в этом окружении'));
+});
+
+test('create packages: без кнопки «Установить»', () => {
+  const s = render({ state: createState({ view: 'packages' }), envs, width: 100, height: 14, root: '/root', useColor: false, status: null });
+  assert.ok(!s.includes('Установить'));
+});
+
+test('install: список каталога, команда установки, метка процесса', () => {
+  const items = [{ name: 'pi-a', types: ['extension'], downloads: 100, description: 'Описание A', author: null }];
+  const s = render({ state: editState({ view: 'install', installStatus: 'ready' as const, installCatalog: items }), envs, width: 100, height: 14, root: '/root', useColor: false, status: null });
+  assert.ok(s.includes('Установка в окружение'));
+  assert.ok(s.includes('pi-a'));
+  assert.ok(s.includes('pi install npm:pi-a'));
+  const busy = render({ state: editState({ view: 'installing', installing: 'pi-a' }), envs, width: 100, height: 10, root: '/root', useColor: false, status: null });
+  assert.ok(busy.includes('Установка: pi-a…'));
 });

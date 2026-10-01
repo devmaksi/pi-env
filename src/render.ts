@@ -1,6 +1,6 @@
 import { Environment } from './environments.js';
 import { computeLayout, NARROW_MIN, LOW_MIN } from './layout.js';
-import { UPDATE_ALL_ROW, type AppState, type PkgCheck } from './state.js';
+import { UPDATE_ALL_ROW, INSTALL_ROW, packageListSources, type AppState, type PkgCheck } from './state.js';
 import type { PkgItem } from './catalog.js';
 
 const ANSI = {
@@ -60,7 +60,7 @@ export interface RenderArgs {
   status: string | null;
 }
 
-const TAB_NAMES = { envs: 'Окружения', settings: 'Настройки', about: 'О программе' } as const;
+const TAB_NAMES = { envs: 'Окружения', extensions: 'Расширения', settings: 'Настройки', about: 'О программе' } as const;
 
 export function render(a: RenderArgs): string {
   const { state, envs, root, width, height, useColor } = a;
@@ -143,19 +143,27 @@ export function render(a: RenderArgs): string {
         left.push(c(ANSI.dim, useColor) + 'Обновление…' + c(ANSI.reset, useColor));
         right.push(c(ANSI.dim, useColor) + 'Esc — назад' + c(ANSI.reset, useColor));
       } else if (cr.view === 'packages') {
-        const pkgs = state.catalog.packages;
         const latest = state.pkgLatest;
+        const sources = packageListSources(cr, state.catalog);
         left.push(c(ANSI.bold, useColor) + 'Расширения (пакеты)' + c(ANSI.reset, useColor));
-        if (pkgs.length === 0) left.push(c(ANSI.dim, useColor) + '— пусто —' + c(ANSI.reset, useColor));
-        pkgs.forEach((p, i) => {
-          const name = p.name.length > 22 ? p.name.slice(0, 21) + '…' : p.name;
-          const text = (i === cr.cursor ? '> ' : '  ') + (cr.packages.includes(p.name) ? '✓ ' : '  ') + name + '  ' + pkgMarker(p, state.pkgCheck, latest);
+        if (sources.length === 0) left.push(c(ANSI.dim, useColor) + '— пусто —' + c(ANSI.reset, useColor));
+        sources.forEach((src, i) => {
+          const p = state.catalog.packages.find((x) => x.source === src);
+          const name = p !== undefined ? p.name : src.replace(/^npm:/, '');
+          const short = name.length > 22 ? name.slice(0, 21) + '…' : name;
+          const marker = p !== undefined ? pkgMarker(p, state.pkgCheck, latest) : 'в окружении';
+          const text = (i === cr.cursor ? '> ' : '  ') + (cr.packages.includes(src) ? '✓ ' : '  ') + short + '  ' + marker;
           left.push(i === cr.cursor ? c(ANSI.inverse, useColor) + padRight(text, L.leftWidth) + c(ANSI.reset, useColor) : text);
         });
-        const btn = pkgs.length;
-        const btext = (btn === cr.cursor ? '> ' : '  ') + '↑ ' + UPDATE_ALL_ROW;
-        left.push(btn === cr.cursor ? c(ANSI.inverse, useColor) + padRight(btext, L.leftWidth) + c(ANSI.reset, useColor) : btext);
-        const cur = pkgs[cr.cursor];
+        const buttons: Array<[string, string]> = [['↑', UPDATE_ALL_ROW]];
+        if (cr.mode === 'edit') buttons.push(['＋', INSTALL_ROW]);
+        buttons.forEach(([icon, label], j) => {
+          const i = sources.length + j;
+          const text = (i === cr.cursor ? '> ' : '  ') + icon + ' ' + label;
+          left.push(i === cr.cursor ? c(ANSI.inverse, useColor) + padRight(text, L.leftWidth) + c(ANSI.reset, useColor) : text);
+        });
+        const curSrc = sources[cr.cursor];
+        const cur = curSrc !== undefined ? state.catalog.packages.find((x) => x.source === curSrc) : undefined;
         if (cur !== undefined) {
           right.push(c(ANSI.bold, useColor) + cur.name + c(ANSI.reset, useColor));
           right.push('Источник: ' + cur.source);
@@ -163,15 +171,52 @@ export function render(a: RenderArgs): string {
           right.push(updateLine(cur, state.pkgCheck, latest));
           right.push('Расширений: ' + cur.extensions.length + '  Скиллов: ' + cur.skills.length);
           if (cur.description) right.push(truncateVisible(cur.description, L.rightWidth - 1));
-          right.push('В окружении: ' + (cr.packages.includes(cur.name) ? '✓' : '—'));
-        } else {
+          right.push('В окружении: ' + (cr.packages.includes(cur.source) ? '✓' : '—'));
+        } else if (curSrc !== undefined) {
+          right.push(c(ANSI.bold, useColor) + curSrc.replace(/^npm:/, '') + c(ANSI.reset, useColor));
+          right.push('Установлено только в этом окружении');
+          right.push('В окружении: ✓');
+        } else if (cr.cursor === sources.length) {
           right.push('Обновить все');
           right.push('pi update --extensions');
           right.push('Enter — выполнить');
+        } else if (cr.mode === 'edit') {
+          right.push('Установка расширения');
+          right.push('Список: pi.dev/packages');
+          right.push('Enter — открыть каталог');
         }
         if (cr.error) right.push(c(ANSI.bold, useColor) + '⚠ ' + cr.error + c(ANSI.reset, useColor));
         right.push(c(ANSI.dim, useColor) + 'Space/Enter — выбрать' + c(ANSI.reset, useColor));
         right.push(c(ANSI.dim, useColor) + 'X — удалить' + c(ANSI.reset, useColor));
+        right.push(c(ANSI.dim, useColor) + 'Esc — назад' + c(ANSI.reset, useColor));
+      } else if (cr.view === 'install') {
+        left.push(c(ANSI.bold, useColor) + 'Установка в окружение «' + cr.name + '»' + c(ANSI.reset, useColor));
+        if (cr.installStatus === 'loading') {
+          left.push(c(ANSI.dim, useColor) + 'Загрузка каталога…' + c(ANSI.reset, useColor));
+        } else if (cr.installStatus === 'error') {
+          left.push(c(ANSI.bold, useColor) + '⚠ Не удалось загрузить каталог' + c(ANSI.reset, useColor));
+        } else {
+          if (cr.installCatalog.length === 0) left.push(c(ANSI.dim, useColor) + '— пусто —' + c(ANSI.reset, useColor));
+          cr.installCatalog.forEach((p, i) => {
+            const name = p.name.length > 24 ? p.name.slice(0, 23) + '…' : p.name;
+            const text = (i === cr.cursor ? '> ' : '  ') + name;
+            left.push(i === cr.cursor ? c(ANSI.inverse, useColor) + padRight(text, L.leftWidth) + c(ANSI.reset, useColor) : text);
+          });
+          const cur = cr.installCatalog[cr.cursor];
+          if (cur !== undefined) {
+            right.push(c(ANSI.bold, useColor) + cur.name + c(ANSI.reset, useColor));
+            if (cur.types.length > 0) right.push('Типы: ' + cur.types.join(', '));
+            right.push('Загрузок: ' + cur.downloads);
+            if (cur.author !== null) right.push('Автор: ' + cur.author);
+            if (cur.description !== null) right.push(truncateVisible(cur.description, L.rightWidth - 1));
+            right.push('pi install npm:' + cur.name);
+            right.push(c(ANSI.dim, useColor) + 'Enter — установить' + c(ANSI.reset, useColor));
+          }
+        }
+        if (cr.error) right.push(c(ANSI.bold, useColor) + '⚠ ' + cr.error + c(ANSI.reset, useColor));
+        right.push(c(ANSI.dim, useColor) + 'Esc — назад' + c(ANSI.reset, useColor));
+      } else if (cr.view === 'installing') {
+        left.push(c(ANSI.dim, useColor) + 'Установка: ' + (cr.installing ?? '') + '…' + c(ANSI.reset, useColor));
         right.push(c(ANSI.dim, useColor) + 'Esc — назад' + c(ANSI.reset, useColor));
       } else if (cr.view === 'providers' || cr.view === 'models' || cr.view === 'tools' || cr.view === 'skills') {
         const items: string[] =
@@ -231,6 +276,83 @@ export function render(a: RenderArgs): string {
       } else {
         right.push(c(ANSI.dim, useColor) + 'Выберите окружение' + c(ANSI.reset, useColor));
       }
+    } else if (state.tab === 'extensions') {
+      const ext = state.ext;
+      const pkgs = state.catalog.packages;
+      if (ext === null) {
+        left.push(c(ANSI.bold, useColor) + 'Расширения (основной агент)' + c(ANSI.reset, useColor));
+        if (pkgs.length === 0) left.push(c(ANSI.dim, useColor) + '— пусто —' + c(ANSI.reset, useColor));
+        pkgs.forEach((p, i) => {
+          const name = p.name.length > 22 ? p.name.slice(0, 21) + '…' : p.name;
+          const text = (i === state.selected ? '> ' : '  ') + name + '  ' + pkgMarker(p, state.pkgCheck, state.pkgLatest);
+          left.push(i === state.selected ? c(ANSI.inverse, useColor) + padRight(text, L.leftWidth) + c(ANSI.reset, useColor) : text);
+        });
+        if (pkgs.length > 0) left.push(c(ANSI.dim, useColor) + '─'.repeat(L.leftWidth - 2) + c(ANSI.reset, useColor));
+        const buttons: Array<[string, string]> = [['↑', 'Обновить все'], ['＋', 'Установить']];
+        buttons.forEach(([icon, label], j) => {
+          const i = pkgs.length + j;
+          const text = (i === state.selected ? '> ' : '  ') + icon + ' ' + label;
+          left.push(i === state.selected ? c(ANSI.inverse, useColor) + padRight(text, L.leftWidth) + c(ANSI.reset, useColor) : text);
+        });
+        const p = pkgs[state.selected];
+        if (p !== undefined) {
+          right.push(c(ANSI.bold, useColor) + p.name + c(ANSI.reset, useColor));
+          right.push('Источник: ' + p.source);
+          right.push('Версия: ' + (p.version ?? '—'));
+          right.push(updateLine(p, state.pkgCheck, state.pkgLatest));
+          right.push('Расширений: ' + p.extensions.length + '  Скиллов: ' + p.skills.length);
+          if (p.description) right.push(truncateVisible(p.description, L.rightWidth - 1));
+        } else if (state.selected === pkgs.length) {
+          right.push('Обновить все');
+          right.push('pi update --extensions');
+          right.push('Enter — выполнить');
+        } else {
+          right.push('Установка расширения');
+          right.push('Список: pi.dev/packages');
+          right.push('Enter — открыть каталог');
+        }
+        right.push(c(ANSI.dim, useColor) + 'Enter — обновить пакет / выбрать' + c(ANSI.reset, useColor));
+        right.push(c(ANSI.dim, useColor) + 'X — удалить' + c(ANSI.reset, useColor));
+      } else if (ext.view === 'catalog') {
+        left.push(c(ANSI.bold, useColor) + 'Установка расширения' + c(ANSI.reset, useColor));
+        if (ext.catalogStatus === 'loading') {
+          left.push(c(ANSI.dim, useColor) + 'Загрузка каталога…' + c(ANSI.reset, useColor));
+        } else if (ext.catalogStatus === 'error') {
+          left.push(c(ANSI.bold, useColor) + '⚠ Не удалось загрузить каталог' + c(ANSI.reset, useColor));
+        } else {
+          if (ext.catalog.length === 0) left.push(c(ANSI.dim, useColor) + '— пусто —' + c(ANSI.reset, useColor));
+          ext.catalog.forEach((p, i) => {
+            const name = p.name.length > 24 ? p.name.slice(0, 23) + '…' : p.name;
+            const text = (i === ext.cursor ? '> ' : '  ') + name;
+            left.push(i === ext.cursor ? c(ANSI.inverse, useColor) + padRight(text, L.leftWidth) + c(ANSI.reset, useColor) : text);
+          });
+          const cur = ext.catalog[ext.cursor];
+          if (cur !== undefined) {
+            right.push(c(ANSI.bold, useColor) + cur.name + c(ANSI.reset, useColor));
+            if (cur.types.length > 0) right.push('Типы: ' + cur.types.join(', '));
+            right.push('Загрузок: ' + cur.downloads);
+            if (cur.author !== null) right.push('Автор: ' + cur.author);
+            if (cur.description !== null) right.push(truncateVisible(cur.description, L.rightWidth - 1));
+            right.push('pi install npm:' + cur.name);
+            right.push(c(ANSI.dim, useColor) + 'Enter — установить' + c(ANSI.reset, useColor));
+          }
+        }
+        right.push(c(ANSI.dim, useColor) + 'Esc — назад' + c(ANSI.reset, useColor));
+      } else if (ext.view === 'installing') {
+        left.push(c(ANSI.dim, useColor) + 'Установка: ' + (ext.installing ?? '') + '…' + c(ANSI.reset, useColor));
+        right.push(c(ANSI.dim, useColor) + 'Esc — назад' + c(ANSI.reset, useColor));
+      } else if (ext.view === 'updating') {
+        left.push(c(ANSI.dim, useColor) + (ext.updating === null ? 'Обновление…' : 'Обновление: ' + ext.updating + '…') + c(ANSI.reset, useColor));
+        right.push(c(ANSI.dim, useColor) + 'Esc — назад' + c(ANSI.reset, useColor));
+      } else if (ext.view === 'removing') {
+        left.push(c(ANSI.dim, useColor) + 'Удаление…' + c(ANSI.reset, useColor));
+        right.push(c(ANSI.dim, useColor) + 'Esc — назад' + c(ANSI.reset, useColor));
+      } else if (ext.view === 'confirm-remove') {
+        left.push(c(ANSI.bold, useColor) + 'Удалить расширение «' + (ext.removing ?? '') + '»?' + c(ANSI.reset, useColor));
+        right.push(c(ANSI.dim, useColor) + 'Enter — подтвердить' + c(ANSI.reset, useColor));
+        right.push(c(ANSI.dim, useColor) + 'Esc — отмена' + c(ANSI.reset, useColor));
+      }
+      if (!twoCol) for (const h of right) left.push(h);
     } else if (state.tab === 'settings') {
       const items = [
         'Корневой каталог: ' + root,
