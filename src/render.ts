@@ -1,7 +1,7 @@
 import { Environment } from './environments.js';
 import { computeLayout, NARROW_MIN, LOW_MIN, type Layout } from './layout.js';
 import { type AppState, type PkgCheck } from './state.js';
-import { renderCreate, type Ctx } from './sections.js';
+import { renderCreate, renderExtTab, renderEnvList, type Ctx } from './sections.js';
 import type { PkgItem, CatalogPkg } from './catalog.js';
 
 export const ANSI = {
@@ -37,7 +37,7 @@ function truncateVisible(s: string, w: number): string {
   return s;
 }
 
-function padRight(s: string, w: number): string {
+export function padRight(s: string, w: number): string {
   const v = visibleWidth(s);
   if (v > w) return truncateVisible(s, w);
   return s + ' '.repeat(w - v);
@@ -111,88 +111,9 @@ export function render(a: RenderArgs): string {
     if (state.sub === 'create' && state.create) {
       ({ left, right } = renderCreate(state.create, ctx));
     } else if (state.tab === 'envs') {
-      interface Row { text: string; selected: boolean; isSep: boolean }
-      const rows: Row[] = [];
-      envs.forEach((e, i) => {
-        rows.push({ text: (i === state.selected ? '> ' : '  ') + e.name, selected: i === state.selected, isSep: false });
-        if (i === envs.length - 1) {
-          rows.push({ text: '─'.repeat(L.leftWidth - 2), selected: false, isSep: true });
-        }
-      });
-      rows.push({ text: (state.selected === envs.length ? '> ' : '  ') + 'Создать', selected: state.selected === envs.length, isSep: false });
-
-      for (const r of rows) {
-        if (r.isSep) {
-          left.push(c(ANSI.dim, useColor) + r.text + c(ANSI.reset, useColor));
-        } else if (r.selected) {
-          left.push(c(ANSI.inverse, useColor) + padRight(r.text, L.leftWidth) + c(ANSI.reset, useColor));
-        } else {
-          left.push(r.text);
-        }
-      }
-
-      if (state.selected < envs.length) {
-        const e = envs[state.selected];
-        right.push(c(ANSI.bold, useColor) + e.name + c(ANSI.reset, useColor));
-        right.push('Путь: ' + e.path);
-        right.push('settings.json ' + (e.hasSettings ? '✓' : '—'));
-        right.push('skills ' + (e.hasSkills ? '✓' : '—'));
-        right.push('extensions ' + (e.hasExtensions ? '✓' : '—'));
-        right.push(c(ANSI.dim, useColor) + 'E — редактировать' + c(ANSI.reset, useColor));
-        right.push(c(ANSI.dim, useColor) + 'Детализация — этап 2' + c(ANSI.reset, useColor));
-      } else {
-        right.push(c(ANSI.dim, useColor) + 'Выберите окружение' + c(ANSI.reset, useColor));
-      }
+      ({ left, right } = renderEnvList(envs, state, ctx));
     } else if (state.tab === 'extensions') {
-      const ext = state.ext;
-      const pkgs = state.catalog.packages;
-      if (ext === null) {
-        left.push(c(ANSI.bold, useColor) + 'Расширения (основной агент)' + c(ANSI.reset, useColor));
-        if (pkgs.length === 0) left.push(c(ANSI.dim, useColor) + '— пусто —' + c(ANSI.reset, useColor));
-        pkgs.forEach((p, i) => {
-          const text = truncateName(p.name, PKG_NAME_MAX) + '  ' + pkgMarker(p, state.pkgCheck, state.pkgLatest);
-          left.push(listRow(i, state.selected, text, L.leftWidth, useColor));
-        });
-        if (pkgs.length > 0) left.push(c(ANSI.dim, useColor) + '─'.repeat(L.leftWidth - 2) + c(ANSI.reset, useColor));
-        const buttons: Array<[string, string]> = [['↑', 'Обновить все'], ['＋', 'Установить']];
-        buttons.forEach(([icon, label], j) => {
-          left.push(listRow(pkgs.length + j, state.selected, icon + ' ' + label, L.leftWidth, useColor));
-        });
-        const p = pkgs[state.selected];
-        if (p !== undefined) {
-          right.push(...pkgInfoLines(p, state.pkgCheck, state.pkgLatest, L, useColor));
-        } else if (state.selected === pkgs.length) {
-          right.push('Обновить все');
-          right.push('pi update --extensions');
-          right.push('Enter — выполнить');
-        } else {
-          right.push('Установка расширения');
-          right.push('Список: pi.dev/packages');
-          right.push('Enter — открыть каталог');
-        }
-        right.push(c(ANSI.dim, useColor) + 'Enter — обновить пакет / выбрать' + c(ANSI.reset, useColor));
-        right.push(c(ANSI.dim, useColor) + 'X — удалить' + c(ANSI.reset, useColor));
-      } else if (ext.view === 'catalog') {
-        left.push(c(ANSI.bold, useColor) + 'Установка расширения' + c(ANSI.reset, useColor));
-        const picker = catalogPickerLines(ext.catalog, ext.catalogStatus, ext.cursor, L, useColor);
-        left.push(...picker.left);
-        right.push(...picker.right);
-        right.push(c(ANSI.dim, useColor) + 'Esc — назад' + c(ANSI.reset, useColor));
-      } else if (ext.view === 'installing') {
-        left.push(c(ANSI.dim, useColor) + 'Установка: ' + (ext.installing ?? '') + '…' + c(ANSI.reset, useColor));
-        right.push(c(ANSI.dim, useColor) + 'Esc — назад' + c(ANSI.reset, useColor));
-      } else if (ext.view === 'updating') {
-        left.push(c(ANSI.dim, useColor) + (ext.updating === null ? 'Обновление…' : 'Обновление: ' + ext.updating + '…') + c(ANSI.reset, useColor));
-        right.push(c(ANSI.dim, useColor) + 'Esc — назад' + c(ANSI.reset, useColor));
-      } else if (ext.view === 'removing') {
-        left.push(c(ANSI.dim, useColor) + 'Удаление…' + c(ANSI.reset, useColor));
-        right.push(c(ANSI.dim, useColor) + 'Esc — назад' + c(ANSI.reset, useColor));
-      } else if (ext.view === 'confirm-remove') {
-        left.push(c(ANSI.bold, useColor) + 'Удалить расширение «' + (ext.removing ?? '') + '»?' + c(ANSI.reset, useColor));
-        right.push(c(ANSI.dim, useColor) + 'Enter — подтвердить' + c(ANSI.reset, useColor));
-        right.push(c(ANSI.dim, useColor) + 'Esc — отмена' + c(ANSI.reset, useColor));
-      }
-      if (!twoCol) for (const h of right) left.push(h);
+      ({ left, right } = renderExtTab(state.ext, ctx));
     } else if (state.tab === 'settings') {
       const items = [
         'Корневой каталог: ' + root,
