@@ -7,7 +7,7 @@
 Цель: все файлы < 300 строк, функции 4–20 строк. Тесты render/state
 фиксируют выход — разбивка проверяется полным прогоном `npm test`.
 
-- [ ] `render.ts` (440): вынести секции в функции `renderCreate(cr, ctx)`,
+- [x] `render.ts` (440): вынести секции в функции `renderCreate(cr, ctx)`,
       `renderExtTab(ext, ctx)`, `renderEnvList(envs, state, ctx)`,
       `renderSettings/renderAbout/renderFooter`; `render()` — только
       диспетчер (таб-бар + вызов секции + сборка колонок/футера).
