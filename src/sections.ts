@@ -1,0 +1,176 @@
+import type { Layout } from './layout.js';
+import {
+  UPDATE_ALL_ROW,
+  INSTALL_ROW,
+  packageListSources,
+  type AppState,
+  type CreateState,
+} from './state.js';
+import {
+  c,
+  ANSI,
+  listRow,
+  truncateName,
+  pkgInfoLines,
+  pkgMarker,
+  catalogPickerLines,
+  PKG_NAME_MAX,
+} from './render.js';
+
+/** Контекст рендера: раскладка и параметры кадра, общие для всех секций. */
+export interface Ctx {
+  state: AppState;
+  L: Layout;
+  useColor: boolean;
+  inner: number;
+  contentRows: number;
+  twoCol: boolean;
+  root: string;
+}
+
+/** Суб-экран создания/редактирования окружения: диспетчер по view. */
+export function renderCreate(cr: CreateState, ctx: Ctx): { left: string[]; right: string[] } {
+  const r =
+    cr.view === 'form' ? createForm(cr, ctx)
+    : cr.view === 'packages' ? createPackages(cr, ctx)
+    : cr.view === 'install' ? createInstall(cr, ctx)
+    : cr.view === 'providers' || cr.view === 'models' || cr.view === 'tools' || cr.view === 'skills'
+      ? createSelects(cr, ctx)
+      : createBusy(cr, ctx);
+  if (!ctx.twoCol) r.left.push(...r.right);
+  return r;
+}
+
+/** Форма создания: поля и действия. */
+function createForm(cr: CreateState, ctx: Ctx): { left: string[]; right: string[] } {
+  const left: string[] = [];
+  const right: string[] = [];
+  const caret = cr.caret < cr.name.length
+    ? cr.name.slice(0, cr.caret) + '▌' + cr.name.slice(cr.caret)
+    : cr.name + '▌';
+  const model = cr.provider && cr.model ? cr.provider + '/' + cr.model : cr.provider ?? '—';
+  const rows = [
+    'Имя: ' + caret,
+    'Модель: ' + model,
+    'Свои инструменты: ' + cr.tools.length,
+    'Расширения: ' + cr.packages.length,
+    'Скиллы: ' + cr.skills.length,
+    cr.done !== null ? 'Готово' : cr.mode === 'edit' ? 'Сохранить' : 'Создать',
+  ];
+  if (cr.mode === 'edit' && cr.done === null) rows.push('Удалить');
+  rows.forEach((t, i) => left.push(listRow(i, cr.cursor, t, ctx.L.leftWidth, ctx.useColor)));
+  right.push(c(ANSI.dim, ctx.useColor) + 'Enter — открыть список / создать' + c(ANSI.reset, ctx.useColor));
+  right.push(c(ANSI.dim, ctx.useColor) + 'Space — отметить в списке' + c(ANSI.reset, ctx.useColor));
+  right.push(c(ANSI.dim, ctx.useColor) + 'Esc — закрыть' + c(ANSI.reset, ctx.useColor));
+  if (cr.error) right.push(c(ANSI.bold, ctx.useColor) + '⚠ ' + cr.error + c(ANSI.reset, ctx.useColor));
+  if (cr.done !== null) right.push(c(ANSI.bold, ctx.useColor) + (cr.mode === 'edit' ? '✓ Обновлено: ' : '✓ Создано: ') + cr.done + c(ANSI.reset, ctx.useColor));
+  return { left, right };
+}
+
+/** Список пакетов окружения: маркеры, кнопки, инфо-панель. */
+function createPackages(cr: CreateState, ctx: Ctx): { left: string[]; right: string[] } {
+  const left: string[] = [];
+  const right: string[] = [];
+  const latest = ctx.state.pkgLatest;
+  const sources = packageListSources(cr, ctx.state.catalog);
+  left.push(c(ANSI.bold, ctx.useColor) + 'Расширения (пакеты)' + c(ANSI.reset, ctx.useColor));
+  if (sources.length === 0) left.push(c(ANSI.dim, ctx.useColor) + '— пусто —' + c(ANSI.reset, ctx.useColor));
+  sources.forEach((src, i) => {
+    const p = ctx.state.catalog.packages.find((x) => x.source === src);
+    const name = p !== undefined ? p.name : src.replace(/^npm:/, '');
+    const marker = p !== undefined ? pkgMarker(p, ctx.state.pkgCheck, latest) : 'в окружении';
+    const text = (cr.packages.includes(src) ? '✓ ' : '  ') + truncateName(name, PKG_NAME_MAX) + '  ' + marker;
+    left.push(listRow(i, cr.cursor, text, ctx.L.leftWidth, ctx.useColor));
+  });
+  const buttons: Array<[string, string]> = [['↑', UPDATE_ALL_ROW]];
+  if (cr.mode === 'edit') buttons.push(['＋', INSTALL_ROW]);
+  buttons.forEach(([icon, label], j) => {
+    left.push(listRow(sources.length + j, cr.cursor, icon + ' ' + label, ctx.L.leftWidth, ctx.useColor));
+  });
+  const curSrc = sources[cr.cursor];
+  const cur = curSrc !== undefined ? ctx.state.catalog.packages.find((x) => x.source === curSrc) : undefined;
+  if (cur !== undefined) {
+    right.push(...pkgInfoLines(cur, ctx.state.pkgCheck, latest, ctx.L, ctx.useColor));
+    right.push('В окружении: ' + (cr.packages.includes(cur.source) ? '✓' : '—'));
+  } else if (curSrc !== undefined) {
+    right.push(c(ANSI.bold, ctx.useColor) + curSrc.replace(/^npm:/, '') + c(ANSI.reset, ctx.useColor));
+    right.push('Установлено только в этом окружении');
+    right.push('В окружении: ✓');
+  } else if (cr.cursor === sources.length) {
+    right.push('Обновить все');
+    right.push('pi update --extensions');
+    right.push('Enter — выполнить');
+  } else if (cr.mode === 'edit') {
+    right.push('Установка расширения');
+    right.push('Список: pi.dev/packages');
+    right.push('Enter — открыть каталог');
+  }
+  if (cr.error) right.push(c(ANSI.bold, ctx.useColor) + '⚠ ' + cr.error + c(ANSI.reset, ctx.useColor));
+  right.push(c(ANSI.dim, ctx.useColor) + 'Space/Enter — выбрать' + c(ANSI.reset, ctx.useColor));
+  right.push(c(ANSI.dim, ctx.useColor) + 'X — удалить' + c(ANSI.reset, ctx.useColor));
+  right.push(c(ANSI.dim, ctx.useColor) + 'Esc — назад' + c(ANSI.reset, ctx.useColor));
+  return { left, right };
+}
+
+/** Пикер каталога pi.dev: установка в окружение. */
+function createInstall(cr: CreateState, ctx: Ctx): { left: string[]; right: string[] } {
+  const left: string[] = [];
+  const right: string[] = [];
+  left.push(c(ANSI.bold, ctx.useColor) + 'Установка в окружение «' + cr.name + '»' + c(ANSI.reset, ctx.useColor));
+  const picker = catalogPickerLines(cr.installCatalog, cr.installStatus, cr.cursor, ctx.L, ctx.useColor);
+  left.push(...picker.left);
+  right.push(...picker.right);
+  if (cr.error) right.push(c(ANSI.bold, ctx.useColor) + '⚠ ' + cr.error + c(ANSI.reset, ctx.useColor));
+  right.push(c(ANSI.dim, ctx.useColor) + 'Esc — назад' + c(ANSI.reset, ctx.useColor));
+  return { left, right };
+}
+
+/** Списки выбора: провайдер / модель / инструменты / скиллы. */
+function createSelects(cr: CreateState, ctx: Ctx): { left: string[]; right: string[] } {
+  // вызывается диспетчером только для четырёх списочных view
+  if (cr.view !== 'providers' && cr.view !== 'models' && cr.view !== 'tools' && cr.view !== 'skills') {
+    return { left: [], right: [] };
+  }
+  const left: string[] = [];
+  const right: string[] = [];
+  const items: string[] =
+    cr.view === 'providers' ? ctx.state.catalog.providers.map((p) => p.name)
+    : cr.view === 'models' ? (ctx.state.catalog.providers.find((p) => p.name === cr.provider)?.models ?? []).map((m) => m.id)
+    : cr.view === 'tools' ? ctx.state.catalog.tools.map((t) => t.name)
+    : ctx.state.catalog.skills.map((sk) => sk.name);
+  const titles = {
+    providers: 'Провайдер',
+    models: 'Модель' + (cr.provider ? ' (' + cr.provider + ')' : ''),
+    tools: 'Свои инструменты',
+    skills: 'Скиллы',
+  } as const;
+  left.push(c(ANSI.bold, ctx.useColor) + titles[cr.view] + c(ANSI.reset, ctx.useColor));
+  const current = cr.view === 'providers' ? cr.provider : cr.view === 'models' ? cr.model : null;
+  const checked = new Set(cr.view === 'tools' ? cr.tools : cr.skills);
+  if (items.length === 0) left.push(c(ANSI.dim, ctx.useColor) + '— пусто —' + c(ANSI.reset, ctx.useColor));
+  items.forEach((n, i) => {
+    const sel = (current !== null && current === n) || checked.has(n);
+    left.push(listRow(i, cr.cursor, (sel ? '✓ ' : '  ') + n, ctx.L.leftWidth, ctx.useColor));
+  });
+  right.push(c(ANSI.dim, ctx.useColor) + 'Space/Enter — выбрать' + c(ANSI.reset, ctx.useColor));
+  right.push(c(ANSI.dim, ctx.useColor) + 'Esc — назад' + c(ANSI.reset, ctx.useColor));
+  return { left, right };
+}
+
+// Заглушки и подтверждения создания: view → [текст, bold?, подсказки]
+const CREATE_BUSY: Record<string, { text: (cr: CreateState) => string; bold?: boolean; hints: string[] }> = {
+  'confirm-delete': { text: (cr) => 'Удалить окружение «' + cr.name + '»?', bold: true, hints: ['Enter — подтвердить', 'Esc — отмена'] },
+  'deleting': { text: () => 'Удаление…', hints: ['Esc — отмена'] },
+  'submitting': { text: () => 'Создание…', hints: ['Esc — отмена'] },
+  'confirm-remove': { text: (cr) => 'Удалить расширение «' + (cr.removing ?? '') + '»?', bold: true, hints: ['Enter — подтвердить', 'Esc — отмена'] },
+  'removing': { text: () => 'Удаление…', hints: ['Esc — назад'] },
+  'updating': { text: () => 'Обновление…', hints: ['Esc — назад'] },
+  'installing': { text: (cr) => 'Установка: ' + (cr.installing ?? '') + '…', hints: ['Esc — назад'] },
+};
+
+function createBusy(cr: CreateState, ctx: Ctx): { left: string[]; right: string[] } {
+  const b = CREATE_BUSY[cr.view];
+  const left = [c(b.bold ? ANSI.bold : ANSI.dim, ctx.useColor) + b.text(cr) + c(ANSI.reset, ctx.useColor)];
+  const right = b.hints.map((h) => c(ANSI.dim, ctx.useColor) + h + c(ANSI.reset, ctx.useColor));
+  return { left, right };
+}

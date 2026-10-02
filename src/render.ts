@@ -1,9 +1,10 @@
 import { Environment } from './environments.js';
 import { computeLayout, NARROW_MIN, LOW_MIN, type Layout } from './layout.js';
-import { UPDATE_ALL_ROW, INSTALL_ROW, packageListSources, type AppState, type PkgCheck } from './state.js';
+import { type AppState, type PkgCheck } from './state.js';
+import { renderCreate, type Ctx } from './sections.js';
 import type { PkgItem, CatalogPkg } from './catalog.js';
 
-const ANSI = {
+export const ANSI = {
   bright: '\x1b[96m',
   bold: '\x1b[1m',
   dim: '\x1b[2m',
@@ -11,7 +12,7 @@ const ANSI = {
   reset: '\x1b[0m',
 };
 
-function c(code: string, on: boolean): string {
+export function c(code: string, on: boolean): string {
   return on ? code : '';
 }
 
@@ -67,7 +68,7 @@ const CHROME_ROWS = 4;
 /** Минимальная внутренняя ширина для полной легенды статус-строки. */
 const LEGEND_WIDE_MIN = 49;
 /** Максимальная длина имени пакета в списках (дальше — многоточие). */
-const PKG_NAME_MAX = 22;
+export const PKG_NAME_MAX = 22;
 /** Максимальная длина имени пакета в пикере каталога (дальше — многоточие). */
 const CATALOG_NAME_MAX = 24;
 
@@ -83,6 +84,7 @@ export function render(a: RenderArgs): string {
   const twoCol = L.twoColumns && state.tab !== 'about';
   const inner = width - 2;
   const contentRows = height - CHROME_ROWS; // таб-бар(1) + разделитель(1) + футер(2)
+  const ctx: Ctx = { state, L, useColor, inner, contentRows, twoCol, root };
   const lines: string[] = [];
 
   // Таб-бар
@@ -103,124 +105,11 @@ export function render(a: RenderArgs): string {
     lines.push('├' + '─'.repeat(inner) + '┤');
   }
 
-    const left: string[] = [];
-    const right: string[] = [];
+    let left: string[] = [];
+    let right: string[] = [];
 
     if (state.sub === 'create' && state.create) {
-      const cr = state.create;
-      if (cr.view === 'form') {
-        const caret = cr.caret < cr.name.length
-          ? cr.name.slice(0, cr.caret) + '▌' + cr.name.slice(cr.caret)
-          : cr.name + '▌';
-        const model = cr.provider && cr.model ? cr.provider + '/' + cr.model : cr.provider ?? '—';
-        const rows = [
-          'Имя: ' + caret,
-          'Модель: ' + model,
-          'Свои инструменты: ' + cr.tools.length,
-          'Расширения: ' + cr.packages.length,
-          'Скиллы: ' + cr.skills.length,
-          cr.done !== null ? 'Готово' : cr.mode === 'edit' ? 'Сохранить' : 'Создать',
-        ];
-        if (cr.mode === 'edit' && cr.done === null) rows.push('Удалить');
-        rows.forEach((t, i) => left.push(listRow(i, cr.cursor, t, L.leftWidth, useColor)));
-        right.push(c(ANSI.dim, useColor) + 'Enter — открыть список / создать' + c(ANSI.reset, useColor));
-        right.push(c(ANSI.dim, useColor) + 'Space — отметить в списке' + c(ANSI.reset, useColor));
-        right.push(c(ANSI.dim, useColor) + 'Esc — закрыть' + c(ANSI.reset, useColor));
-        if (cr.error) right.push(c(ANSI.bold, useColor) + '⚠ ' + cr.error + c(ANSI.reset, useColor));
-        if (cr.done !== null) right.push(c(ANSI.bold, useColor) + (cr.mode === 'edit' ? '✓ Обновлено: ' : '✓ Создано: ') + cr.done + c(ANSI.reset, useColor));
-      } else if (cr.view === 'confirm-delete') {
-        left.push(c(ANSI.bold, useColor) + 'Удалить окружение «' + cr.name + '»?' + c(ANSI.reset, useColor));
-        right.push(c(ANSI.dim, useColor) + 'Enter — подтвердить' + c(ANSI.reset, useColor));
-        right.push(c(ANSI.dim, useColor) + 'Esc — отмена' + c(ANSI.reset, useColor));
-      } else if (cr.view === 'deleting') {
-        left.push(c(ANSI.dim, useColor) + 'Удаление…' + c(ANSI.reset, useColor));
-        right.push(c(ANSI.dim, useColor) + 'Esc — отмена' + c(ANSI.reset, useColor));
-      } else if (cr.view === 'submitting') {
-        left.push(c(ANSI.dim, useColor) + 'Создание…' + c(ANSI.reset, useColor));
-        right.push(c(ANSI.dim, useColor) + 'Esc — отмена' + c(ANSI.reset, useColor));
-      } else if (cr.view === 'confirm-remove') {
-        left.push(c(ANSI.bold, useColor) + 'Удалить расширение «' + (cr.removing ?? '') + '»?' + c(ANSI.reset, useColor));
-        right.push(c(ANSI.dim, useColor) + 'Enter — подтвердить' + c(ANSI.reset, useColor));
-        right.push(c(ANSI.dim, useColor) + 'Esc — отмена' + c(ANSI.reset, useColor));
-      } else if (cr.view === 'removing') {
-        left.push(c(ANSI.dim, useColor) + 'Удаление…' + c(ANSI.reset, useColor));
-        right.push(c(ANSI.dim, useColor) + 'Esc — назад' + c(ANSI.reset, useColor));
-      } else if (cr.view === 'updating') {
-        left.push(c(ANSI.dim, useColor) + 'Обновление…' + c(ANSI.reset, useColor));
-        right.push(c(ANSI.dim, useColor) + 'Esc — назад' + c(ANSI.reset, useColor));
-      } else if (cr.view === 'packages') {
-        const latest = state.pkgLatest;
-        const sources = packageListSources(cr, state.catalog);
-        left.push(c(ANSI.bold, useColor) + 'Расширения (пакеты)' + c(ANSI.reset, useColor));
-        if (sources.length === 0) left.push(c(ANSI.dim, useColor) + '— пусто —' + c(ANSI.reset, useColor));
-        sources.forEach((src, i) => {
-          const p = state.catalog.packages.find((x) => x.source === src);
-          const name = p !== undefined ? p.name : src.replace(/^npm:/, '');
-          const marker = p !== undefined ? pkgMarker(p, state.pkgCheck, latest) : 'в окружении';
-          const text = (cr.packages.includes(src) ? '✓ ' : '  ') + truncateName(name, PKG_NAME_MAX) + '  ' + marker;
-          left.push(listRow(i, cr.cursor, text, L.leftWidth, useColor));
-        });
-        const buttons: Array<[string, string]> = [['↑', UPDATE_ALL_ROW]];
-        if (cr.mode === 'edit') buttons.push(['＋', INSTALL_ROW]);
-        buttons.forEach(([icon, label], j) => {
-          left.push(listRow(sources.length + j, cr.cursor, icon + ' ' + label, L.leftWidth, useColor));
-        });
-        const curSrc = sources[cr.cursor];
-        const cur = curSrc !== undefined ? state.catalog.packages.find((x) => x.source === curSrc) : undefined;
-        if (cur !== undefined) {
-          right.push(...pkgInfoLines(cur, state.pkgCheck, latest, L, useColor));
-          right.push('В окружении: ' + (cr.packages.includes(cur.source) ? '✓' : '—'));
-        } else if (curSrc !== undefined) {
-          right.push(c(ANSI.bold, useColor) + curSrc.replace(/^npm:/, '') + c(ANSI.reset, useColor));
-          right.push('Установлено только в этом окружении');
-          right.push('В окружении: ✓');
-        } else if (cr.cursor === sources.length) {
-          right.push('Обновить все');
-          right.push('pi update --extensions');
-          right.push('Enter — выполнить');
-        } else if (cr.mode === 'edit') {
-          right.push('Установка расширения');
-          right.push('Список: pi.dev/packages');
-          right.push('Enter — открыть каталог');
-        }
-        if (cr.error) right.push(c(ANSI.bold, useColor) + '⚠ ' + cr.error + c(ANSI.reset, useColor));
-        right.push(c(ANSI.dim, useColor) + 'Space/Enter — выбрать' + c(ANSI.reset, useColor));
-        right.push(c(ANSI.dim, useColor) + 'X — удалить' + c(ANSI.reset, useColor));
-        right.push(c(ANSI.dim, useColor) + 'Esc — назад' + c(ANSI.reset, useColor));
-      } else if (cr.view === 'install') {
-        left.push(c(ANSI.bold, useColor) + 'Установка в окружение «' + cr.name + '»' + c(ANSI.reset, useColor));
-        const picker = catalogPickerLines(cr.installCatalog, cr.installStatus, cr.cursor, L, useColor);
-        left.push(...picker.left);
-        right.push(...picker.right);
-        if (cr.error) right.push(c(ANSI.bold, useColor) + '⚠ ' + cr.error + c(ANSI.reset, useColor));
-        right.push(c(ANSI.dim, useColor) + 'Esc — назад' + c(ANSI.reset, useColor));
-      } else if (cr.view === 'installing') {
-        left.push(c(ANSI.dim, useColor) + 'Установка: ' + (cr.installing ?? '') + '…' + c(ANSI.reset, useColor));
-        right.push(c(ANSI.dim, useColor) + 'Esc — назад' + c(ANSI.reset, useColor));
-      } else if (cr.view === 'providers' || cr.view === 'models' || cr.view === 'tools' || cr.view === 'skills') {
-        const items: string[] =
-          cr.view === 'providers' ? state.catalog.providers.map((p) => p.name)
-          : cr.view === 'models' ? (state.catalog.providers.find((p) => p.name === cr.provider)?.models ?? []).map((m) => m.id)
-          : cr.view === 'tools' ? state.catalog.tools.map((t) => t.name)
-          : state.catalog.skills.map((sk) => sk.name);
-        const titles = {
-          providers: 'Провайдер',
-          models: 'Модель' + (cr.provider ? ' (' + cr.provider + ')' : ''),
-          tools: 'Свои инструменты',
-          skills: 'Скиллы',
-        } as const;
-        left.push(c(ANSI.bold, useColor) + titles[cr.view] + c(ANSI.reset, useColor));
-        const current = cr.view === 'providers' ? cr.provider : cr.view === 'models' ? cr.model : null;
-        const checked = new Set(cr.view === 'tools' ? cr.tools : cr.skills);
-        if (items.length === 0) left.push(c(ANSI.dim, useColor) + '— пусто —' + c(ANSI.reset, useColor));
-        items.forEach((n, i) => {
-          const sel = (current !== null && current === n) || checked.has(n);
-          left.push(listRow(i, cr.cursor, (sel ? '✓ ' : '  ') + n, L.leftWidth, useColor));
-        });
-        right.push(c(ANSI.dim, useColor) + 'Space/Enter — выбрать' + c(ANSI.reset, useColor));
-        right.push(c(ANSI.dim, useColor) + 'Esc — назад' + c(ANSI.reset, useColor));
-      }
-      if (!twoCol) for (const h of right) left.push(h);
+      ({ left, right } = renderCreate(state.create, ctx));
     } else if (state.tab === 'envs') {
       interface Row { text: string; selected: boolean; isSep: boolean }
       const rows: Row[] = [];
@@ -361,18 +250,18 @@ export function render(a: RenderArgs): string {
 }
 
 /** Имя с многоточием при превышении длины. */
-function truncateName(name: string, max: number): string {
+export function truncateName(name: string, max: number): string {
   return name.length > max ? name.slice(0, max - 1) + '…' : name;
 }
 
 /** Строка списка: «> » у курсорной, «  » у остальных; курсорная строка инвертируется. */
-function listRow(i: number, cursor: number, text: string, w: number, useColor: boolean): string {
+export function listRow(i: number, cursor: number, text: string, w: number, useColor: boolean): string {
   const line = (i === cursor ? '> ' : '  ') + text;
   return i === cursor ? c(ANSI.inverse, useColor) + padRight(line, w) + c(ANSI.reset, useColor) : line;
 }
 
 /** Инфо-панель пакета для правой колонки. */
-function pkgInfoLines(p: PkgItem, check: PkgCheck, latest: Record<string, string>, L: Layout, useColor: boolean): string[] {
+export function pkgInfoLines(p: PkgItem, check: PkgCheck, latest: Record<string, string>, L: Layout, useColor: boolean): string[] {
   const lines = [
     c(ANSI.bold, useColor) + p.name + c(ANSI.reset, useColor),
     'Источник: ' + p.source,
@@ -385,7 +274,7 @@ function pkgInfoLines(p: PkgItem, check: PkgCheck, latest: Record<string, string
 }
 
 /** Пикер каталога pi.dev: список слева и инфо-панель справа (общий для вкладки и формы). */
-function catalogPickerLines(
+export function catalogPickerLines(
   pkgs: CatalogPkg[],
   status: 'idle' | 'loading' | 'ready' | 'error',
   cursor: number,
@@ -420,7 +309,7 @@ function isPinned(source: string): boolean {
   return new RegExp('^npm:(?:@[^/]+/)?[^@]+@[^@/]+$').test(source);
 }
 
-function pkgMarker(p: PkgItem, check: PkgCheck, latest: Record<string, string>): string {
+export function pkgMarker(p: PkgItem, check: PkgCheck, latest: Record<string, string>): string {
   if (isPinned(p.source)) return 'закреплено';
   if (!p.source.startsWith('npm:')) return 'локальный';
   if (check === 'checking') return '…';
