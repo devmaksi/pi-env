@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert';
 import { render } from '../src/render.js';
 import { computeLayout } from '../src/layout.js';
-import { initialState, freshExt, type Catalog } from '../src/state.js';
+import { initialState, freshExt, freshCreate, type AppState, type Catalog } from '../src/state.js';
 import { Environment } from '../src/environments.js';
 
 const envs: Environment[] = [
@@ -199,4 +199,36 @@ test('вкладка «Расширения»: пометки процессов
   const conf = render({ state: { ...initialState(extCatalog), tab: 'extensions' as const, ext: freshExt({ view: 'confirm-remove', removing: 'pkg-a' }) }, envs, width: 100, height: 10, ...base });
   assert.ok(conf.includes('Удалить расширение «pkg-a»?'));
   assert.ok(conf.includes('Enter — подтвердить'));
+});
+
+test('пустой список окружений: без разделителя, «Создать» на нуле', () => {
+  const s = render({ state: initialState(), envs: [], width: 62, height: 10, ...base });
+  assert.ok(s.includes('> Создать'));
+  assert.ok(s.includes('Выберите окружение'));
+  const sepLines = s.split('\n').filter((l) => l.includes('─'));
+  assert.equal(sepLines.length, 1); // только разделитель под таб-баром
+});
+
+test('узкий режим на вкладке «Расширения»: правый столбец слит, статус в футере', () => {
+  const st = { ...initialState(extCatalog), tab: 'extensions' as const };
+  // height 14: contentRows 10 — слитая инфо-панель (строки 7+) влезает в кадр
+  const s = render({ state: st, envs, width: 40, height: 14, root: '/root', useColor: false, status: 'проверка' });
+  assert.ok(!s.split('\n')[1].includes('┬'));
+  assert.ok(s.includes('Обновить все'));
+  assert.ok(s.includes('Источник:')); // строка инфо-панели, слитая в левый столбец
+  assert.ok(s.includes('проверка'));
+});
+
+test('форма создания в цвете: ANSI не обрывается', () => {
+  const st: AppState = { ...initialState(), sub: 'create', create: freshCreate() };
+  const s = render({ state: st, envs, width: 62, height: 10, root: '/root', useColor: true, status: null });
+  for (const line of s.split('\n')) assertNoDanglingAnsi(line);
+});
+
+test('вкладка «Расширения» без пакетов: пусто и только кнопки', () => {
+  const st = { ...initialState(), tab: 'extensions' as const };
+  const s = render({ state: st, envs, width: 62, height: 10, ...base });
+  assert.ok(s.includes('— пусто —'));
+  assert.ok(s.includes('Установить'));
+  assert.ok(!s.includes('Источник:'));
 });
