@@ -309,15 +309,33 @@ test('update-result: успех → к списку, ошибка → error', ()
   assert.equal(s.create!.error, 'нет сети');
 });
 
-test('updates-result: карта latest и статус проверки', () => {
+test('updates-result scope=main: карта latest и статус проверки', () => {
   let s = withCreate();
   assert.equal(s.pkgCheck, 'idle');
-  s = reducer(s, { type: 'updates-result', ok: true, latest: { 'pkg-a': '2.0.0' } }, [], true);
+  s = reducer(s, { type: 'updates-result', ok: true, latest: { 'pkg-a': '2.0.0' }, scope: 'main' }, [], true);
   assert.equal(s.pkgCheck, 'done');
   assert.deepEqual(s.pkgLatest, { 'pkg-a': '2.0.0' });
-  s = reducer(s, { type: 'updates-result', ok: false, latest: {} }, [], true);
+  s = reducer(s, { type: 'updates-result', ok: false, latest: {}, scope: 'main' }, [], true);
   assert.equal(s.pkgCheck, 'error');
   assert.deepEqual(s.pkgLatest, { 'pkg-a': '2.0.0' });
+});
+
+test('updates-result scope=create: карта latest и статус — в состояние формы', () => {
+  let s = withCreate();
+  s = reducer(s, { type: 'updates-result', ok: true, latest: { 'env-pkg': '2.0.0' }, scope: 'create' }, [], true);
+  assert.equal(s.create!.check, 'done');
+  assert.deepEqual(s.create!.latest, { 'env-pkg': '2.0.0' });
+  // верхний уровень не тронут
+  assert.equal(s.pkgCheck, 'idle');
+  assert.deepEqual(s.pkgLatest, {});
+});
+
+test('updates-result scope=create: без открытой формы — результат игнорируется', () => {
+  const s = initialState(catalog);
+  const next = reducer(s, { type: 'updates-result', ok: true, latest: { 'x': '1' }, scope: 'create' }, [], true);
+  assert.equal(next.create, null);
+  assert.equal(next.pkgCheck, 'idle');
+  assert.deepEqual(next.pkgLatest, {});
 });
 
 test('freshEdit: пакеты — источники, legacy-имя нормализуется, чужой остаётся', () => {

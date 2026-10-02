@@ -25,8 +25,9 @@
   запуск окружения (дочерний `pi` с передачей терминала, возврат в TUI по выходе),
   редактирование окружения (E: модель, инструменты, пакеты, скиллы, переименование,
   удаление с подтверждением), управление расширениями в форме (маркеры
-  «↑ latest», строка «Обновить все» через `pi update --extensions`, полное
-  удаление через `pi remove` с подтверждением, инфо-панель пакета справа),
+  «↑ latest» по `npm outdated` самого окружения, включая env-only пакеты,
+  строка «Обновить все» через `pi update --extensions` в каталоге окружения,
+  полное удаление через `pi remove` с подтверждением, инфо-панель пакета справа),
   вкладка «Расширения» (глобальные пакеты main-агента: Enter — обновить пакет
   (`pi update <source>`), X — удалить, «Обновить все»),
   установка расширений из каталога `https://pi.dev/packages` (экран пикера:
@@ -69,14 +70,18 @@
   копирование инструментов/скиллов/каталога моделей, запись settings.json),
   `readSettings`, `updateEnvironment` (синхронизация + переименование),
   `deleteEnvironment`
-- `src/state.ts` — `AppState` (+ `pkgCheck`, `pkgLatest`, `ext`), `reducer`,
-  машина создания `CreateState` (views `install`/`installing`, пакеты — по
-  источникам `npm:name`), `ExtState` вкладки «Расширения» (каталог, установка,
-  обновление, удаление) (чистые)
-- `src/render.ts` — `render(args)` → строки ANSI (чистая)
-- `src/run.ts` — цикл приложения, `runCmd`, `checkUpdates` (`npm outdated`),
-  `doUpdateAll`/`doUpdateOne`/`doRemove` (`pi update`/`pi remove`),
-  `doInstall` (`pi install` в main-агента или окружение), `loadPackageCatalog`
+- `src/state.ts` — `AppState` (+ `pkgCheck`, `pkgLatest`, `ext`), `reducer`
+  (`updates-result` с scope `main`/`create`), машина создания `CreateState`
+  (views `install`/`installing`, пакеты — по источникам `npm:name`,
+  `check`/`latest` — проверка обновлений окружения), `ExtState` вкладки
+  «Расширения» (каталог, установка, обновление, удаление) (чистые)
+- `src/render.ts` — `render(args)` → строки ANSI, `pkgMarker` (вкладка) и
+  `formPkgMarker` (форма, по карте outdated окружения) (чистые)
+- `src/run.ts` — цикл приложения, `runCmd`, `checkUpdates(targetDir, scope)`
+  (`npm outdated` по каталогу main-агента или окружения),
+  `doUpdateAll(targetDir, scope)`/`doUpdateOne`/`doRemove`
+  (`pi update`/`pi remove`), `doInstall` (`pi install` в main-агента или
+  окружение), `loadPackageCatalog`
 - `test/*.test.ts` — тесты чистого ядра
 
 ## Конвенции

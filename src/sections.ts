@@ -16,6 +16,7 @@ import {
   truncateName,
   pkgInfoLines,
   pkgMarker,
+  formPkgMarker,
   catalogPickerLines,
   PKG_NAME_MAX,
 } from './render.js';
@@ -74,14 +75,15 @@ function createForm(cr: CreateState, ctx: Ctx): { left: string[]; right: string[
 function createPackages(cr: CreateState, ctx: Ctx): { left: string[]; right: string[] } {
   const left: string[] = [];
   const right: string[] = [];
-  const latest = ctx.state.pkgLatest;
+  const latest = cr.latest;
+  const check = cr.check;
   const sources = packageListSources(cr, ctx.state.catalog);
   left.push(c(ANSI.bold, ctx.useColor) + 'Расширения (пакеты)' + c(ANSI.reset, ctx.useColor));
   if (sources.length === 0) left.push(c(ANSI.dim, ctx.useColor) + '— пусто —' + c(ANSI.reset, ctx.useColor));
   sources.forEach((src, i) => {
     const p = ctx.state.catalog.packages.find((x) => x.source === src);
     const name = p !== undefined ? p.name : src.replace(/^npm:/, '');
-    const marker = p !== undefined ? pkgMarker(p, ctx.state.pkgCheck, latest) : 'в окружении';
+    const marker = formPkgMarker(src, name, p !== undefined, check, latest);
     const text = (cr.packages.includes(src) ? '✓ ' : '  ') + truncateName(name, PKG_NAME_MAX) + '  ' + marker;
     left.push(listRow(i, cr.cursor, text, ctx.L.leftWidth, ctx.useColor));
   });
@@ -93,7 +95,7 @@ function createPackages(cr: CreateState, ctx: Ctx): { left: string[]; right: str
   const curSrc = sources[cr.cursor];
   const cur = curSrc !== undefined ? ctx.state.catalog.packages.find((x) => x.source === curSrc) : undefined;
   if (cur !== undefined) {
-    right.push(...pkgInfoLines(cur, ctx.state.pkgCheck, latest, ctx.L, ctx.useColor));
+    right.push(...pkgInfoLines(cur, check, latest, ctx.L, ctx.useColor));
     right.push('В окружении: ' + (cr.packages.includes(cur.source) ? '✓' : '—'));
   } else if (curSrc !== undefined) {
     right.push(c(ANSI.bold, ctx.useColor) + curSrc.replace(/^npm:/, '') + c(ANSI.reset, ctx.useColor));

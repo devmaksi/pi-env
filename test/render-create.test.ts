@@ -94,8 +94,8 @@ test('узкий режим: форма рендерится одной коло
   assert.ok(s.includes('Создать'));
 });
 
-function editState(over: Partial<AppState['create']> = {}): AppState {
-  return { ...initialState(catalog), sub: 'create', create: { ...freshCreate(), mode: 'edit' as const, origName: 'dev', name: 'dev', ...over } };
+function editState(over: Partial<AppState['create']> = {}, app: Partial<AppState> = {}): AppState {
+  return { ...initialState(catalog), ...app, sub: 'create', create: { ...freshCreate(), mode: 'edit' as const, origName: 'dev', name: 'dev', ...over } };
 }
 
 test('форма edit: 7 строк — Сохранить и Удалить', () => {
@@ -146,16 +146,16 @@ test('суб-экран запуска больше не рендерится', 
 });
 
 test('список расширений: ↑ latest у устаревшего', () => {
-  const s = render({ state: createState({ view: 'packages' }, { pkgCheck: 'done', pkgLatest: { 'pkg-a': '2.0.0' } }), envs, width: 100, height: 12, root: '/root', useColor: false, status: null });
+  const s = render({ state: createState({ view: 'packages', check: 'done', latest: { 'pkg-a': '2.0.0' } }), envs, width: 100, height: 12, root: '/root', useColor: false, status: null });
   assert.ok(s.includes('↑ 2.0.0'));
 });
 
 test('список расширений: · у актуального, … при проверке, ? при ошибке', () => {
-  const done = render({ state: createState({ view: 'packages' }, { pkgCheck: 'done', pkgLatest: {} }), envs, width: 100, height: 12, root: '/root', useColor: false, status: null });
+  const done = render({ state: createState({ view: 'packages', check: 'done', latest: {} }), envs, width: 100, height: 12, root: '/root', useColor: false, status: null });
   assert.ok(done.includes('·'));
-  const checking = render({ state: createState({ view: 'packages' }, { pkgCheck: 'checking' }), envs, width: 100, height: 12, root: '/root', useColor: false, status: null });
+  const checking = render({ state: createState({ view: 'packages', check: 'checking' }), envs, width: 100, height: 12, root: '/root', useColor: false, status: null });
   assert.ok(checking.includes('…'));
-  const err = render({ state: createState({ view: 'packages' }, { pkgCheck: 'error' }), envs, width: 100, height: 12, root: '/root', useColor: false, status: null });
+  const err = render({ state: createState({ view: 'packages', check: 'error' }), envs, width: 100, height: 12, root: '/root', useColor: false, status: null });
   assert.ok(err.includes('?'));
 });
 
@@ -169,7 +169,7 @@ test('список расширений: строка кнопки, панель
 });
 
 test('список расширений: панель — описание, отметка «в окружении», статус обновления', () => {
-  const s = render({ state: createState({ view: 'packages', packages: ['npm:pkg-a'] }, { pkgCheck: 'done', pkgLatest: { 'pkg-a': '2.0.0' } }), envs, width: 100, height: 14, root: '/root', useColor: false, status: null });
+  const s = render({ state: createState({ view: 'packages', packages: ['npm:pkg-a'], check: 'done', latest: { 'pkg-a': '2.0.0' } }), envs, width: 100, height: 14, root: '/root', useColor: false, status: null });
   assert.ok(s.includes('Тестовый пакет'));
   assert.ok(s.includes('В окружении: ✓'));
   assert.ok(s.includes('установлена 1.2.3'));
@@ -219,6 +219,22 @@ test('edit packages: env-only строка с меткой и кнопка «У�
   assert.ok(s.includes('Обновить все'));
   assert.ok(s.includes('Установить'));
   assert.ok(s.includes('только в этом окружении'));
+});
+
+test('env-only пакет: ↑ latest при доступном обновлении', () => {
+  const s = render({ state: editState({ view: 'packages', packages: ['npm:env-only'], check: 'done', latest: { 'env-only': '2.0.0' }, cursor: 0 }), envs, width: 100, height: 14, root: '/root', useColor: false, status: null });
+  assert.ok(s.includes('↑ 2.0.0'));
+});
+
+test('scoped env-only пакет: ↑ latest по имени с скоупом', () => {
+  const s = render({ state: editState({ view: 'packages', packages: ['npm:@scope/env-only'], check: 'done', latest: { '@scope/env-only': '3.1.0' } }), envs, width: 100, height: 14, root: '/root', useColor: false, status: null });
+  assert.ok(s.includes('↑ 3.1.0'));
+});
+
+test('пакет каталога: ↑ по карте outdated, даже если версия каталога равна latest', () => {
+  // pkg-a в каталоге 1.2.3; карта outdated окружения: pkg-a → 1.2.3 (в окружении старее)
+  const s = render({ state: editState({ view: 'packages', packages: ['npm:pkg-a'], check: 'done', latest: { 'pkg-a': '1.2.3' } }), envs, width: 100, height: 14, root: '/root', useColor: false, status: null });
+  assert.ok(s.includes('↑ 1.2.3'));
 });
 
 test('create packages: без кнопки «Установить»', () => {

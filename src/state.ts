@@ -53,6 +53,8 @@ export interface CreateState {
   installStatus: 'idle' | 'loading' | 'ready' | 'error';
   installing: string | null;
   removing: string | null;
+  check: PkgCheck;
+  latest: Record<string, string>;
 }
 
 export interface AppState {
@@ -106,6 +108,7 @@ export function freshCreate(): CreateState {
     mode: 'create', origName: null,
     tools: [], packages: [], skills: [], view: 'form', error: null, done: null,
     removing: null, installCatalog: [], installStatus: 'idle', installing: null,
+    check: 'idle', latest: {},
   };
 }
 
@@ -131,6 +134,7 @@ export function freshEdit(name: string, settings: EnvSettings, catalog: Catalog)
     error: null,
     done: null,
     removing: null, installCatalog: [], installStatus: 'idle', installing: null,
+    check: 'idle', latest: {},
   };
 }
 
@@ -141,7 +145,7 @@ export type Action =
   | { type: 'edit-start'; name: string; settings: EnvSettings }
   | { type: 'run-result'; ok: boolean }
   | { type: 'delete-result'; ok: boolean; message: string }
-  | { type: 'updates-result'; ok: boolean; latest: Record<string, string> }
+  | { type: 'updates-result'; ok: boolean; latest: Record<string, string>; scope: 'main' | 'create' }
   | { type: 'update-result'; ok: boolean; message: string }
   | { type: 'remove-result'; ok: boolean; message: string }
   | { type: 'install-result'; ok: boolean; message: string; sources?: string[] };
@@ -164,6 +168,13 @@ export function reducer(state: AppState, action: Action, envNames: string[], two
     }
     if (action.type === 'run-result') return { ...state, sub: null };
     if (action.type === 'updates-result') {
+      if (action.scope === 'create') {
+        if (state.create === null) return state; // форма уже закрыта — результат устарел
+        return {
+          ...state,
+          create: { ...state.create, check: action.ok ? 'done' : 'error', latest: action.ok ? action.latest : state.create.latest },
+        };
+      }
       return {
         ...state,
         pkgCheck: action.ok ? 'done' : 'error',

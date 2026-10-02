@@ -1,3 +1,4 @@
+import { existsSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { spawn } from 'node:child_process';
@@ -114,43 +115,68 @@ export async function run(root: string): Promise<void> {
     return runCmd('pi', args, PI_TIMEOUT_MS, { cwd: process.cwd(), env: piEnv(agentDir) });
   }
 
+  /** Каталог агента для формы: окружение (edit) или main-агент (create, окружение ещё не существует). */
+  function formTargetDir(): string {
+    const cr = state.create!;
+    return cr.mode === 'edit' ? join(root, cr.origName ?? cr.name) : agentDir;
+  }
+
   /** Общий финал pi-команды: результат в reducer, перечитка каталога, отрисовка. */
-  function afterPiCommand(r: { ok: boolean }, action: Action): void {
+  function afterPiCommand(r: { ok: boolean }, action: Action, targetDir: string, scope: 'main' | 'create'): void {
     state = reducer(state, action, envNames(), twoColumns());
     if (r.ok) {
       reloadCatalog();
-      void checkUpdates();
+      void checkUpdates(targetDir, scope);
     }
     repaint();
   }
 
-  /** npm outdated в каталоге npm main-агента → карта имени → latest. */
-  async function checkUpdates(): Promise<void> {
-    state = { ...state, pkgCheck: 'checking' };
-    const raw = await runCmd('npm', ['outdated', '--json', '--prefix', join(agentDir, 'npm')], NPM_TIMEOUT_MS);
-    state = reducer(state, { type: 'updates-result', ok: raw.ok, latest: parseOutdated(raw.stdout) }, envNames(), twoColumns());
-    repaint();
+  /**
+   * npm outdated по npm-каталогу заданной папки агента (main-агент или окружение)
+   * → карта имени → latest. Scope: 'main' — верхний уровень (вкладка «Расширения»),
+   * 'create' — состояние формы создания. Каталога нет — карта пуста (обновлять нечего).
+   */
+  async function checkUpdates(targetDir: string, scope: 'main' | 'create'): Promise<void> {
+    const npmDir = join(targetDir, 'npm');
+    const setChecking = (): void => {
+      if (scope === 'create') {
+        if (state.create !== null) state = { ...state, create: { ...state.create, check: 'checking' } };
+      } else {
+        state = { ...state, pkgCheck: 'checking' };
+      }
+    };
+    const finish = (ok: boolean, latest: Record<string, string>): void => {
+      state = reducer(state, { type: 'updates-result', ok, latest, scope }, envNames(), twoColumns());
+      repaint();
+    };
+    if (!existsSync(npmDir)) {
+      finish(true, {});
+      return;
+    }
+    setChecking();
+    const raw = await runCmd('npm', ['outdated', '--json', '--prefix', npmDir], NPM_TIMEOUT_MS);
+    finish(raw.ok, parseOutdated(raw.stdout));
   }
 
-  /** pi update --extensions: обновление всех установленных пакетов. */
-  async function doUpdateAll(): Promise<void> {
-    const r = await runPi(['update', '--extensions']);
+  /** pi update --extensions: обновление всех установленных пакетов в папке агента targetDir. */
+  async function doUpdateAll(targetDir: string, scope: 'main' | 'create'): Promise<void> {
+    const r = await runCmd('pi', ['update', '--extensions'], PI_TIMEOUT_MS, { cwd: process.cwd(), env: piEnv(targetDir) });
     if (r.ok) statusMsg = 'Расширения обновлены';
-    afterPiCommand(r, { type: 'update-result', ok: r.ok, message: r.ok ? 'Расширения обновлены' : r.stderr || 'ошибка обновления' });
+    afterPiCommand(r, { type: 'update-result', ok: r.ok, message: r.ok ? 'Расширения обновлены' : r.stderr || 'ошибка обновления' }, targetDir, scope);
   }
 
   /** pi remove <source>: полное удаление пакета из main-агента. */
   async function doRemove(source: string): Promise<void> {
     const r = await runPi(['remove', source]);
     if (r.ok) statusMsg = 'Расширение удалено: ' + source;
-    afterPiCommand(r, { type: 'remove-result', ok: r.ok, message: r.ok ? source : r.stderr || 'ошибка удаления' });
+    afterPiCommand(r, { type: 'remove-result', ok: r.ok, message: r.ok ? source : r.stderr || 'ошибка удаления' }, agentDir, 'main');
   }
 
   /** pi update <source>: обновление одного пакета main-агента. */
   async function doUpdateOne(source: string): Promise<void> {
     const r = await runPi(['update', source]);
     if (r.ok) statusMsg = 'Обновлено: ' + source;
-    afterPiCommand(r, { type: 'update-result', ok: r.ok, message: r.ok ? source : r.stderr || 'ошибка обновления' });
+    afterPiCommand(r, { type: 'update-result', ok: r.ok, message: r.ok ? source : r.stderr || 'ошибка обновления' }, agentDir, 'main');
   }
 
   /** pi install <source>: установка пакета в указанный каталог агента (main или окружение). */
@@ -164,7 +190,7 @@ export async function run(root: string): Promise<void> {
         sources = (settings.packages ?? []).map((s) => normalizePkgSource(s, catalog.packages));
       } else {
         reloadCatalog();
-        void checkUpdates();
+        void checkUpdates(agentDir, 'main');
       }
     }
     state = reducer(state, { type: 'install-result', ok: r.ok, message: r.ok ? source : r.stderr || 'ошибка установки', sources }, envNames(), twoColumns());
@@ -207,9 +233,9 @@ export async function run(root: string): Promise<void> {
         const pkg = name !== null ? catalog.packages.find((p) => p.name === name) : undefined;
         if (pkg) void doRemove(pkg.source);
       } else if (v === 'updating' && prevView === 'packages') {
-        void doUpdateAll();
-      } else if (v === 'packages' && prevView === 'form' && state.pkgCheck !== 'checking') {
-        void checkUpdates();
+        void doUpdateAll(formTargetDir(), 'create');
+      } else if (v === 'packages' && prevView === 'form' && state.create.check !== 'checking') {
+        void checkUpdates(formTargetDir(), 'create');
       } else if (v === 'install' && prevView === 'packages' && state.create.installStatus === 'loading') {
         void loadPackageCatalog();
       } else if (v === 'installing' && prevView === 'install') {
@@ -227,7 +253,7 @@ export async function run(root: string): Promise<void> {
         const pkg = catalog.packages.find((p) => p.name === e.removing);
         if (pkg) void doRemove(pkg.source);
       } else if (e.view === 'updating' && prevExt === null) {
-        if (e.updating === null) void doUpdateAll();
+        if (e.updating === null) void doUpdateAll(agentDir, 'main');
         else {
           const pkg = catalog.packages.find((p) => p.name === e.updating);
           if (pkg) void doUpdateOne(pkg.source);
@@ -236,7 +262,7 @@ export async function run(root: string): Promise<void> {
     }
 
     if (prevTab !== 'extensions' && state.tab === 'extensions' && state.ext === null && state.pkgCheck === 'idle') {
-      void checkUpdates();
+      void checkUpdates(agentDir, 'main');
     }
 
     if (state.create && state.create.view === 'submitting') {

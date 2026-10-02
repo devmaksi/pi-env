@@ -250,6 +250,27 @@ export function pkgMarker(p: PkgItem, check: PkgCheck, latest: Record<string, st
   return latestVer !== undefined && latestVer !== p.version ? '↑ ' + latestVer : '·';
 }
 
+/**
+ * Маркер пакета в форме окружения: карта outdated строится по npm-каталогу
+ * самого окружения, поэтому наличие имени в карте = обновление доступно
+ * (версию каталога main-агента сравнивать нельзя).
+ * Актуальны: «·» у пакета каталога, «в окружении» у env-only.
+ */
+export function formPkgMarker(
+  source: string,
+  name: string,
+  inCatalog: boolean,
+  check: PkgCheck,
+  latest: Record<string, string>,
+): string {
+  if (isPinned(source)) return 'закреплено';
+  if (!source.startsWith('npm:')) return 'локальный';
+  if (check === 'checking') return '…';
+  if (check === 'error') return '?';
+  const latestVer = latest[name];
+  return latestVer !== undefined ? '↑ ' + latestVer : inCatalog ? '·' : 'в окружении';
+}
+
 function updateLine(p: PkgItem, check: PkgCheck, latest: Record<string, string>): string {
   if (isPinned(p.source)) return 'закреплено';
   if (!p.source.startsWith('npm:')) return 'локальный';
