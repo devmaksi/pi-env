@@ -105,69 +105,80 @@ export function render(a: RenderArgs): string {
     lines.push('├' + '─'.repeat(inner) + '┤');
   }
 
-    let left: string[] = [];
-    let right: string[] = [];
+  const section = state.sub === 'create' && state.create
+    ? renderCreate(state.create, ctx)
+    : state.tab === 'envs' ? renderEnvList(envs, state, ctx)
+    : state.tab === 'extensions' ? renderExtTab(state.ext, ctx)
+    : state.tab === 'settings' ? renderSettings(state, ctx)
+    : renderAbout(ctx);
+  const { left, right } = section;
 
-    if (state.sub === 'create' && state.create) {
-      ({ left, right } = renderCreate(state.create, ctx));
-    } else if (state.tab === 'envs') {
-      ({ left, right } = renderEnvList(envs, state, ctx));
-    } else if (state.tab === 'extensions') {
-      ({ left, right } = renderExtTab(state.ext, ctx));
-    } else if (state.tab === 'settings') {
-      const items = [
-        'Корневой каталог: ' + root,
-        'Цветной вывод: [' + (state.colorToggle ? 'x' : ' ') + ']',
-      ];
-      items.forEach((t, i) => {
-        const text = (i === state.selected ? '> ' : '  ') + t;
-        if (i === state.selected) {
-          left.push(c(ANSI.inverse, useColor) + padRight(text, L.leftWidth) + c(ANSI.reset, useColor));
-        } else {
-          left.push(text);
-        }
-      });
-      right.push(c(ANSI.dim, useColor) + 'Подробные настройки — этап 2' + c(ANSI.reset, useColor));
+  for (let i = 0; i < contentRows; i++) {
+    if (twoCol) {
+      const l = i < left.length ? padRight(left[i], L.leftWidth) : ' '.repeat(L.leftWidth);
+      const r = i < right.length ? padRight(right[i], L.rightWidth) : ' '.repeat(L.rightWidth);
+      const hl = state.tab === 'envs' && state.sub === null && state.focus === 'left' && useColor;
+      const hr = state.tab === 'envs' && state.sub === null && state.focus === 'right' && useColor;
+      const bl = c(ANSI.bold, hl) + '│' + c(ANSI.reset, hl);
+      const bm = c(ANSI.bold, hl || hr) + '│' + c(ANSI.reset, hl || hr);
+      const br = c(ANSI.bold, hr) + '│' + c(ANSI.reset, hr);
+      lines.push(bl + l + bm + r + br);
     } else {
-      const block = [
-        c(ANSI.bold, useColor) + 'pi-env 0.1.0' + c(ANSI.reset, useColor),
-        'CLI для управления окружениями pi',
-        '',
-        '↑↓ перемещение  TAB вкладки  Enter ОК  Space toggle  Esc назад/выход',
-      ];
-      const top = Math.max(0, Math.floor((contentRows - block.length) / 2));
-      for (let i = 0; i < contentRows; i++) {
-        left.push(i - top >= 0 && i - top < block.length ? center(block[i - top], inner) : '');
-      }
+      const l = i < left.length ? padRight(left[i], inner) : ' '.repeat(inner);
+      lines.push('│' + l + '│');
     }
+  }
 
-    for (let i = 0; i < contentRows; i++) {
-      if (twoCol) {
-        const l = i < left.length ? padRight(left[i], L.leftWidth) : ' '.repeat(L.leftWidth);
-        const r = i < right.length ? padRight(right[i], L.rightWidth) : ' '.repeat(L.rightWidth);
-        const hl = state.tab === 'envs' && state.sub === null && state.focus === 'left' && useColor;
-        const hr = state.tab === 'envs' && state.sub === null && state.focus === 'right' && useColor;
-        const bl = c(ANSI.bold, hl) + '│' + c(ANSI.reset, hl);
-        const bm = c(ANSI.bold, hl || hr) + '│' + c(ANSI.reset, hl || hr);
-        const br = c(ANSI.bold, hr) + '│' + c(ANSI.reset, hr);
-        lines.push(bl + l + bm + r + br);
-      } else {
-        const l = i < left.length ? padRight(left[i], inner) : ' '.repeat(inner);
-        lines.push('│' + l + '│');
-      }
-    }
-
-  // Статус-строка
-  const legend1 = inner >= LEGEND_WIDE_MIN ? '↑↓ перемещение  ←→ колонки  TAB вкладки  Enter ОК' : '↑↓ TAB Enter Space Esc';
-  const legend2 = 'Space toggle  E — правка  Esc назад/выход';
-  const f1 = c(ANSI.dim, useColor) + legend1 + c(ANSI.reset, useColor);
-  const f2 = a.status !== null
-    ? c(ANSI.bold, useColor) + a.status + c(ANSI.reset, useColor)
-    : c(ANSI.dim, useColor) + legend2 + c(ANSI.reset, useColor);
-  lines.push('│' + padRight(f1, inner) + '│');
-  lines.push('│' + padRight(f2, inner) + '│');
+  lines.push(...renderFooter(a, inner));
 
   return lines.join('\n');
+}
+
+/** Вкладка «Настройки»: корневой каталог и toggle цвета. */
+function renderSettings(state: AppState, ctx: Ctx): { left: string[]; right: string[] } {
+  const left: string[] = [];
+  const right: string[] = [];
+  const items = [
+    'Корневой каталог: ' + ctx.root,
+    'Цветной вывод: [' + (state.colorToggle ? 'x' : ' ') + ']',
+  ];
+  items.forEach((t, i) => {
+    const text = (i === state.selected ? '> ' : '  ') + t;
+    if (i === state.selected) {
+      left.push(c(ANSI.inverse, ctx.useColor) + padRight(text, ctx.L.leftWidth) + c(ANSI.reset, ctx.useColor));
+    } else {
+      left.push(text);
+    }
+  });
+  right.push(c(ANSI.dim, ctx.useColor) + 'Подробные настройки — этап 2' + c(ANSI.reset, ctx.useColor));
+  return { left, right };
+}
+
+/** Вкладка «О программе»: центрированный блок на всю ширину. */
+function renderAbout(ctx: Ctx): { left: string[]; right: string[] } {
+  const block = [
+    c(ANSI.bold, ctx.useColor) + 'pi-env 0.1.0' + c(ANSI.reset, ctx.useColor),
+    'CLI для управления окружениями pi',
+    '',
+    '↑↓ перемещение  TAB вкладки  Enter ОК  Space toggle  Esc назад/выход',
+  ];
+  const top = Math.max(0, Math.floor((ctx.contentRows - block.length) / 2));
+  const left: string[] = [];
+  for (let i = 0; i < ctx.contentRows; i++) {
+    left.push(i - top >= 0 && i - top < block.length ? center(block[i - top], ctx.inner) : '');
+  }
+  return { left, right: [] };
+}
+
+/** Статус-строка: легенда (или статус) + вторая легенда. */
+function renderFooter(a: RenderArgs, inner: number): string[] {
+  const legend1 = inner >= LEGEND_WIDE_MIN ? '↑↓ перемещение  ←→ колонки  TAB вкладки  Enter ОК' : '↑↓ TAB Enter Space Esc';
+  const legend2 = 'Space toggle  E — правка  Esc назад/выход';
+  const f1 = c(ANSI.dim, a.useColor) + legend1 + c(ANSI.reset, a.useColor);
+  const f2 = a.status !== null
+    ? c(ANSI.bold, a.useColor) + a.status + c(ANSI.reset, a.useColor)
+    : c(ANSI.dim, a.useColor) + legend2 + c(ANSI.reset, a.useColor);
+  return ['│' + padRight(f1, inner) + '│', '│' + padRight(f2, inner) + '│'];
 }
 
 /** Имя с многоточием при превышении длины. */
