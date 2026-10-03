@@ -429,3 +429,70 @@ test('средняя граница: в колонке leftWidth+2 и на 1-к�
     }
   }
 });
+
+// Инвариант кадра: на границе каждой строки SGR-состояние должно быть чистым —
+// иначе активный стиль (инверсия курсорной строки) уйдёт в правую колонку
+// и в строки ниже (терминал хранит стиль между строками).
+function assertBalancedRowEnds(frame: string): void {
+  let active: number[] = [];
+  for (const line of frame.split('\n')) {
+    let i = 0;
+    while (i < line.length) {
+      if (line[i] !== '\x1b') {
+        i++;
+        continue;
+      }
+      const m = /^\x1b\[([0-9;]*)m/.exec(line.slice(i));
+      if (!m) {
+        i++;
+        continue;
+      }
+      i += m[0].length;
+      active = m[1] === '' || m[1] === '0' ? [] : m[1].split(';').map(Number);
+    }
+    assert.ok(active.length === 0, `строка заканчивается с активным стилем: ${JSON.stringify(line)}`);
+  }
+}
+
+const extCatalogWide: Catalog = {
+  providers: [],
+  tools: [],
+  skills: [],
+  packages: [
+    { source: 'npm:pkg-a', name: 'pkg-a', path: '/p/a', version: '1.0.0', description: 'Пакет A', extensions: ['./index.ts'], skills: [] },
+    { source: 'npm:very-long-package-name-here', name: 'very-long-package-name-here', path: '/p/v', version: '1.0.0', description: null, extensions: [], skills: [] },
+  ],
+};
+
+test('вкладка «Расширения»: курсорная строка с «двойным» символом — сброс инверсии не срезается', () => {
+  const st = { ...initialState(extCatalogWide), tab: 'extensions' as const, selected: 1 };
+  const s = render({ state: st, envs, width: 100, height: 12, root: '/root', useColor: true, status: null });
+  const line = s.split('\n').find((l) => l.includes('\x1b[7m'));
+  assert.ok(line, 'курсорная строка с инверсией');
+  const from = line.indexOf('\x1b[7m');
+  const to = line.indexOf('\x1b[0m', from);
+  assert.ok(to > from, `после инверсии в строке нет сброса: ${JSON.stringify(line)}`);
+});
+
+test('цветной кадр: каждая строка заканчивается с чистым SGR-состоянием', () => {
+  const wideEnvs: Environment[] = [
+    { name: 'dev—prod', path: '/root/d', details: { hasSettings: false, model: null, tools: [], skills: [], packages: [] } },
+  ];
+  const cases: Array<{ state: AppState; width: number; height: number; envs: Environment[] }> = [
+    { state: { ...initialState(extCatalogWide), tab: 'extensions' as const, selected: 1 }, width: 100, height: 12, envs }, // имя с «…»
+    { state: { ...initialState(extCatalogWide), tab: 'extensions' as const, selected: 2 }, width: 100, height: 12, envs }, // «↑ Обновить все»
+    { state: { ...initialState(extCatalogWide), tab: 'extensions' as const, selected: 3 }, width: 100, height: 12, envs }, // «＋ Установить»
+    { state: initialState(extCatalogWide), width: 62, height: 10, envs: wideEnvs }, // Окружения: имя с «—»
+  ];
+  for (const c of cases) {
+    const s = render({ state: c.state, envs: c.envs, root: '/root', useColor: true, status: null, width: c.width, height: c.height });
+    assertBalancedRowEnds(s);
+  }
+});
+
+test('padRight: обрезка не срезает завершающий SGR-код', () => {
+  const styled = '\x1b[7m' + '> very-long-package-na…' + ' '.repeat(15) + '\x1b[0m';
+  const out = padRight(styled, 25);
+  assert.equal(visibleWidth(out), 25);
+  assert.ok(out.endsWith('\x1b[0m'), `срезан завершающий сброс: ${JSON.stringify(out)}`);
+});

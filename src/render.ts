@@ -61,8 +61,13 @@ export function truncateVisible(s: string, w: number): string {
 
 export function padRight(s: string, w: number): string {
   const v = visibleWidth(s);
-  if (v > w) return truncateVisible(s, w);
-  return s + ' '.repeat(w - v);
+  if (v <= w) return s + ' '.repeat(w - v);
+  // Обрезка не срезает завершающие SGR-коды (например, \x1b[0m после инверсии
+  // курсорной строки): потерянный сброс уводит активный стиль в правую колонку
+  // и в строки ниже.
+  const m = /^(.*?)(\x1b\[[0-9;]*m)+$/.exec(s);
+  if (m) return truncateVisible(m[1], w) + m[2];
+  return truncateVisible(s, w);
 }
 
 function center(s: string, w: number): string {
