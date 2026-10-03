@@ -10,6 +10,7 @@ import { render } from './render.js';
 import { createEnvironment, readSettings, updateEnvironment, deleteEnvironment, type CreateRequest } from './create.js';
 import { AppState, initialState, Key, reducer, type Action } from './state.js';
 import { createTerm, Term } from './terminal.js';
+import { defaultLang, localeCodes, t } from './i18n.js';
 
 function defaultAgentDir(): string {
   return process.env.PI_CODING_AGENT_DIR ?? join(homedir(), '.pi', 'agent');
@@ -34,7 +35,7 @@ function launchPi(term: Term, env: Environment): Promise<{ ok: boolean; message:
       env: { ...process.env, PI_CODING_AGENT_DIR: env.path },
       stdio: 'inherit',
     });
-    child.on('error', (e: Error) => finish(false, `Не удалось запустить pi: ${e.message}`));
+    child.on('error', (e: Error) => finish(false, e.message));
     child.on('exit', () => finish(true, ''));
   });
 }
@@ -85,13 +86,14 @@ export async function run(root: string): Promise<void> {
   const agentDir = defaultAgentDir();
   let catalog = loadCatalog(agentDir);
   const app = loadAppSettings(root);
-  let state: AppState = { ...initialState(catalog), colorToggle: app.color, recheckUpdates: app.recheckUpdates };
+  const lang0 = app.language ?? defaultLang(localeCodes());
+  let state: AppState = { ...initialState(catalog), colorToggle: app.color, recheckUpdates: app.recheckUpdates, language: lang0 };
   let statusMsg: string | null = null;
 
   function load(): { envs: Environment[]; status: string | null } {
     const scanned = scan(root);
     if (scanned === null) {
-      return { envs: [], status: `Окружения не найдены в ${root}` };
+      return { envs: [], status: t(state.language, 'status.not-found', { root }) };
     }
     return { envs: scanned, status: null };
   }
@@ -164,28 +166,28 @@ export async function run(root: string): Promise<void> {
   /** pi update --extensions: обновление всех установленных пакетов в папке агента targetDir. */
   async function doUpdateAll(targetDir: string, scope: 'main' | 'create'): Promise<void> {
     const r = await runCmd('pi', ['update', '--extensions'], PI_TIMEOUT_MS, { cwd: process.cwd(), env: piEnv(targetDir) });
-    if (r.ok) statusMsg = 'Расширения обновлены';
-    afterPiCommand(r, { type: 'update-result', ok: r.ok, message: r.ok ? 'Расширения обновлены' : r.stderr || 'ошибка обновления' }, targetDir, scope);
+    if (r.ok) statusMsg = t(state.language, 'status.ext-updated');
+    afterPiCommand(r, { type: 'update-result', ok: r.ok, message: r.ok ? t(state.language, 'status.ext-updated') : r.stderr || t(state.language, 'status.update-error') }, targetDir, scope);
   }
 
   /** pi remove <source>: полное удаление пакета из main-агента. */
   async function doRemove(source: string): Promise<void> {
     const r = await runPi(['remove', source]);
-    if (r.ok) statusMsg = 'Расширение удалено: ' + source;
-    afterPiCommand(r, { type: 'remove-result', ok: r.ok, message: r.ok ? source : r.stderr || 'ошибка удаления' }, agentDir, 'main');
+    if (r.ok) statusMsg = t(state.language, 'status.ext-removed', { name: source });
+    afterPiCommand(r, { type: 'remove-result', ok: r.ok, message: r.ok ? source : r.stderr || t(state.language, 'status.remove-error') }, agentDir, 'main');
   }
 
   /** pi update <source>: обновление одного пакета main-агента. */
   async function doUpdateOne(source: string): Promise<void> {
     const r = await runPi(['update', source]);
-    if (r.ok) statusMsg = 'Обновлено: ' + source;
-    afterPiCommand(r, { type: 'update-result', ok: r.ok, message: r.ok ? source : r.stderr || 'ошибка обновления' }, agentDir, 'main');
+    if (r.ok) statusMsg = t(state.language, 'status.updated', { name: source });
+    afterPiCommand(r, { type: 'update-result', ok: r.ok, message: r.ok ? source : r.stderr || t(state.language, 'status.update-error') }, agentDir, 'main');
   }
 
   /** pi install <source>: установка пакета в указанный каталог агента (main или окружение). */
   async function doInstall(installDir: string, source: string, envName: string | null): Promise<void> {
     const r = await runCmd('pi', ['install', source], PI_TIMEOUT_MS, { cwd: process.cwd(), env: piEnv(installDir) });
-    if (r.ok) statusMsg = 'Установлено: ' + source;
+    if (r.ok) statusMsg = t(state.language, 'status.installed', { name: source });
     let sources: string[] | undefined;
     if (r.ok) {
       if (envName !== null) {
@@ -196,7 +198,7 @@ export async function run(root: string): Promise<void> {
         void checkUpdates(agentDir, 'main');
       }
     }
-    state = reducer(state, { type: 'install-result', ok: r.ok, message: r.ok ? source : r.stderr || 'ошибка установки', sources }, envNames(), twoColumns());
+    state = reducer(state, { type: 'install-result', ok: r.ok, message: r.ok ? source : r.stderr || t(state.language, 'status.install-error'), sources }, envNames(), twoColumns());
     repaint();
   }
 
@@ -233,6 +235,7 @@ export async function run(root: string): Promise<void> {
     statusMsg = null;
     const prevColor = state.colorToggle;
     const prevRecheck = state.recheckUpdates;
+    const prevLang = state.language;
     const { envs } = load();
     const names = envs.map((e) => e.name);
     const prevView = state.create?.view ?? null;
@@ -298,15 +301,15 @@ export async function run(root: string): Promise<void> {
         packages: cr.packages,
       };
       const res = cr.mode === 'edit'
-        ? updateEnvironment(root, cr.origName ?? cr.name, req, { allTools: catalog.tools, allSkills: catalog.skills, agentDir })
-        : createEnvironment(root, req, agentDir);
+        ? updateEnvironment(root, cr.origName ?? cr.name, req, { allTools: catalog.tools, allSkills: catalog.skills, agentDir }, state.language)
+        : createEnvironment(root, req, agentDir, state.language);
       const message = res.ok ? res.path : res.error;
       state = reducer(state, { type: 'create-result', ok: res.ok, message }, names, twoColumns());
     }
 
     if (state.create && state.create.view === 'deleting') {
       const name = state.create.name;
-      const res = deleteEnvironment(root, name);
+      const res = deleteEnvironment(root, name, state.language);
       state = reducer(state, { type: 'delete-result', ok: res.ok, message: res.ok ? name : res.error }, names, twoColumns());
       if (res.ok) {
         const n = load().envs.length;
@@ -318,11 +321,11 @@ export async function run(root: string): Promise<void> {
       const env = envs[state.selected];
       const res = await launchPi(term, env);
       state = reducer(state, { type: 'run-result', ok: res.ok }, names, twoColumns());
-      if (!res.ok) statusMsg = res.message;
+      if (!res.ok) statusMsg = t(state.language, 'status.pi-launch', { err: res.message });
     }
 
-    if (state.colorToggle !== prevColor || state.recheckUpdates !== prevRecheck) {
-      saveAppSettings(root, { color: state.colorToggle, recheckUpdates: state.recheckUpdates });
+    if (state.colorToggle !== prevColor || state.recheckUpdates !== prevRecheck || state.language !== prevLang) {
+      saveAppSettings(root, { color: state.colorToggle, recheckUpdates: state.recheckUpdates, language: state.language });
     }
   }
 

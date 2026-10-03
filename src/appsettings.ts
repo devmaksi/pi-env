@@ -5,9 +5,10 @@ import { join } from 'node:path';
 export interface AppSettings {
   color: boolean;
   recheckUpdates: boolean;
+  language: string | null;
 }
 
-export const DEFAULT_APP_SETTINGS: AppSettings = { color: true, recheckUpdates: false };
+export const DEFAULT_APP_SETTINGS: AppSettings = { color: true, recheckUpdates: false, language: null };
 
 const FILE_NAME = '.pi-env.json';
 
@@ -23,6 +24,7 @@ export function loadAppSettings(root: string): AppSettings {
     return {
       color: typeof raw.color === 'boolean' ? raw.color : DEFAULT_APP_SETTINGS.color,
       recheckUpdates: typeof raw.recheckUpdates === 'boolean' ? raw.recheckUpdates : DEFAULT_APP_SETTINGS.recheckUpdates,
+      language: typeof raw.language === 'string' && raw.language !== '' ? raw.language : null,
     };
   } catch {
     return { ...DEFAULT_APP_SETTINGS };
