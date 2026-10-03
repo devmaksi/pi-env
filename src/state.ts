@@ -1,6 +1,7 @@
 import { validateName, baseName, type EnvSettings } from './create.js';
 import type { Catalog, CatalogPkg } from './catalog.js';
 import { normalizePkgSource, filterPackages } from './catalog.js';
+import { localeCodes } from './i18n.js';
 
 export type Tab = 'envs' | 'extensions' | 'settings' | 'about';
 export type Sub = 'create' | 'run' | null;
@@ -29,10 +30,10 @@ export interface ExtState {
 }
 
 /** Строка-кнопка в конце списка расширений. */
-export const UPDATE_ALL_ROW = 'Обновить все';
+export const UPDATE_ALL_ROW = 'Обновить все'; // внутренний ID, не отображается — подпись через i18n
 
 /** Кнопка «Установить» в конце списка пакетов. */
-export const INSTALL_ROW = 'Установить';
+export const INSTALL_ROW = 'Установить'; // внутренний ID, не отображается — подпись через i18n
 
 /** Статус проверки расширений на обновления. */
 export type PkgCheck = 'idle' | 'checking' | 'done' | 'error';
@@ -66,6 +67,8 @@ export interface AppState {
   sub: Sub;
   colorToggle: boolean;
   recheckUpdates: boolean;
+  /** Язык интерфейса; доступные языки — файлы src/locales/*.json. */
+  language: string;
   quit: boolean;
   catalog: Catalog;
   create: CreateState | null;
@@ -77,7 +80,8 @@ export interface AppState {
 }
 
 export const TABS: readonly Tab[] = ['envs', 'extensions', 'settings', 'about'];
-export const SETTINGS_COUNT = 3;
+export const SETTINGS_COUNT = 4;
+export const LANGUAGE_ROW = 3; // «Язык» — после «Перепроверка обновлений»
 
 /** Индексы строк формы. */
 export const ROW_NAME = 0;
@@ -98,7 +102,7 @@ export const MAX_NAME = 40;
 
 export function initialState(catalog: Catalog = emptyCatalog()): AppState {
   return {
-    tab: 'envs', focus: 'left', selected: 0, sub: null, colorToggle: true, recheckUpdates: false, quit: false,
+    tab: 'envs', focus: 'left', selected: 0, sub: null, colorToggle: true, recheckUpdates: false, quit: false, language: 'ru',
     catalog, create: null, ext: null, catalogProgress: null, pkgCheck: 'idle', pkgLatest: {},
   };
 }
@@ -197,7 +201,7 @@ export function reducer(state: AppState, action: Action, envNames: string[], two
   }
 
   if (state.sub === 'create' && state.create !== null) {
-    const next = createReducer(state.create, action, state.catalog, envNames);
+    const next = createReducer(state.create, action, state.catalog, envNames, state.language);
     if (next === null) return { ...state, sub: null, create: null };
     return { ...state, create: next };
   }
@@ -250,6 +254,16 @@ export function reducer(state: AppState, action: Action, envNames: string[], two
     return { ...state, selected };
   }
   if (action === 'left' || action === 'right') {
+    if (state.tab === 'settings' && state.sub === null && state.selected === LANGUAGE_ROW) {
+      const codes = localeCodes();
+      if (codes.length === 0) return state;
+      const delta = action === 'left' ? -1 : 1;
+      const i = codes.indexOf(state.language);
+      const next = i === -1
+        ? (delta === 1 ? codes[0] : codes[codes.length - 1])
+        : codes[(i + delta + codes.length) % codes.length];
+      return { ...state, language: next };
+    }
     if (state.tab !== 'envs' || state.sub !== null || !twoColumns) return state;
     return { ...state, focus: state.focus === 'left' ? 'right' : 'left' };
   }
@@ -302,6 +316,7 @@ function createReducer(
   action: Action,
   catalog: Catalog,
   envNames: string[],
+  language: string,
 ): CreateState | null {
   if (action !== 'ctrlc' && typeof action === 'object') {
     if (action.type === 'create-result') {
@@ -336,7 +351,7 @@ function createReducer(
 
   switch (c.view) {
     case 'form':
-      return formReducer(c, action, envNames);
+      return formReducer(c, action, envNames, language);
     case 'providers':
       return listViewReducer(c, action, catalog.providers.map((p) => p.name), 'form', ROW_MODEL, (name) => {
         if (name === c.provider) return { ...c, provider: null, model: null, view: 'form', cursor: ROW_MODEL };
@@ -412,7 +427,7 @@ function createReducer(
   }
 }
 
-function formReducer(c: CreateState, action: Action, envNames: string[]): CreateState | null {
+function formReducer(c: CreateState, action: Action, envNames: string[], language: string): CreateState | null {
   if (action === 'esc') return null;
   if (action === 'up' || action === 'down') {
     const delta = action === 'up' ? -1 : 1;
@@ -444,7 +459,7 @@ function formReducer(c: CreateState, action: Action, envNames: string[]): Create
     if (c.cursor === ROW_SKILLS) return { ...c, view: 'skills', cursor: ROW_NAME };
     if (c.cursor === ROW_ACTION) {
       const others = c.mode === 'edit' ? envNames.filter((n) => n !== c.origName) : envNames;
-      const err = validateName(c.name, others);
+      const err = validateName(c.name, others, language);
       if (err !== null) return { ...c, error: err };
       return { ...c, view: 'submitting' };
     }

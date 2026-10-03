@@ -6,7 +6,7 @@ const envs = (n: number) => Array.from({ length: n }, (_, i) => `env${i}`);
 
 test('initialState', () => {
   assert.deepEqual(initialState(), {
-    tab: 'envs', focus: 'left', selected: 0, sub: null, colorToggle: true, recheckUpdates: false, quit: false,
+    tab: 'envs', focus: 'left', selected: 0, sub: null, colorToggle: true, recheckUpdates: false, quit: false, language: 'ru',
     catalog: emptyCatalog(), create: null, ext: null, catalogProgress: null, pkgCheck: 'idle', pkgLatest: {},
   });
 });
@@ -15,7 +15,7 @@ test('listLength', () => {
   assert.equal(listLength('envs', 3), 4);
   assert.equal(listLength('extensions', 0, 3), 5);
   assert.equal(listLength('extensions', 0), 2);
-  assert.equal(listLength('settings', 0), 3);
+  assert.equal(listLength('settings', 0), 4);
   assert.equal(listLength('about', 5), 0);
 });
 
@@ -352,4 +352,24 @@ test('каталог: Enter при пустом результате фильт�
   s = reducer(s, 'enter', envs(0), true);
   assert.equal(s.ext!.view, 'catalog');
   assert.equal(s.ext!.installing, null);
+});
+
+test('←/→: на строке «Язык» цикл по языкам с wrap', () => {
+  let s = { ...initialState(), tab: 'settings' as const, selected: 3, language: 'ru' };
+  s = reducer(s, 'right', envs(1), true);
+  assert.equal(s.language, 'en');
+  s = reducer(s, 'right', envs(1), true); // en → ru (wrap, 2 языка)
+  assert.equal(s.language, 'ru');
+  s = reducer(s, 'left', envs(1), true); // ru → en
+  assert.equal(s.language, 'en');
+});
+
+test('←/→: не на строке «Язык» — без действия', () => {
+  const s = { ...initialState(), tab: 'settings' as const, selected: 1, language: 'ru' };
+  assert.deepEqual(reducer(s, 'right', envs(1), true), s);
+});
+
+test('←/→: язык без файла — right к первому известному', () => {
+  const s = { ...initialState(), tab: 'settings' as const, selected: 3, language: 'de' };
+  assert.equal(reducer(s, 'right', envs(1), true).language, 'en');
 });
