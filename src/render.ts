@@ -3,6 +3,7 @@ import { computeLayout, NARROW_MIN, LOW_MIN, type Layout } from './layout.js';
 import { type AppState, type PkgCheck } from './state.js';
 import { renderCreate, renderExtTab, renderEnvList, type Ctx, type Section } from './sections.js';
 import type { PkgItem, CatalogPkg } from './catalog.js';
+import { t, nativeName } from './i18n.js';
 
 export const ANSI = {
   bright: '\x1b[96m',
@@ -88,7 +89,7 @@ export interface RenderArgs {
   status: string | null;
 }
 
-const TAB_NAMES = { envs: 'Окружения', extensions: 'Расширения', settings: 'Настройки', about: 'О программе' } as const;
+const TAB_KEYS = { envs: 'tab.envs', extensions: 'tab.extensions', settings: 'tab.settings', about: 'tab.about' } as const;
 
 /** Число хромовых строк: таб-бар + разделитель + футер из двух строк. */
 const CHROME_ROWS = 4;
@@ -113,7 +114,7 @@ export function render(a: RenderArgs): string {
   const { state, envs, root, width, height, useColor } = a;
 
   if (width < NARROW_MIN || height < LOW_MIN) {
-    return center('Терминал слишком мал', width);
+    return center(t(state.language, 'terminal.too-small'), width);
   }
 
   const L = computeLayout({ width, height });
@@ -121,13 +122,13 @@ export function render(a: RenderArgs): string {
   const twoCol = L.twoColumns && state.tab !== 'about';
   const inner = width - 2;
   const contentRows = height - CHROME_ROWS; // таб-бар(1) + разделитель(1) + футер(2)
-  const ctx: Ctx = { state, L, useColor, inner, contentRows, twoCol, root };
+  const ctx: Ctx = { state, L, useColor, inner, contentRows, twoCol, root, lang: state.language };
   const lines: string[] = [];
 
   // Таб-бар
-  const tabs = (Object.keys(TAB_NAMES) as Array<keyof typeof TAB_NAMES>).map((t) => {
-    const active = t === state.tab;
-    const label = active ? '[' + TAB_NAMES[t] + ']' : TAB_NAMES[t];
+  const tabs = (Object.keys(TAB_KEYS) as Array<keyof typeof TAB_KEYS>).map((k) => {
+    const active = k === state.tab;
+    const label = active ? '[' + t(state.language, TAB_KEYS[k]) + ']' : t(state.language, TAB_KEYS[k]);
     if (active) {
       return c(ANSI.bright, useColor) + c(ANSI.bold, useColor) + label + c(ANSI.reset, useColor);
     }
@@ -186,20 +187,22 @@ function renderSettings(state: AppState, ctx: Ctx): Section {
   const left: string[] = [];
   const right: string[] = [];
   const items = [
-    'Корневой каталог: ' + ctx.root,
-    'Цветной вывод: [' + (state.colorToggle ? 'x' : ' ') + ']',
-    'Перепроверка обновлений: [' + (state.recheckUpdates ? 'x' : ' ') + ']',
+    t(ctx.lang, 'settings.root', { root: ctx.root }),
+    t(ctx.lang, 'settings.color', { m: state.colorToggle ? 'x' : ' ' }),
+    t(ctx.lang, 'settings.recheck', { m: state.recheckUpdates ? 'x' : ' ' }),
+    t(ctx.lang, 'settings.language', { name: nativeName(state.language) }),
   ];
-  items.forEach((t, i) => {
-    const text = (i === state.selected ? '> ' : '  ') + t;
+  items.forEach((item, i) => {
+    const text = (i === state.selected ? '> ' : '  ') + item;
     if (i === state.selected) {
       left.push(c(ANSI.inverse, ctx.useColor) + padRight(text, ctx.L.leftWidth) + c(ANSI.reset, ctx.useColor));
     } else {
       left.push(text);
     }
   });
-  right.push(c(ANSI.dim, ctx.useColor) + 'Space — переключить' + c(ANSI.reset, ctx.useColor));
-  right.push(c(ANSI.dim, ctx.useColor) + 'Перепроверка: npm outdated при каждом входе во вкладку «Расширения»' + c(ANSI.reset, ctx.useColor));
+  right.push(c(ANSI.dim, ctx.useColor) + t(ctx.lang, 'settings.hint.space') + c(ANSI.reset, ctx.useColor));
+  right.push(c(ANSI.dim, ctx.useColor) + t(ctx.lang, 'settings.hint.recheck') + c(ANSI.reset, ctx.useColor));
+  right.push(c(ANSI.dim, ctx.useColor) + t(ctx.lang, 'settings.hint.language') + c(ANSI.reset, ctx.useColor));
   return { left, right, cursorRow: state.selected };
 }
 
@@ -207,9 +210,9 @@ function renderSettings(state: AppState, ctx: Ctx): Section {
 function renderAbout(ctx: Ctx): Section {
   const block = [
     c(ANSI.bold, ctx.useColor) + 'pi-env 0.1.0' + c(ANSI.reset, ctx.useColor),
-    'CLI для управления окружениями pi',
+    t(ctx.lang, 'about.subtitle'),
     '',
-    '↑↓ перемещение  TAB вкладки  Enter ОК  Space toggle  Esc назад/выход',
+    t(ctx.lang, 'about.keys'),
   ];
   const top = Math.max(0, Math.floor((ctx.contentRows - block.length) / 2));
   const left: string[] = [];
@@ -221,8 +224,8 @@ function renderAbout(ctx: Ctx): Section {
 
 /** Статус-строка: легенда (или статус) + вторая легенда. */
 function renderFooter(a: RenderArgs, inner: number, row1: number, row2: number): string[] {
-  const legend1 = inner >= LEGEND_WIDE_MIN ? '↑↓ перемещение  ←→ колонки  TAB вкладки  Enter ОК' : '↑↓ TAB Enter Space Esc';
-  const legend2 = 'Space toggle  E — правка  Esc назад/выход';
+  const legend1 = inner >= LEGEND_WIDE_MIN ? t(a.state.language, 'footer.legend1') : t(a.state.language, 'footer.legend1.narrow');
+  const legend2 = t(a.state.language, 'footer.legend2');
   const f2text = a.status !== null ? a.status : legend2;
   const f1 = c(ANSI.dim, a.useColor) + legend1 + c(ANSI.reset, a.useColor);
   const f2 = (a.status !== null ? c(ANSI.bold, a.useColor) : c(ANSI.dim, a.useColor)) + f2text + c(ANSI.reset, a.useColor);
@@ -246,13 +249,13 @@ export function listRow(i: number, cursor: number, text: string, w: number, useC
 }
 
 /** Инфо-панель пакета для правой колонки. */
-export function pkgInfoLines(p: PkgItem, check: PkgCheck, latest: Record<string, string>, L: Layout, useColor: boolean): string[] {
+export function pkgInfoLines(p: PkgItem, check: PkgCheck, latest: Record<string, string>, L: Layout, useColor: boolean, lang: string = 'ru'): string[] {
   const lines = [
     c(ANSI.bold, useColor) + p.name + c(ANSI.reset, useColor),
-    'Источник: ' + p.source,
-    'Версия: ' + (p.version ?? '—'),
-    updateLine(p, check, latest),
-    'Расширений: ' + p.extensions.length + '  Скиллов: ' + p.skills.length,
+    t(lang, 'pkg.source', { v: p.source }),
+    t(lang, 'pkg.version', { v: p.version ?? '—' }),
+    updateLine(p, check, latest, lang),
+    t(lang, 'pkg.extensions', { n: p.extensions.length }) + '  ' + t(lang, 'pkg.skills', { n: p.skills.length }),
   ];
   if (p.description) lines.push(truncateVisible(p.description, L.rightWidth - 1));
   return lines;
@@ -267,33 +270,34 @@ export function catalogPickerLines(
   L: Layout,
   useColor: boolean,
   progress: { loaded: number; total: number } | null,
+  lang: string = 'ru',
 ): { left: string[]; right: string[] } {
   const left: string[] = [];
   const right: string[] = [];
-  left.push('Поиск: ' + query + '▌');
-  if (query.trim() !== '') right.push('Найдено: ' + pkgs.length);
+  left.push(t(lang, 'picker.search', { q: query }));
+  if (query.trim() !== '') right.push(t(lang, 'picker.found', { n: pkgs.length }));
   if (status === 'loading') {
     const text = progress !== null
-      ? 'Загрузка каталога… ' + progress.loaded + '/' + progress.total
-      : 'Загрузка каталога…';
+      ? t(lang, 'picker.loading.progress', { loaded: progress.loaded, total: progress.total })
+      : t(lang, 'picker.loading');
     left.push(c(ANSI.dim, useColor) + text + c(ANSI.reset, useColor));
   } else if (status === 'error') {
-    left.push(c(ANSI.bold, useColor) + '⚠ Не удалось загрузить каталог' + c(ANSI.reset, useColor));
+    left.push(c(ANSI.bold, useColor) + t(lang, 'picker.error') + c(ANSI.reset, useColor));
   } else {
     if (pkgs.length === 0) {
-      const empty = query.trim() !== '' ? 'Ничего не найдено' : '— пусто —';
+      const empty = query.trim() !== '' ? t(lang, 'picker.nothing') : t(lang, 'empty');
       left.push(c(ANSI.dim, useColor) + empty + c(ANSI.reset, useColor));
     }
     pkgs.forEach((p, i) => left.push(listRow(i, cursor, truncateName(p.name, CATALOG_NAME_MAX), L.leftWidth, useColor)));
     const cur = pkgs[cursor];
     if (cur !== undefined) {
       right.push(c(ANSI.bold, useColor) + cur.name + c(ANSI.reset, useColor));
-      if (cur.types.length > 0) right.push('Типы: ' + cur.types.join(', '));
-      right.push('Загрузок: ' + cur.downloads);
-      if (cur.author !== null) right.push('Автор: ' + cur.author);
+      if (cur.types.length > 0) right.push(t(lang, 'picker.types', { v: cur.types.join(', ') }));
+      right.push(t(lang, 'picker.downloads', { n: cur.downloads }));
+      if (cur.author !== null) right.push(t(lang, 'picker.author', { v: cur.author }));
       if (cur.description !== null) right.push(truncateVisible(cur.description, L.rightWidth - 1));
       right.push('pi install npm:' + cur.name);
-      right.push(c(ANSI.dim, useColor) + 'Enter — установить' + c(ANSI.reset, useColor));
+      right.push(c(ANSI.dim, useColor) + t(lang, 'picker.hint.install') + c(ANSI.reset, useColor));
     }
   }
   return { left, right };
@@ -304,9 +308,9 @@ function isPinned(source: string): boolean {
   return new RegExp('^npm:(?:@[^/]+/)?[^@]+@[^@/]+$').test(source);
 }
 
-export function pkgMarker(p: PkgItem, check: PkgCheck, latest: Record<string, string>): string {
-  if (isPinned(p.source)) return 'закреплено';
-  if (!p.source.startsWith('npm:')) return 'локальный';
+export function pkgMarker(p: PkgItem, check: PkgCheck, latest: Record<string, string>, lang: string = 'ru'): string {
+  if (isPinned(p.source)) return t(lang, 'pkg.pinned');
+  if (!p.source.startsWith('npm:')) return t(lang, 'pkg.local');
   if (check === 'checking') return '…';
   if (check === 'error') return '?';
   const latestVer = latest[p.name];
@@ -325,21 +329,22 @@ export function formPkgMarker(
   inCatalog: boolean,
   check: PkgCheck,
   latest: Record<string, string>,
+  lang: string = 'ru',
 ): string {
-  if (isPinned(source)) return 'закреплено';
-  if (!source.startsWith('npm:')) return 'локальный';
+  if (isPinned(source)) return t(lang, 'pkg.pinned');
+  if (!source.startsWith('npm:')) return t(lang, 'pkg.local');
   if (check === 'checking') return '…';
   if (check === 'error') return '?';
   const latestVer = latest[name];
-  return latestVer !== undefined ? '↑ ' + latestVer : inCatalog ? '·' : 'в окружении';
+  return latestVer !== undefined ? '↑ ' + latestVer : inCatalog ? '·' : t(lang, 'pkg.in-env');
 }
 
-function updateLine(p: PkgItem, check: PkgCheck, latest: Record<string, string>): string {
-  if (isPinned(p.source)) return 'закреплено';
-  if (!p.source.startsWith('npm:')) return 'локальный';
+function updateLine(p: PkgItem, check: PkgCheck, latest: Record<string, string>, lang: string = 'ru'): string {
+  if (isPinned(p.source)) return t(lang, 'pkg.pinned');
+  if (!p.source.startsWith('npm:')) return t(lang, 'pkg.local');
   if (check === 'checking') return '…';
-  if (check === 'error') return '? проверка не удалась';
+  if (check === 'error') return t(lang, 'pkg.check-failed');
   const latestVer = latest[p.name];
-  if (latestVer !== undefined && latestVer !== p.version) return '↑ ' + latestVer + ', установлена ' + (p.version ?? '?');
-  return 'актуально';
+  if (latestVer !== undefined && latestVer !== p.version) return t(lang, 'pkg.update', { latest: latestVer, version: p.version ?? '?' });
+  return t(lang, 'pkg.up-to-date');
 }

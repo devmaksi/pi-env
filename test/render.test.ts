@@ -496,3 +496,19 @@ test('padRight: обрезка не срезает завершающий SGR-к
   assert.equal(visibleWidth(out), 25);
   assert.ok(out.endsWith('\x1b[0m'), `срезан завершающий сброс: ${JSON.stringify(out)}`);
 });
+
+test('вкладка настроек: строка «Язык»', () => {
+  const s = render({ state: { ...initialState(), tab: 'settings', selected: 3 }, envs, width: 62, height: 10, root: '/root', useColor: false, status: null });
+  assert.ok(s.includes('Язык: Русский'));
+  assert.ok(s.includes('←→ — язык'));
+});
+
+test('рендер на английском', () => {
+  const s = render({ state: { ...initialState(), tab: 'settings', selected: 3, language: 'en' }, envs, width: 62, height: 10, root: '/root', useColor: false, status: null });
+  const lines = s.split('\n');
+  assert.ok(lines[0].includes('[Settings]'));
+  assert.ok(lines[0].includes('Environments'));
+  assert.ok(s.includes('Language: English'));
+  assert.ok(s.includes('Root directory: /root'));
+  assert.ok(s.includes('←→ — language'));
+});

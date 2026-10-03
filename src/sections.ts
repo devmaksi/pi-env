@@ -31,6 +31,7 @@ export interface Ctx {
   contentRows: number;
   twoCol: boolean;
   root: string;
+  lang: string;
 }
 
 /** Результат секции: колонки и номер курсорной строки в left (−1 — нет списка). */
