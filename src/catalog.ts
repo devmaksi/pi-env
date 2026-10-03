@@ -227,11 +227,65 @@ function decodeEntities(s: string): string {
 /** Адрес каталога пакетов pi. */
 export const PACKAGE_CATALOG_URL = 'https://pi.dev/packages';
 
-/** Скачивает и парсит каталог пакетов; ошибка сети/HTTP — исключение. */
-export async function fetchPackageCatalog(url: string = PACKAGE_CATALOG_URL): Promise<CatalogPkg[]> {
+/** Число одновременных загрузок страниц каталога. */
+const CATALOG_FETCH_CONCURRENCY = 8;
+
+/**
+ * Номер последней страницы из разметки пагинации (максимум /packages?page=N).
+ * null — пагинации нет (одна страница) или разметка сменилась.
+ */
+export function lastCatalogPage(html: string): number | null {
+  let max = 0;
+  const re = /\/packages\?page=(\d+)/g;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(html)) !== null) {
+    const n = Number(m[1]);
+    if (n > max) max = n;
+  }
+  return max > 1 ? max : null;
+}
+
+/**
+ * Скачивает каталог пакетов: первая страница + все страницы пагинации
+ * (параллельно), дедупликация по имени, итоговая сортировка по загрузкам.
+ * onProgress(loaded, total) — счётчики страниц; для одиночной страницы не вызывается.
+ * Ошибка сети/HTTP — исключение (каталог считается незагруженным).
+ */
+export async function fetchPackageCatalog(
+  url: string = PACKAGE_CATALOG_URL,
+  onProgress?: (loaded: number, total: number) => void,
+): Promise<CatalogPkg[]> {
+  const firstHtml = await fetchPageHtml(url);
+  const all = parsePackageCatalog(firstHtml);
+  const total = lastCatalogPage(firstHtml);
+  if (total === null) return all;
+
+  const base = url.split('?page=')[0];
+  const rest: string[] = [];
+  for (let n = 2; n <= total; n++) rest.push(base + '?page=' + n);
+  let next = 0;
+  let loaded = 1;
+  onProgress?.(1, total);
+  const worker = async (): Promise<void> => {
+    for (;;) {
+      const i = next++;
+      if (i >= rest.length) return;
+      all.push(...parsePackageCatalog(await fetchPageHtml(rest[i])));
+      loaded++;
+      onProgress?.(loaded, total);
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(CATALOG_FETCH_CONCURRENCY, rest.length) }, worker));
+
+  const seen = new Map<string, CatalogPkg>();
+  for (const p of all) if (!seen.has(p.name)) seen.set(p.name, p);
+  return [...seen.values()].sort((a, b) => b.downloads - a.downloads || a.name.localeCompare(b.name));
+}
+
+async function fetchPageHtml(url: string): Promise<string> {
   const res = await fetch(url, { signal: AbortSignal.timeout(20_000) });
   if (!res.ok) throw new Error('HTTP ' + res.status);
-  return parsePackageCatalog(await res.text());
+  return res.text();
 }
 
 /**

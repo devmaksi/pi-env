@@ -130,7 +130,7 @@ function createInstall(cr: CreateState, ctx: Ctx): Section {
   const right: string[] = [];
   left.push(c(ANSI.bold, ctx.useColor) + 'Установка в окружение «' + cr.name + '»' + c(ANSI.reset, ctx.useColor));
   const pkgs = filterPackages(cr.installCatalog, cr.query);
-  const picker = catalogPickerLines(pkgs, cr.query, cr.installStatus, cr.cursor, ctx.L, ctx.useColor);
+  const picker = catalogPickerLines(pkgs, cr.query, cr.installStatus, cr.cursor, ctx.L, ctx.useColor, ctx.state.catalogProgress);
   left.push(...picker.left);
   right.push(...picker.right);
   if (cr.error) right.push(c(ANSI.bold, ctx.useColor) + '⚠ ' + cr.error + c(ANSI.reset, ctx.useColor));
@@ -285,7 +285,7 @@ function extCatalogView(ext: ExtState, ctx: Ctx): Section {
   const right: string[] = [];
   left.push(c(ANSI.bold, ctx.useColor) + 'Установка расширения' + c(ANSI.reset, ctx.useColor));
   const pkgs = filterPackages(ext.catalog, ext.query);
-  const picker = catalogPickerLines(pkgs, ext.query, ext.catalogStatus, ext.cursor, ctx.L, ctx.useColor);
+  const picker = catalogPickerLines(pkgs, ext.query, ext.catalogStatus, ext.cursor, ctx.L, ctx.useColor, ctx.state.catalogProgress);
   left.push(...picker.left);
   right.push(...picker.right);
   right.push(c(ANSI.dim, ctx.useColor) + 'Esc — назад' + c(ANSI.reset, ctx.useColor));

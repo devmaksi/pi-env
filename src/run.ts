@@ -197,14 +197,27 @@ export async function run(root: string): Promise<void> {
     repaint();
   }
 
-  /** Скачивает каталог пакетов pi.dev в открытый пикер (вкладка или форма). */
+  /** Идентификатор последней загрузки каталога: устаревшая не трогает UI. */
+  let catalogLoadId = 0;
+
+  /**
+   * Скачивает каталог пакетов pi.dev в открытый пикер (вкладка или форма).
+   * Прогресс по страницам — в state.catalogProgress, UI остаётся отзывчивым.
+   */
   async function loadPackageCatalog(): Promise<void> {
+    const id = ++catalogLoadId;
     let pkgs: CatalogPkg[] | null;
     try {
-      pkgs = await fetchPackageCatalog();
+      pkgs = await fetchPackageCatalog(undefined, (loaded, total) => {
+        if (id !== catalogLoadId) return;
+        state = { ...state, catalogProgress: { loaded, total } };
+        repaint();
+      });
     } catch {
       pkgs = null;
     }
+    if (id !== catalogLoadId) return;
+    state = { ...state, catalogProgress: null };
     if (state.ext !== null && state.ext.view === 'catalog' && state.ext.catalogStatus === 'loading') {
       state = { ...state, ext: { ...state.ext, catalog: pkgs ?? [], catalogStatus: pkgs === null ? 'error' : 'ready' } };
     } else if (state.create !== null && state.create.view === 'install' && state.create.installStatus === 'loading') {

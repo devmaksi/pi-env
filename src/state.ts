@@ -69,6 +69,8 @@ export interface AppState {
   catalog: Catalog;
   create: CreateState | null;
   ext: ExtState | null;
+  /** Прогресс загрузки каталога pi.dev (страницы); null — не грузится. */
+  catalogProgress: { loaded: number; total: number } | null;
   pkgCheck: PkgCheck;
   pkgLatest: Record<string, string>;
 }
@@ -96,7 +98,7 @@ export const MAX_NAME = 40;
 export function initialState(catalog: Catalog = emptyCatalog()): AppState {
   return {
     tab: 'envs', focus: 'left', selected: 0, sub: null, colorToggle: true, quit: false,
-    catalog, create: null, ext: null, pkgCheck: 'idle', pkgLatest: {},
+    catalog, create: null, ext: null, catalogProgress: null, pkgCheck: 'idle', pkgLatest: {},
   };
 }
 

@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert';
-import { render, scrollTop } from '../src/render.js';
+import { render, scrollTop, catalogPickerLines } from '../src/render.js';
 import { computeLayout } from '../src/layout.js';
 import { initialState, freshExt, freshCreate, type AppState, type Catalog } from '../src/state.js';
 import { Environment } from '../src/environments.js';
@@ -290,4 +290,12 @@ test('каталог с поисковой строкой: окно коррек
   const tall = render({ state: st, envs, width: 100, height: 40, ...base });
   assert.ok(tall.includes('> pkg25'));
   assert.ok(tall.includes('pkg00')); // высокий кадр — весь список
+});
+
+test('пикер каталога: прогресс загрузки — счётчик страниц, без прогресса — без счётчика', () => {
+  const L = computeLayout({ width: 80, height: 10 });
+  const withProgress = catalogPickerLines([], '', 'loading', 0, L, false, { loaded: 5, total: 108 });
+  assert.ok(withProgress.left.some((l) => l.includes('Загрузка каталога… 5/108')));
+  const noProgress = catalogPickerLines([], '', 'loading', 0, L, false, null);
+  assert.ok(noProgress.left.some((l) => l.includes('Загрузка каталога…') && !l.includes('/')));
 });

@@ -271,3 +271,87 @@ test('filterPackages: подстрока без учёта регистра; п�
   assert.deepEqual(filterPackages(pkgs, 'zzz'), []);
   assert.deepEqual(filterPackages(pkgs, 'пакет'), []); // кириллица — пусто, без исключений
 });
+
+import { lastCatalogPage, fetchPackageCatalog } from '../src/catalog.js';
+import { createServer, type Server } from 'node:http';
+import type { AddressInfo } from 'node:net';
+
+test('lastCatalogPage: максимум ?page= в пагинации', () => {
+  const html = '<a href="/packages?page=2">2</a><a href="/packages?page=3">3</a><a href="/packages?page=108">108</a>';
+  assert.equal(lastCatalogPage(html), 108);
+});
+
+test('lastCatalogPage: без пагинации или только page=1 — null', () => {
+  assert.equal(lastCatalogPage(''), null);
+  assert.equal(lastCatalogPage('<html><body>карточки без пагинации</body></html>'), null);
+  assert.equal(lastCatalogPage('<a href="/packages?page=1">1</a>'), null);
+});
+
+function card(name: string, downloads: number): string {
+  return (
+    '<article data-package-name="' + name + '" data-package-types="extension" data-package-downloads="' +
+    downloads + '"><p class="packages-desc">d</p><div class="packages-meta"><span>a</span></div></article>'
+  );
+}
+
+async function startCatalogServer(pages: string[]): Promise<{ url: string; close: () => Promise<void> }> {
+  const server: Server = createServer((req, res) => {
+    const u = new URL(req.url ?? '/', 'http://localhost');
+    const n = Number(u.searchParams.get('page') ?? '1');
+    res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
+    res.end(pages[n - 1] ?? '');
+  });
+  await new Promise<void>((r) => server.listen(0, '127.0.0.1', () => r()));
+  const { port } = server.address() as AddressInfo;
+  return {
+    url: `http://127.0.0.1:${port}/packages`,
+    close: () => new Promise<void>((r) => server.close(() => r())),
+  };
+}
+
+test('fetchPackageCatalog: собирает все страницы пагинации, прогресс, глобальная сортировка', async () => {
+  const pages = [
+    '<html><a href="/packages?page=2"></a><a href="/packages?page=3"></a>' +
+      card('p1-a', 900) + card('p1-b', 800) + card('p1-c', 700) + '</html>',
+    '<html>' + card('p2-a', 600) + card('p2-b', 500) + card('p2-c', 400) + '</html>',
+    '<html>' + card('p3-a', 300) + card('p3-b', 200) + card('p3-c', 100) + '</html>',
+  ];
+  const srv = await startCatalogServer(pages);
+  try {
+    const progress: Array<[number, number]> = [];
+    const pkgs = await fetchPackageCatalog(srv.url, (loaded, total) => progress.push([loaded, total]));
+    assert.equal(pkgs.length, 9);
+    assert.deepEqual(pkgs.map((p) => p.downloads), [900, 800, 700, 600, 500, 400, 300, 200, 100]);
+    assert.deepEqual(progress[progress.length - 1], [3, 3]);
+  } finally {
+    await srv.close();
+  }
+});
+
+test('fetchPackageCatalog: дубликат имени на разных страницах — один пакет', async () => {
+  const pages = [
+    '<html><a href="/packages?page=2"></a>' + card('dup', 900) + card('p1-b', 800) + '</html>',
+    '<html>' + card('dup', 50) + card('p2-b', 400) + '</html>',
+  ];
+  const srv = await startCatalogServer(pages);
+  try {
+    const pkgs = await fetchPackageCatalog(srv.url);
+    assert.deepEqual(pkgs.map((p) => p.name), ['dup', 'p1-b', 'p2-b']);
+    assert.equal(pkgs.find((p) => p.name === 'dup')!.downloads, 900);
+  } finally {
+    await srv.close();
+  }
+});
+
+test('fetchPackageCatalog: без пагинации — только одна страница (старое поведение)', async () => {
+  const pages = ['<html>' + card('solo', 10) + card('solo2', 5) + '</html>'];
+  const srv = await startCatalogServer(pages);
+  try {
+    const progress: Array<[number, number]> = [];
+    const pkgs = await fetchPackageCatalog(srv.url, (loaded, total) => progress.push([loaded, total]));
+    assert.deepEqual(pkgs.map((p) => p.name), ['solo', 'solo2']);
+    assert.deepEqual(progress, []);
+  } finally {
+    await srv.close();
+  }
+});

@@ -224,13 +224,17 @@ export function catalogPickerLines(
   cursor: number,
   L: Layout,
   useColor: boolean,
+  progress: { loaded: number; total: number } | null,
 ): { left: string[]; right: string[] } {
   const left: string[] = [];
   const right: string[] = [];
   left.push('Поиск: ' + query + '▌');
   if (query.trim() !== '') right.push('Найдено: ' + pkgs.length);
   if (status === 'loading') {
-    left.push(c(ANSI.dim, useColor) + 'Загрузка каталога…' + c(ANSI.reset, useColor));
+    const text = progress !== null
+      ? 'Загрузка каталога… ' + progress.loaded + '/' + progress.total
+      : 'Загрузка каталога…';
+    left.push(c(ANSI.dim, useColor) + text + c(ANSI.reset, useColor));
   } else if (status === 'error') {
     left.push(c(ANSI.bold, useColor) + '⚠ Не удалось загрузить каталог' + c(ANSI.reset, useColor));
   } else {
