@@ -16,13 +16,37 @@ export function c(code: string, on: boolean): string {
   return on ? code : '';
 }
 
-function visibleWidth(s: string): number {
-  return s.replace(/\x1b\[[0-9;]*m/g, '').length;
+// Символы, которые терминал может нарисовать в две клетки (зависит от
+// шрифта/локали): стрелки, тире, многоточие, галочка, предупреждение,
+// fullwidth-плюс, caret. Box-drawing (─│├┬┤) и «·» не входят: в западных
+// терминалах это всегда одна клетка. Padding считаем в худшем случае —
+// тогда рамка не рвётся и на терминале, где они две.
+const WIDE_CHARS = new Set(['↑', '↓', '←', '→', '—', '…', '✓', '⚠', '▌', '＋']);
+
+function charCells(cp: number): number {
+  return cp > 0xffff ? 2 : WIDE_CHARS.has(String.fromCharCode(cp)) ? 2 : 1;
 }
 
-// Обрезка по видимым символам: точка разреза не делит ANSI-последовательность
-function truncateVisible(s: string, w: number): string {
+/** Видимая ширина строки в клетках терминала (ANSI-коды не учитываются). */
+export function visibleWidth(s: string): number {
+  let w = 0;
+  for (let i = 0; i < s.length; i++) {
+    if (s[i] === '\x1b') {
+      const m = /^\x1b\[[0-9;]*[a-zA-Z]/.exec(s.slice(i));
+      if (m) { i += m[0].length - 1; continue; }
+    }
+    const cp = s.codePointAt(i)!;
+    w += charCells(cp);
+    if (cp > 0xffff) i++;
+  }
+  return w;
+}
+
+// Обрезка по видимым клеткам: точка разреза не делит ANSI-последовательность
+// и не оставляет сироту суррогатной пары
+export function truncateVisible(s: string, w: number): string {
   let visible = 0;
+  let cut = 0;
   for (let i = 0; i < s.length; i++) {
     if (s[i] === '\x1b') {
       const m = /^\x1b\[[0-9;]*[a-zA-Z]/.exec(s.slice(i));
@@ -31,8 +55,13 @@ function truncateVisible(s: string, w: number): string {
         continue;
       }
     }
-    visible++;
-    if (visible === w) return s.slice(0, i + 1);
+    const cp = s.codePointAt(i)!;
+    const len = cp > 0xffff ? 2 : 1;
+    visible += charCells(cp);
+    if (visible > w) return s.slice(0, cut);
+    cut = i + len;
+    if (visible === w) return s.slice(0, cut);
+    i += len - 1;
   }
   return s;
 }

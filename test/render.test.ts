@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert';
-import { render, scrollTop, catalogPickerLines } from '../src/render.js';
+import { render, scrollTop, catalogPickerLines, visibleWidth, truncateVisible, padRight } from '../src/render.js';
 import { computeLayout } from '../src/layout.js';
 import { initialState, freshExt, freshCreate, type AppState, type Catalog } from '../src/state.js';
 import { Environment } from '../src/environments.js';
@@ -21,7 +21,7 @@ test('широкий режим: рамка, таб-бар, разделител
   const s = render({ state: initialState(), envs, width: 62, height: 10, ...base });
   const lines = s.split('\n');
   assert.equal(lines.length, 10);
-  for (const line of lines) assert.equal(line.length, 62);
+  for (const line of lines) assert.equal(visibleWidth(line), 62);
   assert.ok(lines[0].includes('Окружения'));
   assert.ok(lines[0].includes('Настройки'));
   assert.ok(lines[0].includes('О программе'));
@@ -128,7 +128,7 @@ test('узкий цветной вывод: ANSI не обрывается, ра
   for (const line of lines) {
     assertNoDanglingAnsi(line);
     // видимая ширина каждой строки равна ширине кадра
-    assert.equal(line.replace(/\x1b\[[0-9;]*m/g, '').length, 30);
+    assert.equal(visibleWidth(line), 30);
   }
 });
 
@@ -322,4 +322,39 @@ test('пикер каталога: прогресс загрузки — счё�
   assert.ok(withProgress.left.some((l) => l.includes('Загрузка каталога… 5/108')));
   const noProgress = catalogPickerLines([], '', 'loading', 0, L, false, null);
   assert.ok(noProgress.left.some((l) => l.includes('Загрузка каталога…') && !l.includes('/')));
+});
+
+test('ширина: символы с двойной клеткой — 2, box-drawing и «·» — 1', () => {
+  assert.equal(visibleWidth('↑↓←→'), 8);
+  assert.equal(visibleWidth('—…✓⚠▌＋'), 12);
+  assert.equal(visibleWidth('─│├┬┤'), 5);
+  assert.equal(visibleWidth('·'), 1);
+  assert.equal(visibleWidth('pi-env 1.0'), 10);
+  assert.equal(visibleWidth('\x1b[1m↑\x1b[0m'), 2); // ANSI-коды не учитываются
+});
+
+test('padRight: строка со «широким» символом не выходит за ширину', () => {
+  const padded = padRight('↑ a→', 8); // 2+1+1+2 = 6 видимых клеток + 2 пробела
+  assert.equal(visibleWidth(padded), 8);
+  assert.equal(padded.replace(/\x1b\[[0-9;]*m/g, ''), '↑ a→  ');
+});
+
+test('truncateVisible: двухклеточный символ не делится пополам', () => {
+  assert.equal(truncateVisible('a↑b', 3), 'a↑');
+  assert.equal(truncateVisible('a↑b', 2), 'a');
+  assert.equal(truncateVisible('ab→cd', 3), 'ab');
+  assert.equal(truncateVisible('abc', 2), 'ab');
+  assert.equal(truncateVisible('a', 5), 'a');
+  assert.equal(truncateVisible('аб—', 3), 'аб');
+  assert.equal(truncateVisible('аб—', 4), 'аб—');
+});
+
+test('вкладка «Расширения»: видимая ширина каждой строки равна ширине кадра', () => {
+  const st = { ...initialState(extCatalog), tab: 'extensions' as const, selected: 0 };
+  for (const width of [62, 80, 100, 120]) {
+    const s = render({ state: st, envs, width, height: 16, ...base });
+    for (const line of s.split('\n')) {
+      assert.equal(visibleWidth(line), width, `w=${width}: ${JSON.stringify(line)}`);
+    }
+  }
 });
