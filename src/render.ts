@@ -18,35 +18,33 @@ export function c(code: string, on: boolean): string {
 
 // Символы, которые терминал может нарисовать в две клетки (зависит от
 // шрифта/локали): стрелки, тире, многоточие, галочка, предупреждение,
-// fullwidth-плюс, caret. Box-drawing (─│├┬┤) и «·» не входят: в западных
-// терминалах это всегда одна клетка. Padding считаем в худшем случае —
-// тогда рамка не рвётся и на терминале, где они две.
+// fullwidth-плюс, caret. Box-drawing (─│├┬┤) и «·» не входят: во всех
+// терминалах это одна клетка. Для строк с такими символами перед правой
+// границей оставляем резерв n клеток, а саму границу дорисовываем по CUP —
+// рамка цела и на 1-клеточном, и на 2-клеточном терминале.
 const WIDE_CHARS = new Set(['↑', '↓', '←', '→', '—', '…', '✓', '⚠', '▌', '＋']);
 
-function charCells(cp: number): number {
-  return cp > 0xffff ? 2 : WIDE_CHARS.has(String.fromCharCode(cp)) ? 2 : 1;
+/** Число «неопределённых» символов в строке (ANSI-коды не учитываются). */
+export function wideCount(s: string): number {
+  const plain = s.replace(/\x1b\[[0-9;]*m/g, '');
+  let n = 0;
+  for (const ch of plain) if (WIDE_CHARS.has(ch)) n++;
+  return n;
 }
 
-/** Видимая ширина строки в клетках терминала (ANSI-коды не учитываются). */
+/** CUP: курсор на строку row (номер на экране) в колонку width. */
+function cupBorder(row: number, width: number): string {
+  return `\x1b[${row};${width}H`;
+}
+
+/** Видимая ширина строки в символах (ANSI-коды не учитываются). */
 export function visibleWidth(s: string): number {
-  let w = 0;
-  for (let i = 0; i < s.length; i++) {
-    if (s[i] === '\x1b') {
-      const m = /^\x1b\[[0-9;]*[a-zA-Z]/.exec(s.slice(i));
-      if (m) { i += m[0].length - 1; continue; }
-    }
-    const cp = s.codePointAt(i)!;
-    w += charCells(cp);
-    if (cp > 0xffff) i++;
-  }
-  return w;
+  return s.replace(/\x1b\[[0-9;]*m/g, '').length;
 }
 
-// Обрезка по видимым клеткам: точка разреза не делит ANSI-последовательность
-// и не оставляет сироту суррогатной пары
+// Обрезка по видимым символам: точка разреза не делит ANSI-последовательность
 export function truncateVisible(s: string, w: number): string {
   let visible = 0;
-  let cut = 0;
   for (let i = 0; i < s.length; i++) {
     if (s[i] === '\x1b') {
       const m = /^\x1b\[[0-9;]*[a-zA-Z]/.exec(s.slice(i));
@@ -55,13 +53,8 @@ export function truncateVisible(s: string, w: number): string {
         continue;
       }
     }
-    const cp = s.codePointAt(i)!;
-    const len = cp > 0xffff ? 2 : 1;
-    visible += charCells(cp);
-    if (visible > w) return s.slice(0, cut);
-    cut = i + len;
-    if (visible === w) return s.slice(0, cut);
-    i += len - 1;
+    visible++;
+    if (visible === w) return s.slice(0, i + 1);
   }
   return s;
 }
@@ -154,22 +147,28 @@ export function render(a: RenderArgs): string {
   const top = scrollTop(cursorRow, left.length, contentRows);
 
   for (let i = 0; i < contentRows; i++) {
+    const row = i + 3; // таб-бар(1) + разделитель(2) + строка контента
     if (twoCol) {
-      const l = left[top + i] !== undefined ? padRight(left[top + i], L.leftWidth) : ' '.repeat(L.leftWidth);
-      const r = i < right.length ? padRight(right[i], L.rightWidth) : ' '.repeat(L.rightWidth);
+      const lRaw = left[top + i] ?? '';
+      const rRaw = i < right.length ? right[i] : '';
+      const d = wideCount(lRaw + rRaw);
+      const l = padRight(lRaw, L.leftWidth);
+      const r = padRight(rRaw, d > 0 ? L.rightWidth - d : L.rightWidth);
       const hl = state.tab === 'envs' && state.sub === null && state.focus === 'left' && useColor;
       const hr = state.tab === 'envs' && state.sub === null && state.focus === 'right' && useColor;
       const bl = c(ANSI.bold, hl) + '│' + c(ANSI.reset, hl);
       const bm = c(ANSI.bold, hl || hr) + '│' + c(ANSI.reset, hl || hr);
       const br = c(ANSI.bold, hr) + '│' + c(ANSI.reset, hr);
-      lines.push(bl + l + bm + r + br);
+      lines.push(bl + l + bm + r + (d > 0 ? cupBorder(row, width) : '') + br);
     } else {
-      const l = left[top + i] !== undefined ? padRight(left[top + i], inner) : ' '.repeat(inner);
-      lines.push('│' + l + '│');
+      const lRaw = left[top + i] ?? '';
+      const d = wideCount(lRaw);
+      const l = padRight(lRaw, d > 0 ? inner - d : inner);
+      lines.push('│' + l + (d > 0 ? cupBorder(row, width) : '') + '│');
     }
   }
 
-  lines.push(...renderFooter(a, inner));
+  lines.push(...renderFooter(a, inner, contentRows + 3, contentRows + 4));
 
   return lines.join('\n');
 }
@@ -213,14 +212,18 @@ function renderAbout(ctx: Ctx): Section {
 }
 
 /** Статус-строка: легенда (или статус) + вторая легенда. */
-function renderFooter(a: RenderArgs, inner: number): string[] {
+function renderFooter(a: RenderArgs, inner: number, row1: number, row2: number): string[] {
   const legend1 = inner >= LEGEND_WIDE_MIN ? '↑↓ перемещение  ←→ колонки  TAB вкладки  Enter ОК' : '↑↓ TAB Enter Space Esc';
   const legend2 = 'Space toggle  E — правка  Esc назад/выход';
+  const f2text = a.status !== null ? a.status : legend2;
   const f1 = c(ANSI.dim, a.useColor) + legend1 + c(ANSI.reset, a.useColor);
-  const f2 = a.status !== null
-    ? c(ANSI.bold, a.useColor) + a.status + c(ANSI.reset, a.useColor)
-    : c(ANSI.dim, a.useColor) + legend2 + c(ANSI.reset, a.useColor);
-  return ['│' + padRight(f1, inner) + '│', '│' + padRight(f2, inner) + '│'];
+  const f2 = (a.status !== null ? c(ANSI.bold, a.useColor) : c(ANSI.dim, a.useColor)) + f2text + c(ANSI.reset, a.useColor);
+  const line = (text: string, styled: string, row: number): string => {
+    const d = wideCount(text);
+    if (d === 0) return '│' + padRight(styled, inner) + '│';
+    return '│' + padRight(styled, inner - d) + cupBorder(row, a.width) + '│';
+  };
+  return [line(legend1, f1, row1), line(f2text, f2, row2)];
 }
 
 /** Имя с многоточием при превышении длины. */

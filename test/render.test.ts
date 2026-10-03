@@ -1,9 +1,31 @@
 import { test } from 'node:test';
 import assert from 'node:assert';
-import { render, scrollTop, catalogPickerLines, visibleWidth, truncateVisible, padRight } from '../src/render.js';
+import { render, scrollTop, catalogPickerLines, visibleWidth, truncateVisible, padRight, wideCount } from '../src/render.js';
 import { computeLayout } from '../src/layout.js';
 import { initialState, freshExt, freshCreate, type AppState, type Catalog } from '../src/state.js';
 import { Environment } from '../src/environments.js';
+// Симуляция терминала: колонка, в которой нарисован последний символ строки.
+// cells(ch) — сколько клеток занимает символ; CUP (\x1b[<row>;<col>H) — прыжок.
+function lastCol(line: string, cells: (ch: string) => number, width: number): number {
+  let col = 1;
+  let last = 0;
+  let i = 0;
+  while (i < line.length) {
+    if (line[i] === '\x1b') {
+      const m = /^\x1b\[[0-9;]*[a-zA-Z]/.exec(line.slice(i));
+      if (m) {
+        if (m[0].endsWith('H')) col = Number(m[0].slice(2, -1).split(';')[1] ?? 1);
+        i += m[0].length;
+        continue;
+      }
+    }
+    if (col > width) col = 1; // wrap
+    last = col;
+    col += cells(line[i]);
+    i++;
+  }
+  return last;
+}
 
 const envs: Environment[] = [
   { name: 'dev', path: '/root/dev', details: { hasSettings: true, model: 'p1/m1', tools: ['tool1.ts'], skills: ['sk-a'], packages: ['npm:pkg-a'] } },
@@ -21,7 +43,7 @@ test('широкий режим: рамка, таб-бар, разделител
   const s = render({ state: initialState(), envs, width: 62, height: 10, ...base });
   const lines = s.split('\n');
   assert.equal(lines.length, 10);
-  for (const line of lines) assert.equal(visibleWidth(line), 62);
+  for (const line of lines) assert.equal(lastCol(line, () => 1, 62), 62);
   assert.ok(lines[0].includes('Окружения'));
   assert.ok(lines[0].includes('Настройки'));
   assert.ok(lines[0].includes('О программе'));
@@ -88,7 +110,7 @@ test('без цвета: активная вкладка помечается [.
   const tabLine = s.split('\n')[0];
   assert.ok(tabLine.includes('[Окружения]'));
   assert.ok(tabLine.includes('Настройки'));
-  assert.ok(!s.includes('\x1b'));
+  assert.ok(!/\x1b\[[0-9;]*m/.test(s)); // цветных кодов нет (CUP для рамки — не цвет)
 });
 
 test('без цвета: выбранный пункт настроек помечается >', () => {
@@ -127,8 +149,8 @@ test('узкий цветной вывод: ANSI не обрывается, ра
   assert.equal(lines.length, 8);
   for (const line of lines) {
     assertNoDanglingAnsi(line);
-    // видимая ширина каждой строки равна ширине кадра
-    assert.equal(visibleWidth(line), 30);
+    // правая граница стоит в колонке ширины кадра
+    assert.equal(lastCol(line, () => 1, 30), 30);
   }
 });
 
@@ -324,37 +346,47 @@ test('пикер каталога: прогресс загрузки — счё�
   assert.ok(noProgress.left.some((l) => l.includes('Загрузка каталога…') && !l.includes('/')));
 });
 
-test('ширина: символы с двойной клеткой — 2, box-drawing и «·» — 1', () => {
-  assert.equal(visibleWidth('↑↓←→'), 8);
-  assert.equal(visibleWidth('—…✓⚠▌＋'), 12);
-  assert.equal(visibleWidth('─│├┬┤'), 5);
-  assert.equal(visibleWidth('·'), 1);
-  assert.equal(visibleWidth('pi-env 1.0'), 10);
-  assert.equal(visibleWidth('\x1b[1m↑\x1b[0m'), 2); // ANSI-коды не учитываются
+test('ширина: «неопределённые» символы считает wideCount, box-drawing и «·» — нет', () => {
+  assert.equal(wideCount('↑↓←→'), 4);
+  assert.equal(wideCount('—…✓⚠▌＋'), 6);
+  assert.equal(wideCount('─│├┬┤·'), 0);
+  assert.equal(wideCount('pi-env 1.0'), 0);
+  assert.equal(wideCount('\x1b[1m↑\x1b[0m'), 1); // ANSI-коды не учитываются
+  assert.equal(visibleWidth('↑ a→'), 4); // символ = символ (резерв учитывает рамка)
 });
 
-test('padRight: строка со «широким» символом не выходит за ширину', () => {
-  const padded = padRight('↑ a→', 8); // 2+1+1+2 = 6 видимых клеток + 2 пробела
-  assert.equal(visibleWidth(padded), 8);
-  assert.equal(padded.replace(/\x1b\[[0-9;]*m/g, ''), '↑ a→  ');
+test('padRight: padding по числу символов', () => {
+  const padded = padRight('↑ a→', 8); // 4 символа + 4 пробела
+  assert.equal(padded, '↑ a→    ');
 });
 
-test('truncateVisible: двухклеточный символ не делится пополам', () => {
-  assert.equal(truncateVisible('a↑b', 3), 'a↑');
-  assert.equal(truncateVisible('a↑b', 2), 'a');
-  assert.equal(truncateVisible('ab→cd', 3), 'ab');
+test('truncateVisible: обрезка по видимым символам', () => {
+  assert.equal(truncateVisible('a↑b', 3), 'a↑b');
   assert.equal(truncateVisible('abc', 2), 'ab');
   assert.equal(truncateVisible('a', 5), 'a');
-  assert.equal(truncateVisible('аб—', 3), 'аб');
-  assert.equal(truncateVisible('аб—', 4), 'аб—');
+  assert.equal(truncateVisible('аб—', 2), 'аб');
 });
 
-test('вкладка «Расширения»: видимая ширина каждой строки равна ширине кадра', () => {
+test('рамка: правая граница в колонке width и на 1-клеточном, и на 2-клеточном терминале', () => {
+  const wide = (ch: string) => ['↑', '↓', '←', '→', '—', '…', '✓', '⚠', '▌', '＋'].includes(ch) ? 2 : 1;
   const st = { ...initialState(extCatalog), tab: 'extensions' as const, selected: 0 };
-  for (const width of [62, 80, 100, 120]) {
+  for (const width of [62, 80, 120]) {
     const s = render({ state: st, envs, width, height: 16, ...base });
     for (const line of s.split('\n')) {
-      assert.equal(visibleWidth(line), width, `w=${width}: ${JSON.stringify(line)}`);
+      assert.equal(lastCol(line, () => 1, width), width, `1-клеточный: ${JSON.stringify(line)}`);
+      assert.equal(lastCol(line, wide, width), width, `2-клеточный: ${JSON.stringify(line)}`);
+    }
+  }
+});
+
+test('рамка узкого режима: правая граница в колонке width на обеих моделях', () => {
+  const wide = (ch: string) => ['↑', '↓', '←', '→', '—', '…', '✓', '⚠', '▌', '＋'].includes(ch) ? 2 : 1;
+  const st = { ...initialState(extCatalog), tab: 'extensions' as const };
+  for (const width of [40, 50]) {
+    const s = render({ state: st, envs, width, height: 10, ...base });
+    for (const line of s.split('\n')) {
+      assert.equal(lastCol(line, () => 1, width), width, `1-клеточный: ${JSON.stringify(line)}`);
+      assert.equal(lastCol(line, wide, width), width, `2-клеточный: ${JSON.stringify(line)}`);
     }
   }
 });
