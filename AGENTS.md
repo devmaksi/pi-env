@@ -33,7 +33,8 @@
   установка расширений из каталога `https://pi.dev/packages` (экран пикера:
   список по загрузкам, инфо-панель; глобально — в вкладке, в окружение — кнопка
   «Установить» в списке пакетов формы; `pi install` с нужным
-  `PI_CODING_AGENT_DIR`).
+  `PI_CODING_AGENT_DIR`; поиск по имени пакета — регистронезависимый),
+- Скролл: окно списка следует за курсором (все списки длиннее кадра).
 - Создание окружения: форма (имя — обязательное; модель по умолчанию
   «провайдер → модель», свои инструменты, расширения-пакеты, скиллы —
   опциональные). Каталог берётся из main-агента (`PI_CODING_AGENT_DIR`,
@@ -65,7 +66,8 @@
 - `src/layout.ts` — `computeLayout` (чистая), константы порогов
 - `src/catalog.ts` — `loadCatalog` + `listProviders/listCustomTools/`
   `listPackages/listSkills`, `parseOutdated`, `parsePackageCatalog`/
-  `fetchPackageCatalog` (каталог pi.dev/packages), `normalizePkgSource` (чистые)
+  `fetchPackageCatalog` (каталог pi.dev/packages), `normalizePkgSource`,
+  `filterPackages` (поиск по имени пакета) (чистые)
 - `src/create.ts` — `validateName`, `createEnvironment` (создание каталога,
   копирование инструментов/скиллов/каталога моделей, запись settings.json),
   `readSettings`, `updateEnvironment` (синхронизация + переименование),
@@ -74,9 +76,9 @@
   (`updates-result` с scope `main`/`create`), машина создания `CreateState`
   (views `install`/`installing`, пакеты — по источникам `npm:name`,
   `check`/`latest` — проверка обновлений окружения), `ExtState` вкладки
-  «Расширения» (каталог, установка, обновление, удаление) (чистые)
+  «Расширения» (каталог, установка, обновление, удаление; `query` — поиск) (чистые)
 - `src/render.ts` — `render(args)` → строки ANSI, `pkgMarker` (вкладка) и
-  `formPkgMarker` (форма, по карте outdated окружения) (чистые)
+  `formPkgMarker` (форма, по карте outdated окружения), `scrollTop` (окно списка) (чистые)
 - `src/run.ts` — цикл приложения, `runCmd`, `checkUpdates(targetDir, scope)`
   (`npm outdated` по каталогу main-агента или окружения),
   `doUpdateAll(targetDir, scope)`/`doUpdateOne`/`doRemove`
@@ -106,7 +108,7 @@
 - Space — toggle на вкладке «Настройки» и отметка в списках создания
 - E — редактировать выбранное окружение (форма с предзаполнением: имя, модель, инструменты, пакеты, скиллы; сохранение, переименование, удаление с подтверждением)
 - X — удалить выбранное расширение (список расширений формы, с подтверждением)
-- Печатные символы / Backspace — ввод имени (строка «Имя» формы)
+- Печатные символы / Backspace — ввод имени (строка «Имя» формы) и поиска (строка «Поиск» в окне установки)
 - ESC — назад из суб-экрана / выход
 - Ctrl+C — аварийный выход
 
