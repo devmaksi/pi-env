@@ -32,8 +32,14 @@ export interface Ctx {
   root: string;
 }
 
+/** Результат секции: колонки и номер курсорной строки в left (−1 — нет списка). */
+export interface Section {
+  left: string[];
+  right: string[];
+  cursorRow: number;
+}
 /** Суб-экран создания/редактирования окружения: диспетчер по view. */
-export function renderCreate(cr: CreateState, ctx: Ctx): { left: string[]; right: string[] } {
+export function renderCreate(cr: CreateState, ctx: Ctx): Section {
   const r =
     cr.view === 'form' ? createForm(cr, ctx)
     : cr.view === 'packages' ? createPackages(cr, ctx)
@@ -46,7 +52,7 @@ export function renderCreate(cr: CreateState, ctx: Ctx): { left: string[]; right
 }
 
 /** Форма создания: поля и действия. */
-function createForm(cr: CreateState, ctx: Ctx): { left: string[]; right: string[] } {
+function createForm(cr: CreateState, ctx: Ctx): Section {
   const left: string[] = [];
   const right: string[] = [];
   const caret = cr.caret < cr.name.length
@@ -68,11 +74,11 @@ function createForm(cr: CreateState, ctx: Ctx): { left: string[]; right: string[
   right.push(c(ANSI.dim, ctx.useColor) + 'Esc — закрыть' + c(ANSI.reset, ctx.useColor));
   if (cr.error) right.push(c(ANSI.bold, ctx.useColor) + '⚠ ' + cr.error + c(ANSI.reset, ctx.useColor));
   if (cr.done !== null) right.push(c(ANSI.bold, ctx.useColor) + (cr.mode === 'edit' ? '✓ Обновлено: ' : '✓ Создано: ') + cr.done + c(ANSI.reset, ctx.useColor));
-  return { left, right };
+  return { left, right, cursorRow: cr.cursor };
 }
 
 /** Список пакетов окружения: маркеры, кнопки, инфо-панель. */
-function createPackages(cr: CreateState, ctx: Ctx): { left: string[]; right: string[] } {
+function createPackages(cr: CreateState, ctx: Ctx): Section {
   const left: string[] = [];
   const right: string[] = [];
   const latest = cr.latest;
@@ -114,11 +120,11 @@ function createPackages(cr: CreateState, ctx: Ctx): { left: string[]; right: str
   right.push(c(ANSI.dim, ctx.useColor) + 'Space/Enter — выбрать' + c(ANSI.reset, ctx.useColor));
   right.push(c(ANSI.dim, ctx.useColor) + 'X — удалить' + c(ANSI.reset, ctx.useColor));
   right.push(c(ANSI.dim, ctx.useColor) + 'Esc — назад' + c(ANSI.reset, ctx.useColor));
-  return { left, right };
+  return { left, right, cursorRow: 1 + cr.cursor };
 }
 
 /** Пикер каталога pi.dev: установка в окружение. */
-function createInstall(cr: CreateState, ctx: Ctx): { left: string[]; right: string[] } {
+function createInstall(cr: CreateState, ctx: Ctx): Section {
   const left: string[] = [];
   const right: string[] = [];
   left.push(c(ANSI.bold, ctx.useColor) + 'Установка в окружение «' + cr.name + '»' + c(ANSI.reset, ctx.useColor));
@@ -127,14 +133,14 @@ function createInstall(cr: CreateState, ctx: Ctx): { left: string[]; right: stri
   right.push(...picker.right);
   if (cr.error) right.push(c(ANSI.bold, ctx.useColor) + '⚠ ' + cr.error + c(ANSI.reset, ctx.useColor));
   right.push(c(ANSI.dim, ctx.useColor) + 'Esc — назад' + c(ANSI.reset, ctx.useColor));
-  return { left, right };
+  return { left, right, cursorRow: -1 };
 }
 
 /** Списки выбора: провайдер / модель / инструменты / скиллы. */
-function createSelects(cr: CreateState, ctx: Ctx): { left: string[]; right: string[] } {
+function createSelects(cr: CreateState, ctx: Ctx): Section {
   // вызывается диспетчером только для четырёх списочных view
   if (cr.view !== 'providers' && cr.view !== 'models' && cr.view !== 'tools' && cr.view !== 'skills') {
-    return { left: [], right: [] };
+    return { left: [], right: [], cursorRow: -1 };
   }
   const left: string[] = [];
   const right: string[] = [];
@@ -159,7 +165,7 @@ function createSelects(cr: CreateState, ctx: Ctx): { left: string[]; right: stri
   });
   right.push(c(ANSI.dim, ctx.useColor) + 'Space/Enter — выбрать' + c(ANSI.reset, ctx.useColor));
   right.push(c(ANSI.dim, ctx.useColor) + 'Esc — назад' + c(ANSI.reset, ctx.useColor));
-  return { left, right };
+  return { left, right, cursorRow: 1 + cr.cursor };
 }
 
 // Заглушки и подтверждения создания: view → [текст, bold?, подсказки]
@@ -173,15 +179,15 @@ const CREATE_BUSY: Record<string, { text: (cr: CreateState) => string; bold?: bo
   'installing': { text: (cr) => 'Установка: ' + (cr.installing ?? '') + '…', hints: ['Esc — назад'] },
 };
 
-function createBusy(cr: CreateState, ctx: Ctx): { left: string[]; right: string[] } {
+function createBusy(cr: CreateState, ctx: Ctx): Section {
   const b = CREATE_BUSY[cr.view];
   const left = [c(b.bold ? ANSI.bold : ANSI.dim, ctx.useColor) + b.text(cr) + c(ANSI.reset, ctx.useColor)];
   const right = b.hints.map((h) => c(ANSI.dim, ctx.useColor) + h + c(ANSI.reset, ctx.useColor));
-  return { left, right };
+  return { left, right, cursorRow: -1 };
 }
 
 /** Вкладка «Окружения»: список + инфо-панель выбранного (без слияния в узком режиме). */
-export function renderEnvList(envs: Environment[], state: AppState, ctx: Ctx): { left: string[]; right: string[] } {
+export function renderEnvList(envs: Environment[], state: AppState, ctx: Ctx): Section {
   const left: string[] = [];
   const right: string[] = [];
   interface Row { text: string; selected: boolean; isSep: boolean }
@@ -216,11 +222,14 @@ export function renderEnvList(envs: Environment[], state: AppState, ctx: Ctx): {
   } else {
     right.push(c(ANSI.dim, ctx.useColor) + 'Выберите окружение' + c(ANSI.reset, ctx.useColor));
   }
-  return { left, right };
+  const cursorRow = state.selected < envs.length
+    ? state.selected
+    : envs.length === 0 ? 0 : envs.length + 1; // разделитель сдвигает «Создать»
+  return { left, right, cursorRow };
 }
 
 /** Вкладка «Расширения»: диспетчер по состоянию ext. */
-export function renderExtTab(ext: ExtState | null, ctx: Ctx): { left: string[]; right: string[] } {
+export function renderExtTab(ext: ExtState | null, ctx: Ctx): Section {
   const r =
     ext === null ? extList(ctx)
     : ext.view === 'catalog' ? extCatalogView(ext, ctx)
@@ -230,7 +239,7 @@ export function renderExtTab(ext: ExtState | null, ctx: Ctx): { left: string[]; 
 }
 
 // Вкладка «Расширения»: список пакетов main-агента + кнопки
-function extList(ctx: Ctx): { left: string[]; right: string[] } {
+function extList(ctx: Ctx): Section {
   const left: string[] = [];
   const right: string[] = [];
   const pkgs = ctx.state.catalog.packages;
@@ -259,11 +268,17 @@ function extList(ctx: Ctx): { left: string[]; right: string[] } {
   }
   right.push(c(ANSI.dim, ctx.useColor) + 'Enter — обновить пакет / выбрать' + c(ANSI.reset, ctx.useColor));
   right.push(c(ANSI.dim, ctx.useColor) + 'X — удалить' + c(ANSI.reset, ctx.useColor));
-  return { left, right };
+  const n = pkgs.length;
+  const s = ctx.state.selected;
+  const cursorRow =
+    s < n ? 1 + s
+    : s === n ? (n === 0 ? 1 : n + 2)
+    : (n === 0 ? 2 : n + 3);
+  return { left, right, cursorRow };
 }
 
 // Вкладка «Расширения»: пикер каталога pi.dev
-function extCatalogView(ext: ExtState, ctx: Ctx): { left: string[]; right: string[] } {
+function extCatalogView(ext: ExtState, ctx: Ctx): Section {
   const left: string[] = [];
   const right: string[] = [];
   left.push(c(ANSI.bold, ctx.useColor) + 'Установка расширения' + c(ANSI.reset, ctx.useColor));
@@ -271,7 +286,7 @@ function extCatalogView(ext: ExtState, ctx: Ctx): { left: string[]; right: strin
   left.push(...picker.left);
   right.push(...picker.right);
   right.push(c(ANSI.dim, ctx.useColor) + 'Esc — назад' + c(ANSI.reset, ctx.useColor));
-  return { left, right };
+  return { left, right, cursorRow: ext.catalogStatus === 'ready' ? 1 + ext.cursor : -1 };
 }
 
 // Вкладка «Расширения»: состояния установки/обновления/удаления
@@ -282,9 +297,9 @@ const EXT_BUSY: Record<string, { text: (ext: ExtState) => string; bold?: boolean
   'confirm-remove': { text: (ext) => 'Удалить расширение «' + (ext.removing ?? '') + '»?', bold: true, hints: ['Enter — подтвердить', 'Esc — отмена'] },
 };
 
-function extBusy(ext: ExtState, ctx: Ctx): { left: string[]; right: string[] } {
+function extBusy(ext: ExtState, ctx: Ctx): Section {
   const b = EXT_BUSY[ext.view];
   const left = [c(b.bold ? ANSI.bold : ANSI.dim, ctx.useColor) + b.text(ext) + c(ANSI.reset, ctx.useColor)];
   const right = b.hints.map((h) => c(ANSI.dim, ctx.useColor) + h + c(ANSI.reset, ctx.useColor));
-  return { left, right };
+  return { left, right, cursorRow: -1 };
 }

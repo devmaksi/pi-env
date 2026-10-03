@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert';
-import { render } from '../src/render.js';
+import { render, scrollTop } from '../src/render.js';
 import { computeLayout } from '../src/layout.js';
 import { initialState, freshExt, freshCreate, type AppState, type Catalog } from '../src/state.js';
 import { Environment } from '../src/environments.js';
@@ -231,4 +231,30 @@ test('вкладка «Расширения» без пакетов: пусто 
   assert.ok(s.includes('— пусто —'));
   assert.ok(s.includes('Установить'));
   assert.ok(!s.includes('Источник:'));
+});
+
+test('scrollTop: окно стоит, пока курсор в кадре; затем скроллится', () => {
+  assert.equal(scrollTop(0, 100, 20), 0);
+  assert.equal(scrollTop(19, 100, 20), 0);
+  assert.equal(scrollTop(20, 100, 20), 1);
+  assert.equal(scrollTop(50, 100, 20), 31);
+  assert.equal(scrollTop(99, 100, 20), 80);
+  assert.equal(scrollTop(-1, 100, 20), 0);
+  assert.equal(scrollTop(5, 15, 20), 0); // список короче окна
+});
+
+test('длинный каталог: окно скроллится, курсор виден, верхние строки ушли', () => {
+  const items = Array.from({ length: 30 }, (_, i) => ({
+    name: 'pkg' + String(i).padStart(2, '0'),
+    types: [] as string[],
+    downloads: 0,
+    description: null,
+    author: null,
+  }));
+  const st = { ...initialState(), tab: 'extensions' as const, ext: freshExt({ catalogStatus: 'ready' as const, catalog: items, cursor: 25 }) };
+  const s = render({ state: st, envs, width: 100, height: 12, ...base });
+  assert.ok(s.includes('> pkg25'));
+  assert.ok(!s.includes('pkg00'));
+  assert.ok(!s.includes('pkg17'));
+  assert.ok(s.includes('pkg18')); // первая видимая: left = [title, pkg00..], top = 19 → left[19] = pkg18
 });

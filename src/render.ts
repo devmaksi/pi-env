@@ -1,7 +1,7 @@
 import { Environment } from './environments.js';
 import { computeLayout, NARROW_MIN, LOW_MIN, type Layout } from './layout.js';
 import { type AppState, type PkgCheck } from './state.js';
-import { renderCreate, renderExtTab, renderEnvList, type Ctx } from './sections.js';
+import { renderCreate, renderExtTab, renderEnvList, type Ctx, type Section } from './sections.js';
 import type { PkgItem, CatalogPkg } from './catalog.js';
 
 export const ANSI = {
@@ -72,6 +72,16 @@ export const PKG_NAME_MAX = 22;
 /** Максимальная длина имени пакета в пикере каталога (дальше — многоточие). */
 const CATALOG_NAME_MAX = 24;
 
+/**
+ * Смещение окна для списка длиннее кадра: верх стоит, пока курсор не
+ * достигнет последней видимой строки, затем окно скроллится и курсор
+ * удерживается на нижней границе. Курсора нет (−1) или список короткий — 0.
+ */
+export function scrollTop(cursorRow: number, len: number, height: number): number {
+  if (cursorRow < 0 || len <= height) return 0;
+  return Math.max(0, Math.min(cursorRow - (height - 1), len - height));
+}
+
 export function render(a: RenderArgs): string {
   const { state, envs, root, width, height, useColor } = a;
 
@@ -111,11 +121,12 @@ export function render(a: RenderArgs): string {
     : state.tab === 'extensions' ? renderExtTab(state.ext, ctx)
     : state.tab === 'settings' ? renderSettings(state, ctx)
     : renderAbout(ctx);
-  const { left, right } = section;
+  const { left, right, cursorRow } = section;
+  const top = scrollTop(cursorRow, left.length, contentRows);
 
   for (let i = 0; i < contentRows; i++) {
     if (twoCol) {
-      const l = i < left.length ? padRight(left[i], L.leftWidth) : ' '.repeat(L.leftWidth);
+      const l = left[top + i] !== undefined ? padRight(left[top + i], L.leftWidth) : ' '.repeat(L.leftWidth);
       const r = i < right.length ? padRight(right[i], L.rightWidth) : ' '.repeat(L.rightWidth);
       const hl = state.tab === 'envs' && state.sub === null && state.focus === 'left' && useColor;
       const hr = state.tab === 'envs' && state.sub === null && state.focus === 'right' && useColor;
@@ -124,7 +135,7 @@ export function render(a: RenderArgs): string {
       const br = c(ANSI.bold, hr) + '│' + c(ANSI.reset, hr);
       lines.push(bl + l + bm + r + br);
     } else {
-      const l = i < left.length ? padRight(left[i], inner) : ' '.repeat(inner);
+      const l = left[top + i] !== undefined ? padRight(left[top + i], inner) : ' '.repeat(inner);
       lines.push('│' + l + '│');
     }
   }
@@ -135,7 +146,7 @@ export function render(a: RenderArgs): string {
 }
 
 /** Вкладка «Настройки»: корневой каталог и toggle цвета. */
-function renderSettings(state: AppState, ctx: Ctx): { left: string[]; right: string[] } {
+function renderSettings(state: AppState, ctx: Ctx): Section {
   const left: string[] = [];
   const right: string[] = [];
   const items = [
@@ -151,11 +162,11 @@ function renderSettings(state: AppState, ctx: Ctx): { left: string[]; right: str
     }
   });
   right.push(c(ANSI.dim, ctx.useColor) + 'Подробные настройки — этап 2' + c(ANSI.reset, ctx.useColor));
-  return { left, right };
+  return { left, right, cursorRow: state.selected };
 }
 
 /** Вкладка «О программе»: центрированный блок на всю ширину. */
-function renderAbout(ctx: Ctx): { left: string[]; right: string[] } {
+function renderAbout(ctx: Ctx): Section {
   const block = [
     c(ANSI.bold, ctx.useColor) + 'pi-env 0.1.0' + c(ANSI.reset, ctx.useColor),
     'CLI для управления окружениями pi',
@@ -167,7 +178,7 @@ function renderAbout(ctx: Ctx): { left: string[]; right: string[] } {
   for (let i = 0; i < ctx.contentRows; i++) {
     left.push(i - top >= 0 && i - top < block.length ? center(block[i - top], ctx.inner) : '');
   }
-  return { left, right: [] };
+  return { left, right: [], cursorRow: -1 };
 }
 
 /** Статус-строка: легенда (или статус) + вторая легенда. */
