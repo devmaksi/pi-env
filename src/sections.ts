@@ -1,7 +1,5 @@
 import type { Layout } from './layout.js';
 import {
-  UPDATE_ALL_ROW,
-  INSTALL_ROW,
   packageListSources,
   type AppState,
   type CreateState,
@@ -21,6 +19,7 @@ import {
   catalogPickerLines,
   PKG_NAME_MAX,
 } from './render.js';
+import { t, type StrKey } from './i18n.js';
 
 /** Контекст рендера: раскладка и параметры кадра, общие для всех секций. */
 export interface Ctx {
@@ -62,20 +61,20 @@ function createForm(cr: CreateState, ctx: Ctx): Section {
     : cr.name + '▌';
   const model = cr.provider && cr.model ? cr.provider + '/' + cr.model : cr.provider ?? '—';
   const rows = [
-    'Имя: ' + caret,
-    'Модель: ' + model,
-    'Свои инструменты: ' + cr.tools.length,
-    'Расширения: ' + cr.packages.length,
-    'Скиллы: ' + cr.skills.length,
-    cr.done !== null ? 'Готово' : cr.mode === 'edit' ? 'Сохранить' : 'Создать',
+    t(ctx.lang, 'form.name') + caret,
+    t(ctx.lang, 'form.model') + model,
+    t(ctx.lang, 'form.tools') + cr.tools.length,
+    t(ctx.lang, 'form.packages') + cr.packages.length,
+    t(ctx.lang, 'form.skills') + cr.skills.length,
+    cr.done !== null ? t(ctx.lang, 'form.done') : cr.mode === 'edit' ? t(ctx.lang, 'form.save') : t(ctx.lang, 'form.create'),
   ];
-  if (cr.mode === 'edit' && cr.done === null) rows.push('Удалить');
+  if (cr.mode === 'edit' && cr.done === null) rows.push(t(ctx.lang, 'form.delete'));
   rows.forEach((t, i) => left.push(listRow(i, cr.cursor, t, ctx.L.leftWidth, ctx.useColor)));
-  right.push(c(ANSI.dim, ctx.useColor) + 'Enter — открыть список / создать' + c(ANSI.reset, ctx.useColor));
-  right.push(c(ANSI.dim, ctx.useColor) + 'Space — отметить в списке' + c(ANSI.reset, ctx.useColor));
-  right.push(c(ANSI.dim, ctx.useColor) + 'Esc — закрыть' + c(ANSI.reset, ctx.useColor));
+  right.push(c(ANSI.dim, ctx.useColor) + t(ctx.lang, 'form.hint.enter') + c(ANSI.reset, ctx.useColor));
+  right.push(c(ANSI.dim, ctx.useColor) + t(ctx.lang, 'form.hint.space') + c(ANSI.reset, ctx.useColor));
+  right.push(c(ANSI.dim, ctx.useColor) + t(ctx.lang, 'form.hint.esc') + c(ANSI.reset, ctx.useColor));
   if (cr.error) right.push(c(ANSI.bold, ctx.useColor) + '⚠ ' + cr.error + c(ANSI.reset, ctx.useColor));
-  if (cr.done !== null) right.push(c(ANSI.bold, ctx.useColor) + (cr.mode === 'edit' ? '✓ Обновлено: ' : '✓ Создано: ') + cr.done + c(ANSI.reset, ctx.useColor));
+  if (cr.done !== null) right.push(c(ANSI.bold, ctx.useColor) + (cr.mode === 'edit' ? t(ctx.lang, 'form.updated', { v: cr.done }) : t(ctx.lang, 'form.created', { v: cr.done })) + c(ANSI.reset, ctx.useColor));
   return { left, right, cursorRow: cr.cursor };
 }
 
@@ -86,42 +85,42 @@ function createPackages(cr: CreateState, ctx: Ctx): Section {
   const latest = cr.latest;
   const check = cr.check;
   const sources = packageListSources(cr, ctx.state.catalog);
-  left.push(c(ANSI.bold, ctx.useColor) + 'Расширения (пакеты)' + c(ANSI.reset, ctx.useColor));
-  if (sources.length === 0) left.push(c(ANSI.dim, ctx.useColor) + '— пусто —' + c(ANSI.reset, ctx.useColor));
+  left.push(c(ANSI.bold, ctx.useColor) + t(ctx.lang, 'pkgs.title') + c(ANSI.reset, ctx.useColor));
+  if (sources.length === 0) left.push(c(ANSI.dim, ctx.useColor) + t(ctx.lang, 'empty') + c(ANSI.reset, ctx.useColor));
   sources.forEach((src, i) => {
     const p = ctx.state.catalog.packages.find((x) => x.source === src);
     const name = p !== undefined ? p.name : src.replace(/^npm:/, '');
-    const marker = formPkgMarker(src, name, p !== undefined, check, latest);
+    const marker = formPkgMarker(src, name, p !== undefined, check, latest, ctx.lang);
     const text = (cr.packages.includes(src) ? '✓ ' : '  ') + truncateName(name, PKG_NAME_MAX) + '  ' + marker;
     left.push(listRow(i, cr.cursor, text, ctx.L.leftWidth, ctx.useColor));
   });
-  const buttons: Array<[string, string]> = [['↑', UPDATE_ALL_ROW]];
-  if (cr.mode === 'edit') buttons.push(['＋', INSTALL_ROW]);
+  const buttons: Array<[string, string]> = [['↑', t(ctx.lang, 'btn.update-all')]];
+  if (cr.mode === 'edit') buttons.push(['＋', t(ctx.lang, 'btn.install')]);
   buttons.forEach(([icon, label], j) => {
     left.push(listRow(sources.length + j, cr.cursor, icon + ' ' + label, ctx.L.leftWidth, ctx.useColor));
   });
   const curSrc = sources[cr.cursor];
   const cur = curSrc !== undefined ? ctx.state.catalog.packages.find((x) => x.source === curSrc) : undefined;
   if (cur !== undefined) {
-    right.push(...pkgInfoLines(cur, check, latest, ctx.L, ctx.useColor));
-    right.push('В окружении: ' + (cr.packages.includes(cur.source) ? '✓' : '—'));
+    right.push(...pkgInfoLines(cur, check, latest, ctx.L, ctx.useColor, ctx.lang));
+    right.push(t(ctx.lang, 'pkgs.in-env', { m: cr.packages.includes(cur.source) ? '✓' : '—' }));
   } else if (curSrc !== undefined) {
     right.push(c(ANSI.bold, ctx.useColor) + curSrc.replace(/^npm:/, '') + c(ANSI.reset, ctx.useColor));
-    right.push('Установлено только в этом окружении');
-    right.push('В окружении: ✓');
+    right.push(t(ctx.lang, 'pkgs.env-only'));
+    right.push(t(ctx.lang, 'pkgs.in-env', { m: '✓' }));
   } else if (cr.cursor === sources.length) {
-    right.push('Обновить все');
+    right.push(t(ctx.lang, 'btn.update-all'));
     right.push('pi update --extensions');
-    right.push('Enter — выполнить');
+    right.push(t(ctx.lang, 'pkgs.hint.run'));
   } else if (cr.mode === 'edit') {
-    right.push('Установка расширения');
-    right.push('Список: pi.dev/packages');
-    right.push('Enter — открыть каталог');
+    right.push(t(ctx.lang, 'install.title'));
+    right.push(t(ctx.lang, 'install.catalog'));
+    right.push(t(ctx.lang, 'install.hint.open'));
   }
   if (cr.error) right.push(c(ANSI.bold, ctx.useColor) + '⚠ ' + cr.error + c(ANSI.reset, ctx.useColor));
-  right.push(c(ANSI.dim, ctx.useColor) + 'Space/Enter — выбрать' + c(ANSI.reset, ctx.useColor));
-  right.push(c(ANSI.dim, ctx.useColor) + 'X — удалить' + c(ANSI.reset, ctx.useColor));
-  right.push(c(ANSI.dim, ctx.useColor) + 'Esc — назад' + c(ANSI.reset, ctx.useColor));
+  right.push(c(ANSI.dim, ctx.useColor) + t(ctx.lang, 'hint.select') + c(ANSI.reset, ctx.useColor));
+  right.push(c(ANSI.dim, ctx.useColor) + t(ctx.lang, 'hint.delete') + c(ANSI.reset, ctx.useColor));
+  right.push(c(ANSI.dim, ctx.useColor) + t(ctx.lang, 'hint.back') + c(ANSI.reset, ctx.useColor));
   return { left, right, cursorRow: 1 + cr.cursor };
 }
 
@@ -129,13 +128,13 @@ function createPackages(cr: CreateState, ctx: Ctx): Section {
 function createInstall(cr: CreateState, ctx: Ctx): Section {
   const left: string[] = [];
   const right: string[] = [];
-  left.push(c(ANSI.bold, ctx.useColor) + 'Установка в окружение «' + cr.name + '»' + c(ANSI.reset, ctx.useColor));
+  left.push(c(ANSI.bold, ctx.useColor) + t(ctx.lang, 'install.env', { name: cr.name }) + c(ANSI.reset, ctx.useColor));
   const pkgs = filterPackages(cr.installCatalog, cr.query);
-  const picker = catalogPickerLines(pkgs, cr.query, cr.installStatus, cr.cursor, ctx.L, ctx.useColor, ctx.state.catalogProgress);
+  const picker = catalogPickerLines(pkgs, cr.query, cr.installStatus, cr.cursor, ctx.L, ctx.useColor, ctx.state.catalogProgress, ctx.lang);
   left.push(...picker.left);
   right.push(...picker.right);
   if (cr.error) right.push(c(ANSI.bold, ctx.useColor) + '⚠ ' + cr.error + c(ANSI.reset, ctx.useColor));
-  right.push(c(ANSI.dim, ctx.useColor) + 'Esc — назад' + c(ANSI.reset, ctx.useColor));
+  right.push(c(ANSI.dim, ctx.useColor) + t(ctx.lang, 'hint.back') + c(ANSI.reset, ctx.useColor));
   return { left, right, cursorRow: cr.installStatus === 'ready' ? 2 + cr.cursor : -1 };
 }
 
@@ -153,39 +152,39 @@ function createSelects(cr: CreateState, ctx: Ctx): Section {
     : cr.view === 'tools' ? ctx.state.catalog.tools.map((t) => t.name)
     : ctx.state.catalog.skills.map((sk) => sk.name);
   const titles = {
-    providers: 'Провайдер',
-    models: 'Модель' + (cr.provider ? ' (' + cr.provider + ')' : ''),
-    tools: 'Свои инструменты',
-    skills: 'Скиллы',
+    providers: t(ctx.lang, 'sel.providers'),
+    models: cr.provider ? t(ctx.lang, 'sel.model', { p: cr.provider }) : t(ctx.lang, 'sel.model.plain'),
+    tools: t(ctx.lang, 'sel.tools'),
+    skills: t(ctx.lang, 'sel.skills'),
   } as const;
   left.push(c(ANSI.bold, ctx.useColor) + titles[cr.view] + c(ANSI.reset, ctx.useColor));
   const current = cr.view === 'providers' ? cr.provider : cr.view === 'models' ? cr.model : null;
   const checked = new Set(cr.view === 'tools' ? cr.tools : cr.skills);
-  if (items.length === 0) left.push(c(ANSI.dim, ctx.useColor) + '— пусто —' + c(ANSI.reset, ctx.useColor));
+  if (items.length === 0) left.push(c(ANSI.dim, ctx.useColor) + t(ctx.lang, 'empty') + c(ANSI.reset, ctx.useColor));
   items.forEach((n, i) => {
     const sel = (current !== null && current === n) || checked.has(n);
     left.push(listRow(i, cr.cursor, (sel ? '✓ ' : '  ') + n, ctx.L.leftWidth, ctx.useColor));
   });
-  right.push(c(ANSI.dim, ctx.useColor) + 'Space/Enter — выбрать' + c(ANSI.reset, ctx.useColor));
-  right.push(c(ANSI.dim, ctx.useColor) + 'Esc — назад' + c(ANSI.reset, ctx.useColor));
+  right.push(c(ANSI.dim, ctx.useColor) + t(ctx.lang, 'hint.select') + c(ANSI.reset, ctx.useColor));
+  right.push(c(ANSI.dim, ctx.useColor) + t(ctx.lang, 'hint.back') + c(ANSI.reset, ctx.useColor));
   return { left, right, cursorRow: 1 + cr.cursor };
 }
 
 // Заглушки и подтверждения создания: view → [текст, bold?, подсказки]
-const CREATE_BUSY: Record<string, { text: (cr: CreateState) => string; bold?: boolean; hints: string[] }> = {
-  'confirm-delete': { text: (cr) => 'Удалить окружение «' + cr.name + '»?', bold: true, hints: ['Enter — подтвердить', 'Esc — отмена'] },
-  'deleting': { text: () => 'Удаление…', hints: ['Esc — отмена'] },
-  'submitting': { text: () => 'Создание…', hints: ['Esc — отмена'] },
-  'confirm-remove': { text: (cr) => 'Удалить расширение «' + (cr.removing ?? '') + '»?', bold: true, hints: ['Enter — подтвердить', 'Esc — отмена'] },
-  'removing': { text: () => 'Удаление…', hints: ['Esc — назад'] },
-  'updating': { text: () => 'Обновление…', hints: ['Esc — назад'] },
-  'installing': { text: (cr) => 'Установка: ' + (cr.installing ?? '') + '…', hints: ['Esc — назад'] },
+const CREATE_BUSY: Record<string, { text: (cr: CreateState, lang: string) => string; bold?: boolean; hints: StrKey[] }> = {
+  'confirm-delete': { text: (cr, lang) => t(lang, 'busy.delete-env', { name: cr.name }), bold: true, hints: ['hint.confirm', 'hint.cancel'] },
+  'deleting': { text: (_cr, lang) => t(lang, 'busy.deleting'), hints: ['hint.cancel'] },
+  'submitting': { text: (_cr, lang) => t(lang, 'busy.creating'), hints: ['hint.cancel'] },
+  'confirm-remove': { text: (cr, lang) => t(lang, 'busy.delete-ext', { name: cr.removing ?? '' }), bold: true, hints: ['hint.confirm', 'hint.cancel'] },
+  'removing': { text: (_cr, lang) => t(lang, 'busy.deleting'), hints: ['hint.back'] },
+  'updating': { text: (_cr, lang) => t(lang, 'busy.updating'), hints: ['hint.back'] },
+  'installing': { text: (cr, lang) => t(lang, 'busy.installing', { name: cr.installing ?? '' }), hints: ['hint.back'] },
 };
 
 function createBusy(cr: CreateState, ctx: Ctx): Section {
   const b = CREATE_BUSY[cr.view];
-  const left = [c(b.bold ? ANSI.bold : ANSI.dim, ctx.useColor) + b.text(cr) + c(ANSI.reset, ctx.useColor)];
-  const right = b.hints.map((h) => c(ANSI.dim, ctx.useColor) + h + c(ANSI.reset, ctx.useColor));
+  const left = [c(b.bold ? ANSI.bold : ANSI.dim, ctx.useColor) + b.text(cr, ctx.lang) + c(ANSI.reset, ctx.useColor)];
+  const right = b.hints.map((h) => c(ANSI.dim, ctx.useColor) + t(ctx.lang, h) + c(ANSI.reset, ctx.useColor));
   return { left, right, cursorRow: -1 };
 }
 
@@ -193,13 +192,13 @@ function createBusy(cr: CreateState, ctx: Ctx): Section {
 const MAX_DETAIL_ITEMS = 4;
 
 /** Секция детализации: счётчик + до MAX_DETAIL_ITEMS позиций, дальше «+N ещё». */
-function detailSection(title: string, items: string[], lines: string[], w: number): void {
+function detailSection(title: string, items: string[], lines: string[], w: number, lang: string): void {
   lines.push(title + ': ' + items.length);
   for (const it of items.slice(0, MAX_DETAIL_ITEMS)) {
     lines.push('  ' + truncateName(it, Math.max(8, w - 4)));
   }
   if (items.length > MAX_DETAIL_ITEMS) {
-    lines.push('  +' + (items.length - MAX_DETAIL_ITEMS) + ' ещё');
+    lines.push('  ' + t(lang, 'detail.more', { n: items.length - MAX_DETAIL_ITEMS }));
   }
 }
 
@@ -215,7 +214,7 @@ export function renderEnvList(envs: Environment[], state: AppState, ctx: Ctx): S
       rows.push({ text: '─'.repeat(ctx.L.leftWidth - 2), selected: false, isSep: true });
     }
   });
-  rows.push({ text: (state.selected === envs.length ? '> ' : '  ') + 'Создать', selected: state.selected === envs.length, isSep: false });
+  rows.push({ text: (state.selected === envs.length ? '> ' : '  ') + t(ctx.lang, 'form.create'), selected: state.selected === envs.length, isSep: false });
 
   for (const r of rows) {
     if (r.isSep) {
@@ -231,15 +230,15 @@ export function renderEnvList(envs: Environment[], state: AppState, ctx: Ctx): S
     const e = envs[state.selected];
     const d = e.details;
     right.push(c(ANSI.bold, ctx.useColor) + e.name + c(ANSI.reset, ctx.useColor));
-    right.push('Путь: ' + e.path);
+    right.push(t(ctx.lang, 'envs.path', { v: e.path }));
     right.push('settings.json ' + (d.hasSettings ? '✓' : '—'));
-    right.push('Модель: ' + (d.model ?? '—'));
-    detailSection('Инструменты', d.tools, right, ctx.L.rightWidth);
-    detailSection('Скиллы', d.skills, right, ctx.L.rightWidth);
-    detailSection('Расширения', d.packages.map((s) => s.replace(/^npm:/, '')), right, ctx.L.rightWidth);
-    right.push(c(ANSI.dim, ctx.useColor) + 'E — редактировать' + c(ANSI.reset, ctx.useColor));
+    right.push(t(ctx.lang, 'form.model') + (d.model ?? '—'));
+    detailSection(t(ctx.lang, 'envs.tools'), d.tools, right, ctx.L.rightWidth, ctx.lang);
+    detailSection(t(ctx.lang, 'envs.skills'), d.skills, right, ctx.L.rightWidth, ctx.lang);
+    detailSection(t(ctx.lang, 'envs.extensions'), d.packages.map((s) => s.replace(/^npm:/, '')), right, ctx.L.rightWidth, ctx.lang);
+    right.push(c(ANSI.dim, ctx.useColor) + t(ctx.lang, 'envs.hint.edit') + c(ANSI.reset, ctx.useColor));
   } else {
-    right.push(c(ANSI.dim, ctx.useColor) + 'Выберите окружение' + c(ANSI.reset, ctx.useColor));
+    right.push(c(ANSI.dim, ctx.useColor) + t(ctx.lang, 'envs.pick') + c(ANSI.reset, ctx.useColor));
   }
   const cursorRow = state.selected < envs.length
     ? state.selected
@@ -262,31 +261,31 @@ function extList(ctx: Ctx): Section {
   const left: string[] = [];
   const right: string[] = [];
   const pkgs = ctx.state.catalog.packages;
-  left.push(c(ANSI.bold, ctx.useColor) + 'Расширения (основной агент)' + c(ANSI.reset, ctx.useColor));
-  if (pkgs.length === 0) left.push(c(ANSI.dim, ctx.useColor) + '— пусто —' + c(ANSI.reset, ctx.useColor));
+  left.push(c(ANSI.bold, ctx.useColor) + t(ctx.lang, 'ext.title') + c(ANSI.reset, ctx.useColor));
+  if (pkgs.length === 0) left.push(c(ANSI.dim, ctx.useColor) + t(ctx.lang, 'empty') + c(ANSI.reset, ctx.useColor));
   pkgs.forEach((p, i) => {
-    const text = truncateName(p.name, PKG_NAME_MAX) + '  ' + pkgMarker(p, ctx.state.pkgCheck, ctx.state.pkgLatest);
+    const text = truncateName(p.name, PKG_NAME_MAX) + '  ' + pkgMarker(p, ctx.state.pkgCheck, ctx.state.pkgLatest, ctx.lang);
     left.push(listRow(i, ctx.state.selected, text, ctx.L.leftWidth, ctx.useColor));
   });
   if (pkgs.length > 0) left.push(c(ANSI.dim, ctx.useColor) + '─'.repeat(ctx.L.leftWidth - 2) + c(ANSI.reset, ctx.useColor));
-  const buttons: Array<[string, string]> = [['↑', 'Обновить все'], ['＋', 'Установить']];
+  const buttons: Array<[string, string]> = [['↑', t(ctx.lang, 'btn.update-all')], ['＋', t(ctx.lang, 'btn.install')]];
   buttons.forEach(([icon, label], j) => {
     left.push(listRow(pkgs.length + j, ctx.state.selected, icon + ' ' + label, ctx.L.leftWidth, ctx.useColor));
   });
   const p = pkgs[ctx.state.selected];
   if (p !== undefined) {
-    right.push(...pkgInfoLines(p, ctx.state.pkgCheck, ctx.state.pkgLatest, ctx.L, ctx.useColor));
+    right.push(...pkgInfoLines(p, ctx.state.pkgCheck, ctx.state.pkgLatest, ctx.L, ctx.useColor, ctx.lang));
   } else if (ctx.state.selected === pkgs.length) {
-    right.push('Обновить все');
+    right.push(t(ctx.lang, 'btn.update-all'));
     right.push('pi update --extensions');
-    right.push('Enter — выполнить');
+    right.push(t(ctx.lang, 'pkgs.hint.run'));
   } else {
-    right.push('Установка расширения');
-    right.push('Список: pi.dev/packages');
-    right.push('Enter — открыть каталог');
+    right.push(t(ctx.lang, 'install.title'));
+    right.push(t(ctx.lang, 'install.catalog'));
+    right.push(t(ctx.lang, 'install.hint.open'));
   }
-  right.push(c(ANSI.dim, ctx.useColor) + 'Enter — обновить пакет / выбрать' + c(ANSI.reset, ctx.useColor));
-  right.push(c(ANSI.dim, ctx.useColor) + 'X — удалить' + c(ANSI.reset, ctx.useColor));
+  right.push(c(ANSI.dim, ctx.useColor) + t(ctx.lang, 'ext.hint.enter') + c(ANSI.reset, ctx.useColor));
+  right.push(c(ANSI.dim, ctx.useColor) + t(ctx.lang, 'hint.delete') + c(ANSI.reset, ctx.useColor));
   const n = pkgs.length;
   const s = ctx.state.selected;
   const cursorRow =
@@ -300,26 +299,26 @@ function extList(ctx: Ctx): Section {
 function extCatalogView(ext: ExtState, ctx: Ctx): Section {
   const left: string[] = [];
   const right: string[] = [];
-  left.push(c(ANSI.bold, ctx.useColor) + 'Установка расширения' + c(ANSI.reset, ctx.useColor));
+  left.push(c(ANSI.bold, ctx.useColor) + t(ctx.lang, 'install.title') + c(ANSI.reset, ctx.useColor));
   const pkgs = filterPackages(ext.catalog, ext.query);
-  const picker = catalogPickerLines(pkgs, ext.query, ext.catalogStatus, ext.cursor, ctx.L, ctx.useColor, ctx.state.catalogProgress);
+  const picker = catalogPickerLines(pkgs, ext.query, ext.catalogStatus, ext.cursor, ctx.L, ctx.useColor, ctx.state.catalogProgress, ctx.lang);
   left.push(...picker.left);
   right.push(...picker.right);
-  right.push(c(ANSI.dim, ctx.useColor) + 'Esc — назад' + c(ANSI.reset, ctx.useColor));
+  right.push(c(ANSI.dim, ctx.useColor) + t(ctx.lang, 'hint.back') + c(ANSI.reset, ctx.useColor));
   return { left, right, cursorRow: ext.catalogStatus === 'ready' ? 2 + ext.cursor : -1 };
 }
 
 // Вкладка «Расширения»: состояния установки/обновления/удаления
-const EXT_BUSY: Record<string, { text: (ext: ExtState) => string; bold?: boolean; hints: string[] }> = {
-  'installing': { text: (ext) => 'Установка: ' + (ext.installing ?? '') + '…', hints: ['Esc — назад'] },
-  'updating': { text: (ext) => ext.updating === null ? 'Обновление…' : 'Обновление: ' + ext.updating + '…', hints: ['Esc — назад'] },
-  'removing': { text: () => 'Удаление…', hints: ['Esc — назад'] },
-  'confirm-remove': { text: (ext) => 'Удалить расширение «' + (ext.removing ?? '') + '»?', bold: true, hints: ['Enter — подтвердить', 'Esc — отмена'] },
+const EXT_BUSY: Record<string, { text: (ext: ExtState, lang: string) => string; bold?: boolean; hints: StrKey[] }> = {
+  'installing': { text: (ext, lang) => t(lang, 'busy.installing', { name: ext.installing ?? '' }), hints: ['hint.back'] },
+  'updating': { text: (ext, lang) => ext.updating === null ? t(lang, 'busy.updating') : t(lang, 'busy.updating.named', { name: ext.updating }), hints: ['hint.back'] },
+  'removing': { text: (_ext, lang) => t(lang, 'busy.deleting'), hints: ['hint.back'] },
+  'confirm-remove': { text: (ext, lang) => t(lang, 'busy.delete-ext', { name: ext.removing ?? '' }), bold: true, hints: ['hint.confirm', 'hint.cancel'] },
 };
 
 function extBusy(ext: ExtState, ctx: Ctx): Section {
   const b = EXT_BUSY[ext.view];
-  const left = [c(b.bold ? ANSI.bold : ANSI.dim, ctx.useColor) + b.text(ext) + c(ANSI.reset, ctx.useColor)];
-  const right = b.hints.map((h) => c(ANSI.dim, ctx.useColor) + h + c(ANSI.reset, ctx.useColor));
+  const left = [c(b.bold ? ANSI.bold : ANSI.dim, ctx.useColor) + b.text(ext, ctx.lang) + c(ANSI.reset, ctx.useColor)];
+  const right = b.hints.map((h) => c(ANSI.dim, ctx.useColor) + t(ctx.lang, h) + c(ANSI.reset, ctx.useColor));
   return { left, right, cursorRow: -1 };
 }

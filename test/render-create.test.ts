@@ -251,3 +251,11 @@ test('install: список каталога, команда установки,
   const busy = render({ state: editState({ view: 'installing', installing: 'pi-a' }), envs, width: 100, height: 10, root: '/root', useColor: false, status: null });
   assert.ok(busy.includes('Установка: pi-a…'));
 });
+
+test('форма на английском', () => {
+  const s = render({ state: createState({}, { language: 'en' }), envs, width: 62, height: 10, root: '/root', useColor: false, status: null });
+  assert.ok(s.includes('Name:'));
+  assert.ok(s.includes('Model:'));
+  assert.ok(s.includes('Custom tools: 0'));
+  assert.ok(s.includes('Create'));
+});
