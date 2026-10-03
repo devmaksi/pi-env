@@ -1,6 +1,7 @@
 import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, statSync, unlinkSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { SkillItem, ToolItem } from './catalog.js';
+import { t } from './i18n.js';
 
 export interface CreateRequest {
   name: string;
@@ -42,11 +43,11 @@ export function readSettings(envDir: string): EnvSettings | null {
     return null;
   }
 }
-/** Проверка имени окружения. Возвращает текст ошибки (русский) или null. */
-export function validateName(name: string, existing: string[]): string | null {
-  if (name.trim() === '') return 'Введите имя окружения';
-  if (!/^[a-zA-Z0-9_-]+$/.test(name)) return 'Имя: только латинские буквы, цифры, «_» и «-»';
-  if (existing.includes(name)) return 'Окружение с таким именем уже есть';
+/** Проверка имени окружения. Возвращает текст ошибки в языке lang или null. */
+export function validateName(name: string, existing: string[], lang: string = 'ru'): string | null {
+  if (name.trim() === '') return t(lang, 'err.name-empty');
+  if (!/^[a-zA-Z0-9_-]+$/.test(name)) return t(lang, 'err.name-invalid');
+  if (existing.includes(name)) return t(lang, 'err.name-exists');
   return null;
 }
 
@@ -55,19 +56,19 @@ export function validateName(name: string, existing: string[]): string | null {
  * инструменты (extensions/), скиллы (skills/), список пакетов и
  * каталог моделей (models.json, models-store.json, auth.json) из main-агента.
  */
-export function createEnvironment(root: string, req: CreateRequest, agentDir?: string): CreateResult {
-  const invalid = validateName(req.name, []);
+export function createEnvironment(root: string, req: CreateRequest, agentDir?: string, lang: string = 'ru'): CreateResult {
+  const invalid = validateName(req.name, [], lang);
   if (invalid !== null) {
     return { ok: false, error: invalid };
   }
   const envDir = join(root, req.name);
   if (existsSync(envDir)) {
-    return { ok: false, error: 'Окружение с таким именем уже есть' };
+    return { ok: false, error: t(lang, 'err.name-exists') };
   }
   try {
     mkdirSync(envDir, { recursive: true });
   } catch {
-    return { ok: false, error: `Не удалось создать каталог ${envDir}` };
+    return { ok: false, error: t(lang, 'err.dir-create', { dir: envDir }) };
   }
   if (agentDir !== undefined) copyModelFiles(agentDir, envDir);
 
@@ -123,19 +124,20 @@ export function updateEnvironment(
   oldName: string,
   req: CreateRequest,
   ctx: UpdateContext,
+  lang: string = 'ru',
 ): CreateResult {
-  const invalid = validateName(req.name, []);
+  const invalid = validateName(req.name, [], lang);
   if (invalid !== null) return { ok: false, error: invalid };
   const oldDir = join(root, oldName);
-  if (!existsSync(oldDir)) return { ok: false, error: 'Окружение не найдено' };
+  if (!existsSync(oldDir)) return { ok: false, error: t(lang, 'err.not-found') };
   let envDir = oldDir;
   if (req.name !== oldName) {
     const newDir = join(root, req.name);
-    if (existsSync(newDir)) return { ok: false, error: 'Окружение с таким именем уже есть' };
+    if (existsSync(newDir)) return { ok: false, error: t(lang, 'err.name-exists') };
     try {
       renameSync(oldDir, newDir);
     } catch {
-      return { ok: false, error: `Не удалось переименовать окружение в ${req.name}` };
+      return { ok: false, error: t(lang, 'err.rename', { name: req.name }) };
     }
     envDir = newDir;
   }
@@ -184,13 +186,13 @@ export function updateEnvironment(
 }
 
 /** Удаляет каталог окружения <root>/<name> вместе с содержимым. */
-export function deleteEnvironment(root: string, name: string): CreateResult {
+export function deleteEnvironment(root: string, name: string, lang: string = 'ru'): CreateResult {
   const envDir = join(root, name);
-  if (!existsSync(envDir)) return { ok: false, error: 'Окружение не найдено' };
+  if (!existsSync(envDir)) return { ok: false, error: t(lang, 'err.not-found') };
   try {
     rmSync(envDir, { recursive: true, force: true });
   } catch {
-    return { ok: false, error: `Не удалось удалить окружение ${name}` };
+    return { ok: false, error: t(lang, 'err.delete', { name }) };
   }
   return { ok: true, path: envDir };
 }

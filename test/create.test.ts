@@ -384,3 +384,20 @@ test('deleteEnvironment: не найдено — ошибка', () => {
     rmSync(root, { recursive: true, force: true });
   }
 });
+
+test('validateName: ошибки на английском', () => {
+  assert.equal(validateName('', [], 'en'), 'Enter an environment name');
+  assert.equal(validateName('a b', [], 'en'), 'Name: Latin letters, digits, "_" and "-" only');
+  assert.equal(validateName('prod', ['prod'], 'en'), 'An environment with this name already exists');
+});
+
+test('deleteEnvironment: ошибка на английском', () => {
+  const root = tmpDir();
+  try {
+    const res = deleteEnvironment(root, 'nope', 'en');
+    assert.equal(res.ok, false);
+    if (!res.ok) assert.equal(res.error, 'Environment not found');
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
