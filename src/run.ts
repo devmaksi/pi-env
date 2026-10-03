@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import { spawn } from 'node:child_process';
 import { scan, Environment } from './environments.js';
 import { loadAppSettings, saveAppSettings } from './appsettings.js';
-import { loadCatalog, parseOutdated, fetchPackageCatalog, normalizePkgSource, ToolItem, SkillItem, type CatalogPkg } from './catalog.js';
+import { loadCatalog, interpretOutdated, fetchPackageCatalog, normalizePkgSource, ToolItem, SkillItem, type CatalogPkg } from './catalog.js';
 import { computeLayout } from './layout.js';
 import { render } from './render.js';
 import { createEnvironment, readSettings, updateEnvironment, deleteEnvironment, type CreateRequest } from './create.js';
@@ -157,7 +157,8 @@ export async function run(root: string): Promise<void> {
     }
     setChecking();
     const raw = await runCmd('npm', ['outdated', '--json', '--prefix', npmDir], NPM_TIMEOUT_MS);
-    finish(raw.ok, parseOutdated(raw.stdout));
+    const r = interpretOutdated(raw.stdout);
+    finish(r.ok, r.latest);
   }
 
   /** pi update --extensions: обновление всех установленных пакетов в папке агента targetDir. */

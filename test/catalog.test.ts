@@ -3,7 +3,7 @@ import assert from 'node:assert';
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { listProviders, listCustomTools, listPackages, listSkills, parseOutdated, parsePackageCatalog, normalizePkgSource, filterPackages, type PkgItem } from '../src/catalog.js';
+import { listProviders, listCustomTools, listPackages, listSkills, parseOutdated, interpretOutdated, parsePackageCatalog, normalizePkgSource, filterPackages, type PkgItem } from '../src/catalog.js';
 
 function makeAgentDir(): string {
   const dir = mkdtempSync(join(tmpdir(), 'pi-env-test-'));
@@ -200,6 +200,23 @@ test('parseOutdated: {}, мусорный JSON, массив, числовой l
   assert.deepEqual(parseOutdated('[1,2]'), {});
   assert.deepEqual(parseOutdated('{"a":{"latest":5}}'), {});
   assert.deepEqual(parseOutdated('null'), {});
+});
+
+test('interpretOutdated: карта устаревших (npm выходит с кодом 1) → успех', () => {
+  assert.deepEqual(
+    interpretOutdated('{"pkg-a":{"current":"1.0.0","latest":"2.0.0"},"pkg-b":{"latest":"1.1.0"}}'),
+    { ok: true, latest: { 'pkg-a': '2.0.0', 'pkg-b': '1.1.0' } },
+  );
+});
+
+test('interpretOutdated: {} — всё актуально → успех без обновлений', () => {
+  assert.deepEqual(interpretOutdated('{}'), { ok: true, latest: {} });
+});
+
+test('interpretOutdated: ошибка npm в stdout, мусор, пусто → сбой', () => {
+  assert.deepEqual(interpretOutdated('{"error":{"code":"ECONNREFUSED","summary":"..."}}'), { ok: false, latest: {} });
+  assert.deepEqual(interpretOutdated('не json'), { ok: false, latest: {} });
+  assert.deepEqual(interpretOutdated(''), { ok: false, latest: {} });
 });
 
 const CATALOG_HTML = [

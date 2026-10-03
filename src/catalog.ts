@@ -170,6 +170,25 @@ export function parseOutdated(raw: string): Record<string, string> {
   return out;
 }
 
+/**
+ * Интерпретация вывода `npm outdated --json`: успешна ли проверка и
+ * карта имени → latest. npm заканчивается кодом 1, когда есть устаревшие
+ * пакеты, — поэтому успех определяется по содержимому: JSON-объект без
+ * поля `error` (свои ошибки npm пишет в stdout при --json).
+ */
+export function interpretOutdated(stdout: string): { ok: boolean; latest: Record<string, string> } {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(stdout);
+  } catch {
+    return { ok: false, latest: {} };
+  }
+  if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed) || 'error' in (parsed as Record<string, unknown>)) {
+    return { ok: false, latest: {} };
+  }
+  return { ok: true, latest: parseOutdated(stdout) };
+}
+
 /** Пакет из каталога pi.dev/packages. */
 export interface CatalogPkg {
   name: string;
