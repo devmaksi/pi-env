@@ -390,3 +390,42 @@ test('рамка узкого режима: правая граница в ко�
     }
   }
 });
+
+/** Колонки всех box-drawing «│» в потоке строки (с учётом CUP). */
+function borderCols(line: string, cells: (ch: string) => number, width: number): number[] {
+  const cols: number[] = [];
+  let col = 1;
+  let i = 0;
+  while (i < line.length) {
+    if (line[i] === '\x1b') {
+      const m = /^\x1b\[[0-9;]*[a-zA-Z]/.exec(line.slice(i));
+      if (m) {
+        if (m[0].endsWith('H')) col = Number(m[0].slice(2, -1).split(';')[1] ?? 1);
+        i += m[0].length;
+        continue;
+      }
+    }
+    if (col > width) col = 1;
+    if (line[i] === '│') cols.push(col);
+    col += cells(line[i]);
+    i++;
+  }
+  return cols;
+}
+
+test('средняя граница: в колонке leftWidth+2 и на 1-клеточном, и на 2-клеточном терминале', () => {
+  const wide = (ch: string) => ['↑', '↓', '←', '→', '—', '…', '✓', '⚠', '▌', '＋'].includes(ch) ? 2 : 1;
+  const st = { ...initialState(extCatalog), tab: 'extensions' as const, selected: 0 };
+  for (const width of [62, 80, 120]) {
+    const L = computeLayout({ width, height: 20 });
+    const mid = L.leftWidth + 2;
+    const s = render({ state: st, envs, width, height: 20, ...base });
+    const lines = s.split('\n');
+    const contentRows = 20 - 4;
+    for (let i = 0; i < contentRows; i++) {
+      const line = lines[2 + i];
+      assert.equal(borderCols(line, () => 1, width)[1], mid, `1-клеточный w=${width} r=${i}: ${JSON.stringify(line)}`);
+      assert.equal(borderCols(line, wide, width)[1], mid, `2-клеточный w=${width} r=${i}: ${JSON.stringify(line)}`);
+    }
+  }
+});

@@ -151,15 +151,18 @@ export function render(a: RenderArgs): string {
     if (twoCol) {
       const lRaw = left[top + i] ?? '';
       const rRaw = i < right.length ? right[i] : '';
-      const d = wideCount(lRaw + rRaw);
-      const l = padRight(lRaw, L.leftWidth);
-      const r = padRight(rRaw, d > 0 ? L.rightWidth - d : L.rightWidth);
+      const dl = wideCount(lRaw);
+      const dr = wideCount(rRaw);
+      const l = padRight(lRaw, L.leftWidth - dl);
+      const r = padRight(rRaw, L.rightWidth - dr);
       const hl = state.tab === 'envs' && state.sub === null && state.focus === 'left' && useColor;
       const hr = state.tab === 'envs' && state.sub === null && state.focus === 'right' && useColor;
       const bl = c(ANSI.bold, hl) + '│' + c(ANSI.reset, hl);
       const bm = c(ANSI.bold, hl || hr) + '│' + c(ANSI.reset, hl || hr);
       const br = c(ANSI.bold, hr) + '│' + c(ANSI.reset, hr);
-      lines.push(bl + l + bm + r + (d > 0 ? cupBorder(row, width) : '') + br);
+      const cupM = dl > 0 ? cupBorder(row, L.leftWidth + 2) : '';
+      const cupR = dr > 0 ? cupBorder(row, width) : '';
+      lines.push(bl + l + cupM + bm + r + cupR + br);
     } else {
       const lRaw = left[top + i] ?? '';
       const d = wideCount(lRaw);
