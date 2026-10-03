@@ -180,6 +180,15 @@ export interface CatalogPkg {
 }
 
 /**
+ * Поиск по имени пакета: регистронезависимая подстрока.
+ * Пустой/только-пробельный запрос — исходный список.
+ */
+export function filterPackages(pkgs: CatalogPkg[], query: string): CatalogPkg[] {
+  const q = query.trim().toLowerCase();
+  if (q === '') return pkgs;
+  return pkgs.filter((p) => p.name.toLowerCase().includes(q));
+}
+/**
  * Разбор HTML страницы https://pi.dev/packages в список пакетов.
  * ponytail: регулярки под текущую разметку pi.dev; при смене разметки список будет пустым
  */

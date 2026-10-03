@@ -219,6 +219,7 @@ export function pkgInfoLines(p: PkgItem, check: PkgCheck, latest: Record<string,
 /** Пикер каталога pi.dev: список слева и инфо-панель справа (общий для вкладки и формы). */
 export function catalogPickerLines(
   pkgs: CatalogPkg[],
+  query: string,
   status: 'idle' | 'loading' | 'ready' | 'error',
   cursor: number,
   L: Layout,
@@ -226,12 +227,17 @@ export function catalogPickerLines(
 ): { left: string[]; right: string[] } {
   const left: string[] = [];
   const right: string[] = [];
+  left.push('Поиск: ' + query + '▌');
+  if (query.trim() !== '') right.push('Найдено: ' + pkgs.length);
   if (status === 'loading') {
     left.push(c(ANSI.dim, useColor) + 'Загрузка каталога…' + c(ANSI.reset, useColor));
   } else if (status === 'error') {
     left.push(c(ANSI.bold, useColor) + '⚠ Не удалось загрузить каталог' + c(ANSI.reset, useColor));
   } else {
-    if (pkgs.length === 0) left.push(c(ANSI.dim, useColor) + '— пусто —' + c(ANSI.reset, useColor));
+    if (pkgs.length === 0) {
+      const empty = query.trim() !== '' ? 'Ничего не найдено' : '— пусто —';
+      left.push(c(ANSI.dim, useColor) + empty + c(ANSI.reset, useColor));
+    }
     pkgs.forEach((p, i) => left.push(listRow(i, cursor, truncateName(p.name, CATALOG_NAME_MAX), L.leftWidth, useColor)));
     const cur = pkgs[cursor];
     if (cur !== undefined) {

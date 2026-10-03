@@ -3,7 +3,7 @@ import assert from 'node:assert';
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { listProviders, listCustomTools, listPackages, listSkills, parseOutdated, parsePackageCatalog, normalizePkgSource, type PkgItem } from '../src/catalog.js';
+import { listProviders, listCustomTools, listPackages, listSkills, parseOutdated, parsePackageCatalog, normalizePkgSource, filterPackages, type PkgItem } from '../src/catalog.js';
 
 function makeAgentDir(): string {
   const dir = mkdtempSync(join(tmpdir(), 'pi-env-test-'));
@@ -256,4 +256,18 @@ test('normalizePkgSource: по источнику, по legacy-имени, чу�
   assert.equal(normalizePkgSource('pkg-a', pkgs), 'npm:pkg-a');
   assert.equal(normalizePkgSource('npm:other', pkgs), 'npm:other');
   assert.equal(normalizePkgSource('other', pkgs), 'other');
+});
+
+test('filterPackages: подстрока без учёта регистра; пустой/пробельный — весь список', () => {
+  const pkgs = [
+    { name: 'obsidian', types: [], downloads: 3, description: null, author: null },
+    { name: 'pi-a', types: [], downloads: 2, description: null, author: null },
+    { name: 'Zebra', types: [], downloads: 1, description: null, author: null },
+  ];
+  assert.deepEqual(filterPackages(pkgs, '').map((p) => p.name), ['obsidian', 'pi-a', 'Zebra']);
+  assert.deepEqual(filterPackages(pkgs, '  ').map((p) => p.name), ['obsidian', 'pi-a', 'Zebra']);
+  assert.deepEqual(filterPackages(pkgs, 'obs').map((p) => p.name), ['obsidian']);
+  assert.deepEqual(filterPackages(pkgs, 'ZEB').map((p) => p.name), ['Zebra']);
+  assert.deepEqual(filterPackages(pkgs, 'zzz'), []);
+  assert.deepEqual(filterPackages(pkgs, 'пакет'), []); // кириллица — пусто, без исключений
 });

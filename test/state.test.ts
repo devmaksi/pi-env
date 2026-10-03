@@ -223,7 +223,7 @@ function extTabState(n = 2, over: Partial<AppState> = {}): AppState {
 }
 
 function extOver(partial: Partial<ExtState>): ExtState {
-  return { view: 'catalog', cursor: 0, updating: null, installing: null, removing: null, catalog: [], catalogStatus: 'loading', ...partial };
+  return { view: 'catalog', cursor: 0, updating: null, installing: null, removing: null, catalog: [], catalogStatus: 'loading', query: '', ...partial };
 }
 
 test('вкладка extensions: ↑↓ по пакетам и двум кнопкам с клампом', () => {
@@ -316,4 +316,38 @@ test('вкладка extensions: TAB из подэкрана сбрасывае�
   const t = reducer(s, 'tab', envs(0), true);
   assert.equal(t.ext, null);
   assert.equal(t.tab, 'settings');
+});
+
+test('каталог: ввод фильтрует список, Backspace стирает, курсор кламнится, Enter — отфильтрованное', () => {
+  const items: CatalogPkg[] = [
+    { name: 'obsidian', types: [], downloads: 0, description: null, author: null },
+    { name: 'pi-a', types: [], downloads: 0, description: null, author: null },
+    { name: 'pi-b', types: [], downloads: 0, description: null, author: null },
+  ];
+  let s = extTabState(0, { ext: extOver({ view: 'catalog', catalogStatus: 'ready', catalog: items }) });
+  s = reducer(s, 'down', envs(0), true);
+  s = reducer(s, 'down', envs(0), true); // курсор 2 (pi-b)
+  s = reducer(s, 'p', envs(0), true); // 'p' → [pi-a, pi-b]
+  assert.equal(s.ext!.query, 'p');
+  assert.equal(s.ext!.cursor, 1); // кламп с 2 до 1
+  s = reducer(s, 'backspace', envs(0), true);
+  assert.equal(s.ext!.query, '');
+  assert.equal(s.ext!.cursor, 1); // кламп не двигает курсор вверх
+  s = reducer(s, 'backspace', envs(0), true); // пустой поиск — ничего не делает
+  assert.equal(s.ext!.query, '');
+  s = reducer(s, 'o', envs(0), true); // 'o' → [obsidian]
+  s = reducer(s, 'b', envs(0), true);
+  s = reducer(s, 'enter', envs(0), true);
+  assert.equal(s.ext!.view, 'installing');
+  assert.equal(s.ext!.installing, 'obsidian');
+});
+
+test('каталог: Enter при пустом результате фильтра — ничего не делает', () => {
+  const items: CatalogPkg[] = [{ name: 'pi-a', types: [], downloads: 0, description: null, author: null }];
+  let s = extTabState(0, { ext: extOver({ view: 'catalog', catalogStatus: 'ready', catalog: items }) });
+  s = reducer(s, 'z', envs(0), true);
+  assert.equal(s.ext!.view, 'catalog');
+  s = reducer(s, 'enter', envs(0), true);
+  assert.equal(s.ext!.view, 'catalog');
+  assert.equal(s.ext!.installing, null);
 });

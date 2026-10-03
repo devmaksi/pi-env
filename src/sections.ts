@@ -8,6 +8,7 @@ import {
   type ExtState,
 } from './state.js';
 import type { Environment } from './environments.js';
+import { filterPackages } from './catalog.js';
 import {
   c,
   ANSI,
@@ -128,12 +129,13 @@ function createInstall(cr: CreateState, ctx: Ctx): Section {
   const left: string[] = [];
   const right: string[] = [];
   left.push(c(ANSI.bold, ctx.useColor) + 'Установка в окружение «' + cr.name + '»' + c(ANSI.reset, ctx.useColor));
-  const picker = catalogPickerLines(cr.installCatalog, cr.installStatus, cr.cursor, ctx.L, ctx.useColor);
+  const pkgs = filterPackages(cr.installCatalog, cr.query);
+  const picker = catalogPickerLines(pkgs, cr.query, cr.installStatus, cr.cursor, ctx.L, ctx.useColor);
   left.push(...picker.left);
   right.push(...picker.right);
   if (cr.error) right.push(c(ANSI.bold, ctx.useColor) + '⚠ ' + cr.error + c(ANSI.reset, ctx.useColor));
   right.push(c(ANSI.dim, ctx.useColor) + 'Esc — назад' + c(ANSI.reset, ctx.useColor));
-  return { left, right, cursorRow: -1 };
+  return { left, right, cursorRow: cr.installStatus === 'ready' ? 2 + cr.cursor : -1 };
 }
 
 /** Списки выбора: провайдер / модель / инструменты / скиллы. */
@@ -282,11 +284,12 @@ function extCatalogView(ext: ExtState, ctx: Ctx): Section {
   const left: string[] = [];
   const right: string[] = [];
   left.push(c(ANSI.bold, ctx.useColor) + 'Установка расширения' + c(ANSI.reset, ctx.useColor));
-  const picker = catalogPickerLines(ext.catalog, ext.catalogStatus, ext.cursor, ctx.L, ctx.useColor);
+  const pkgs = filterPackages(ext.catalog, ext.query);
+  const picker = catalogPickerLines(pkgs, ext.query, ext.catalogStatus, ext.cursor, ctx.L, ctx.useColor);
   left.push(...picker.left);
   right.push(...picker.right);
   right.push(c(ANSI.dim, ctx.useColor) + 'Esc — назад' + c(ANSI.reset, ctx.useColor));
-  return { left, right, cursorRow: ext.catalogStatus === 'ready' ? 1 + ext.cursor : -1 };
+  return { left, right, cursorRow: ext.catalogStatus === 'ready' ? 2 + ext.cursor : -1 };
 }
 
 // Вкладка «Расширения»: состояния установки/обновления/удаления

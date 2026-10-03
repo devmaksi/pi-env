@@ -1,6 +1,6 @@
 import { validateName, baseName, type EnvSettings } from './create.js';
 import type { Catalog, CatalogPkg } from './catalog.js';
-import { normalizePkgSource } from './catalog.js';
+import { normalizePkgSource, filterPackages } from './catalog.js';
 
 export type Tab = 'envs' | 'extensions' | 'settings' | 'about';
 export type Sub = 'create' | 'run' | null;
@@ -25,6 +25,7 @@ export interface ExtState {
   removing: string | null;
   catalog: CatalogPkg[];
   catalogStatus: 'loading' | 'ready' | 'error';
+  query: string;
 }
 
 /** Строка-кнопка в конце списка расширений. */
@@ -51,6 +52,7 @@ export interface CreateState {
   origName: string | null;
   installCatalog: CatalogPkg[];
   installStatus: 'idle' | 'loading' | 'ready' | 'error';
+  query: string;
   installing: string | null;
   removing: string | null;
   check: PkgCheck;
@@ -107,7 +109,7 @@ export function freshCreate(): CreateState {
     name: '', caret: 0, cursor: 0, provider: null, model: null,
     mode: 'create', origName: null,
     tools: [], packages: [], skills: [], view: 'form', error: null, done: null,
-    removing: null, installCatalog: [], installStatus: 'idle', installing: null,
+    removing: null, installCatalog: [], installStatus: 'idle', installing: null, query: '',
     check: 'idle', latest: {},
   };
 }
@@ -133,7 +135,7 @@ export function freshEdit(name: string, settings: EnvSettings, catalog: Catalog)
     view: 'form',
     error: null,
     done: null,
-    removing: null, installCatalog: [], installStatus: 'idle', installing: null,
+    removing: null, installCatalog: [], installStatus: 'idle', installing: null, query: '',
     check: 'idle', latest: {},
   };
 }
@@ -200,15 +202,24 @@ export function reducer(state: AppState, action: Action, envNames: string[], two
   if (state.tab === 'extensions' && state.ext !== null) {
     const ext = state.ext;
     if (ext.view === 'catalog') {
-      const n = ext.catalog.length;
+      const pkgs = filterPackages(ext.catalog, ext.query);
+      const n = pkgs.length;
       if (action === 'up' || action === 'down') {
         if (n === 0) return state;
         const delta = action === 'up' ? -1 : 1;
         return { ...state, ext: { ...ext, cursor: (ext.cursor + delta + n) % n } };
       }
+      if (action === 'backspace') {
+        const query = ext.query.slice(0, -1);
+        return { ...state, ext: { ...ext, query, cursor: clampToLen(ext.cursor, filterPackages(ext.catalog, query).length) } };
+      }
       if (action === 'esc') return { ...state, ext: null };
       if ((action === 'enter' || action === 'space') && n > 0) {
-        return { ...state, ext: { ...ext, view: 'installing', installing: ext.catalog[ext.cursor].name } };
+        return { ...state, ext: { ...ext, view: 'installing', installing: pkgs[ext.cursor].name } };
+      }
+      if (isPrintable(action)) {
+        const query = ext.query + action;
+        return { ...state, ext: { ...ext, query, cursor: clampToLen(ext.cursor, filterPackages(ext.catalog, query).length) } };
       }
     } else if (ext.view === 'confirm-remove') {
       if (action === 'esc') return { ...state, ext: null };
@@ -270,6 +281,11 @@ export function reducer(state: AppState, action: Action, envNames: string[], two
 
 function isPrintable(a: Action): a is string {
   return typeof a === 'string' && a.length === 1 && a.charCodeAt(0) >= 0x21 && a.charCodeAt(0) <= 0x7e;
+}
+
+/** Кламп курсора к длине списка: пусто — 0. Двигает курсор только вниз. */
+function clampToLen(cursor: number, len: number): number {
+  return len === 0 ? 0 : Math.min(cursor, len - 1);
 }
 
 /**
@@ -374,7 +390,16 @@ function createReducer(
       // Esc не отменяет процесс — имя храним до прихода remove-result
       return action === 'esc' ? { ...c, view: 'packages' } : c;
     case 'install':
-      return listViewReducer(c, action, c.installCatalog.map((p) => p.name), 'packages', ROW_NAME, (name) => ({
+      if (action === 'backspace') {
+        const query = c.query.slice(0, -1);
+        return { ...c, query, cursor: clampToLen(c.cursor, filterPackages(c.installCatalog, query).length) };
+      }
+      const pkgs = filterPackages(c.installCatalog, c.query);
+      if (isPrintable(action)) {
+        const query = c.query + action;
+        return { ...c, query, cursor: clampToLen(c.cursor, filterPackages(c.installCatalog, query).length) };
+      }
+      return listViewReducer(c, action, pkgs.map((p) => p.name), 'packages', ROW_NAME, (name) => ({
         ...c, view: 'installing', installing: name,
       }));
     case 'installing':
@@ -449,7 +474,7 @@ function listViewReducer(
 
 /** Пустое состояние вкладки «Расширения» с переопределением полей. */
 export function freshExt(partial: Partial<ExtState>): ExtState {
-  return { view: 'catalog', cursor: 0, updating: null, installing: null, removing: null, catalog: [], catalogStatus: 'loading', ...partial };
+  return { view: 'catalog', cursor: 0, updating: null, installing: null, removing: null, catalog: [], catalogStatus: 'loading', query: '', ...partial };
 }
 
 /** Строки пакета в форме: каталог main-агента + только-в-окружении. */

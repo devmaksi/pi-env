@@ -402,3 +402,26 @@ test('install-result: ошибка → в install с сообщением', () =
   assert.equal(t.create!.error, 'нет сети');
   assert.equal(t.create!.installing, null);
 });
+
+test('install: поиск фильтрует каталог, Backspace стирает, Enter — отфильтрованное', () => {
+  const items: CatalogPkg[] = [
+    { name: 'pi-a', types: [], downloads: 0, description: null, author: null },
+    { name: 'pi-b', types: [], downloads: 0, description: null, author: null },
+    { name: 'obsidian', types: [], downloads: 0, description: null, author: null },
+  ];
+  let s: AppState = {
+    ...initialState(catalog),
+    sub: 'create',
+    create: { ...freshEdit('dev', {}, catalog), view: 'install' as const, installCatalog: items, installStatus: 'ready' as const },
+  };
+  s = reducer(s, 'o', [], true);
+  assert.equal(s.create!.query, 'o');
+  s = reducer(s, 'backspace', [], true);
+  assert.equal(s.create!.query, '');
+  s = reducer(s, 'p', [], true); // 'p' → [pi-a, pi-b]
+  s = reducer(s, 'i', [], true);
+  s = reducer(s, 'down', [], true); // курсор 1
+  s = reducer(s, 'enter', [], true);
+  assert.equal(s.create!.view, 'installing');
+  assert.equal(s.create!.installing, 'pi-b');
+});

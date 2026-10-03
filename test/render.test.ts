@@ -258,3 +258,36 @@ test('длинный каталог: окно скроллится, курсор
   assert.ok(!s.includes('pkg17'));
   assert.ok(s.includes('pkg18')); // первая видимая: left = [title, pkg00..], top = 19 → left[19] = pkg18
 });
+
+test('каталог: поисковая строка, «Найдено: N», «Ничего не найдено»', () => {
+  const items = [
+    { name: 'pi-a', types: ['extension'], downloads: 5, description: 'A', author: null },
+    { name: 'pi-b', types: [], downloads: 4, description: null, author: null },
+  ];
+  const st = { ...initialState(), tab: 'extensions' as const, ext: freshExt({ catalogStatus: 'ready' as const, catalog: items, query: 'pi' }) };
+  const s = render({ state: st, envs, width: 100, height: 12, ...base });
+  assert.ok(s.includes('Поиск: pi▌'));
+  assert.ok(s.includes('Найдено: 2'));
+  const no = render({ state: { ...initialState(), tab: 'extensions' as const, ext: freshExt({ catalogStatus: 'ready' as const, catalog: items, query: 'zzz' }) }, envs, width: 100, height: 12, ...base });
+  assert.ok(no.includes('Ничего не найдено'));
+  assert.ok(no.includes('Найдено: 0'));
+});
+
+test('каталог с поисковой строкой: окно корректно, курсор на нижней границе, ресайз', () => {
+  const items = Array.from({ length: 30 }, (_, i) => ({
+    name: 'pkg' + String(i).padStart(2, '0'),
+    types: [] as string[],
+    downloads: 0,
+    description: null,
+    author: null,
+  }));
+  const st = { ...initialState(), tab: 'extensions' as const, ext: freshExt({ catalogStatus: 'ready' as const, catalog: items, cursor: 25 }) };
+  const s = render({ state: st, envs, width: 100, height: 12, ...base });
+  assert.ok(s.includes('> pkg25'));
+  assert.ok(s.includes('pkg18')); // первая видимая: left = [title, поиск, pkg00..], top = 20
+  assert.ok(!s.includes('pkg17'));
+  assert.ok(!s.includes('pkg00'));
+  const tall = render({ state: st, envs, width: 100, height: 40, ...base });
+  assert.ok(tall.includes('> pkg25'));
+  assert.ok(tall.includes('pkg00')); // высокий кадр — весь список
+});
