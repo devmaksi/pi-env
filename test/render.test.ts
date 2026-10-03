@@ -6,8 +6,8 @@ import { initialState, freshExt, freshCreate, type AppState, type Catalog } from
 import { Environment } from '../src/environments.js';
 
 const envs: Environment[] = [
-  { name: 'dev', path: '/root/dev', hasSettings: true, hasSkills: true, hasExtensions: false },
-  { name: 'prod', path: '/root/prod', hasSettings: false, hasSkills: false, hasExtensions: false },
+  { name: 'dev', path: '/root/dev', details: { hasSettings: true, model: 'p1/m1', tools: ['tool1.ts'], skills: ['sk-a'], packages: ['npm:pkg-a'] } },
+  { name: 'prod', path: '/root/prod', details: { hasSettings: false, model: null, tools: [], skills: [], packages: [] } },
 ];
 
 const base = { root: '/root', useColor: false, status: null };
@@ -28,14 +28,32 @@ test('широкий режим: рамка, таб-бар, разделител
   assert.ok(lines[1].includes('┬'));
 });
 
-test('широкий режим: список, курсор, инфо-панель', () => {
-  const s = render({ state: initialState(), envs, width: 62, height: 11, ...base });
+test('широкий режим: список, курсор, детализация в инфо-панели', () => {
+  const s = render({ state: initialState(), envs, width: 62, height: 16, ...base });
   assert.ok(s.includes('> dev'));
   assert.ok(s.includes('  prod'));
   assert.ok(s.includes('Создать'));
   assert.ok(s.includes('Путь: /root/dev'));
   assert.ok(s.includes('settings.json ✓'));
-  assert.ok(s.includes('Детализация — этап 2'));
+  assert.ok(s.includes('Модель: p1/m1'));
+  assert.ok(s.includes('Инструменты: 1'));
+  assert.ok(s.includes('tool1.ts'));
+  assert.ok(s.includes('Скиллы: 1'));
+  assert.ok(s.includes('sk-a'));
+  assert.ok(s.includes('Расширения: 1'));
+  assert.ok(s.includes('pkg-a')); // без префикса npm:
+  assert.ok(!s.includes('Детализация — этап 2'));
+});
+
+test('детализация: длинные списки обрезаются, модель без settings.json — «—»', () => {
+  const many = { name: 'big', path: '/root/big', details: { hasSettings: false, model: null, tools: ['a', 'b', 'c', 'd', 'e', 'f'], skills: [], packages: [] } };
+  const s = render({ state: initialState(), envs: [many], width: 62, height: 16, ...base });
+  assert.ok(s.includes('Инструменты: 6'));
+  assert.ok(s.includes('  a'));
+  assert.ok(s.includes('  d'));
+  assert.ok(!s.includes('  e'));
+  assert.ok(s.includes('+2 ещё'));
+  assert.ok(s.includes('Модель: —'));
 });
 
 test('узкий режим: нет правого столбца', () => {
@@ -52,11 +70,17 @@ test('суб-экран запуска больше не рендерится', 
   assert.ok(!s.includes('Запуск окружения'));
 });
 
-test('вкладка настроек: каталог и toggle', () => {
+test('вкладка настроек: каталог, цвет и перепроверка обновлений', () => {
   const s = render({ state: { ...initialState(), tab: 'settings', selected: 1 }, envs, width: 62, height: 10, ...base });
   assert.ok(s.includes('Корневой каталог: /root'));
   assert.ok(s.includes('Цветной вывод: [x]'));
-  assert.ok(s.includes('Подробные настройки — этап 2'));
+  assert.ok(s.includes('Перепроверка обновлений: [ ]'));
+  assert.ok(!s.includes('Подробные настройки — этап 2'));
+});
+
+test('вкладка настроек: перепроверка включена — [x]', () => {
+  const s = render({ state: { ...initialState(), tab: 'settings', selected: 2, recheckUpdates: true }, envs, width: 62, height: 10, ...base });
+  assert.ok(s.includes('Перепроверка обновлений: [x]'));
 });
 
 test('без цвета: активная вкладка помечается [..]', () => {

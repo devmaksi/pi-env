@@ -145,13 +145,14 @@ export function render(a: RenderArgs): string {
   return lines.join('\n');
 }
 
-/** Вкладка «Настройки»: корневой каталог и toggle цвета. */
+/** Вкладка «Настройки»: корневой каталог и toggle приложения. */
 function renderSettings(state: AppState, ctx: Ctx): Section {
   const left: string[] = [];
   const right: string[] = [];
   const items = [
     'Корневой каталог: ' + ctx.root,
     'Цветной вывод: [' + (state.colorToggle ? 'x' : ' ') + ']',
+    'Перепроверка обновлений: [' + (state.recheckUpdates ? 'x' : ' ') + ']',
   ];
   items.forEach((t, i) => {
     const text = (i === state.selected ? '> ' : '  ') + t;
@@ -161,7 +162,8 @@ function renderSettings(state: AppState, ctx: Ctx): Section {
       left.push(text);
     }
   });
-  right.push(c(ANSI.dim, ctx.useColor) + 'Подробные настройки — этап 2' + c(ANSI.reset, ctx.useColor));
+  right.push(c(ANSI.dim, ctx.useColor) + 'Space — переключить' + c(ANSI.reset, ctx.useColor));
+  right.push(c(ANSI.dim, ctx.useColor) + 'Перепроверка: npm outdated при каждом входе во вкладку «Расширения»' + c(ANSI.reset, ctx.useColor));
   return { left, right, cursorRow: state.selected };
 }
 

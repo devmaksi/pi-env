@@ -188,6 +188,20 @@ function createBusy(cr: CreateState, ctx: Ctx): Section {
   return { left, right, cursorRow: -1 };
 }
 
+/** Число позиций секции детализации, показываемых в инфо-панели. */
+const MAX_DETAIL_ITEMS = 4;
+
+/** Секция детализации: счётчик + до MAX_DETAIL_ITEMS позиций, дальше «+N ещё». */
+function detailSection(title: string, items: string[], lines: string[], w: number): void {
+  lines.push(title + ': ' + items.length);
+  for (const it of items.slice(0, MAX_DETAIL_ITEMS)) {
+    lines.push('  ' + truncateName(it, Math.max(8, w - 4)));
+  }
+  if (items.length > MAX_DETAIL_ITEMS) {
+    lines.push('  +' + (items.length - MAX_DETAIL_ITEMS) + ' ещё');
+  }
+}
+
 /** Вкладка «Окружения»: список + инфо-панель выбранного (без слияния в узком режиме). */
 export function renderEnvList(envs: Environment[], state: AppState, ctx: Ctx): Section {
   const left: string[] = [];
@@ -214,13 +228,15 @@ export function renderEnvList(envs: Environment[], state: AppState, ctx: Ctx): S
 
   if (state.selected < envs.length) {
     const e = envs[state.selected];
+    const d = e.details;
     right.push(c(ANSI.bold, ctx.useColor) + e.name + c(ANSI.reset, ctx.useColor));
     right.push('Путь: ' + e.path);
-    right.push('settings.json ' + (e.hasSettings ? '✓' : '—'));
-    right.push('skills ' + (e.hasSkills ? '✓' : '—'));
-    right.push('extensions ' + (e.hasExtensions ? '✓' : '—'));
+    right.push('settings.json ' + (d.hasSettings ? '✓' : '—'));
+    right.push('Модель: ' + (d.model ?? '—'));
+    detailSection('Инструменты', d.tools, right, ctx.L.rightWidth);
+    detailSection('Скиллы', d.skills, right, ctx.L.rightWidth);
+    detailSection('Расширения', d.packages.map((s) => s.replace(/^npm:/, '')), right, ctx.L.rightWidth);
     right.push(c(ANSI.dim, ctx.useColor) + 'E — редактировать' + c(ANSI.reset, ctx.useColor));
-    right.push(c(ANSI.dim, ctx.useColor) + 'Детализация — этап 2' + c(ANSI.reset, ctx.useColor));
   } else {
     right.push(c(ANSI.dim, ctx.useColor) + 'Выберите окружение' + c(ANSI.reset, ctx.useColor));
   }

@@ -15,7 +15,7 @@ const catalog: Catalog = {
 };
 
 const envs: Environment[] = [
-  { name: 'dev', path: '/root/dev', hasSettings: true, hasSkills: true, hasExtensions: false },
+  { name: 'dev', path: '/root/dev', details: { hasSettings: true, model: null, tools: [], skills: [], packages: [] } },
 ];
 
 function createState(over: Partial<AppState['create']> = {}, app: Partial<AppState> = {}): AppState {
@@ -136,7 +136,7 @@ test('статус-строка: подсказка E — правка', () => {
 });
 
 test('инфо-панель окружения: подсказка E — редактировать', () => {
-  const s = render({ state: initialState(catalog), envs, width: 80, height: 10, root: '/root', useColor: false, status: null });
+  const s = render({ state: initialState(catalog), envs, width: 80, height: 12, root: '/root', useColor: false, status: null });
   assert.ok(s.includes('E — редактировать'));
 });
 

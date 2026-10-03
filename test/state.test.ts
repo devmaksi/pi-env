@@ -6,7 +6,7 @@ const envs = (n: number) => Array.from({ length: n }, (_, i) => `env${i}`);
 
 test('initialState', () => {
   assert.deepEqual(initialState(), {
-    tab: 'envs', focus: 'left', selected: 0, sub: null, colorToggle: true, quit: false,
+    tab: 'envs', focus: 'left', selected: 0, sub: null, colorToggle: true, recheckUpdates: false, quit: false,
     catalog: emptyCatalog(), create: null, ext: null, catalogProgress: null, pkgCheck: 'idle', pkgLatest: {},
   });
 });
@@ -15,7 +15,7 @@ test('listLength', () => {
   assert.equal(listLength('envs', 3), 4);
   assert.equal(listLength('extensions', 0, 3), 5);
   assert.equal(listLength('extensions', 0), 2);
-  assert.equal(listLength('settings', 0), 2);
+  assert.equal(listLength('settings', 0), 3);
   assert.equal(listLength('about', 5), 0);
 });
 
@@ -64,12 +64,14 @@ test('ESC: назад из суб-экрана, выход на верхнем �
   assert.equal(reducer(initialState(), 'esc', envs(2), true).quit, true);
 });
 
-test('Space: toggle только на пункте 1 вкладки settings', () => {
+test('Space: toggle на пунктах 1 и 2 вкладки settings', () => {
   let s = { ...initialState(), tab: 'settings' as const, selected: 1 };
   s = reducer(s, 'space', envs(0), true);
   assert.equal(s.colorToggle, false);
   s = reducer(s, 'space', envs(0), true);
   assert.equal(s.colorToggle, true);
+  const s2 = { ...initialState(), tab: 'settings' as const, selected: 2 };
+  assert.equal(reducer(s2, 'space', envs(0), true).recheckUpdates, true);
   const s0 = { ...initialState(), tab: 'settings' as const, selected: 0 };
   assert.deepEqual(reducer(s0, 'space', envs(0), true), s0);
 });

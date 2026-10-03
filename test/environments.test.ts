@@ -18,7 +18,7 @@ test('scan: пустой корень → []', () => {
   }
 });
 
-test('scan: только каталоги, сортировка, флаги', () => {
+test('scan: только каталоги, сортировка, пустая детализация', () => {
   const dir = mkdtempSync(join(tmpdir(), 'pienv-'));
   try {
     mkdirSync(join(dir, 'b'));
@@ -28,8 +28,42 @@ test('scan: только каталоги, сортировка, флаги', ()
     writeFileSync(join(dir, 'a', 'settings.json'), '{}');
     writeFileSync(join(dir, 'file.txt'), 'x');
     assert.deepEqual(scan(dir), [
-      { name: 'a', path: join(dir, 'a'), hasSettings: true, hasSkills: true, hasExtensions: true },
-      { name: 'b', path: join(dir, 'b'), hasSettings: false, hasSkills: false, hasExtensions: false },
+      { name: 'a', path: join(dir, 'a'), details: { hasSettings: true, model: null, tools: [], skills: [], packages: [] } },
+      { name: 'b', path: join(dir, 'b'), details: { hasSettings: false, model: null, tools: [], skills: [], packages: [] } },
+    ]);
+  } finally {
+    rmSync(dir, { recursive: true });
+  }
+});
+
+test('scan: детализация — модель, инструменты, скиллы, пакеты', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'pienv-'));
+  try {
+    mkdirSync(join(dir, 'dev', 'skills', 'sk-a'), { recursive: true });
+    mkdirSync(join(dir, 'dev', 'skills', 'sk-b'), { recursive: true });
+    mkdirSync(join(dir, 'dev', 'extensions'), { recursive: true });
+    writeFileSync(join(dir, 'dev', 'extensions', 'tool1.ts'), 'x');
+    writeFileSync(join(dir, 'dev', 'settings.json'),
+      JSON.stringify({ defaultProvider: 'p1', defaultModel: 'm1', packages: ['npm:pkg-a'] }));
+    assert.deepEqual(scan(dir), [
+      {
+        name: 'dev',
+        path: join(dir, 'dev'),
+        details: { hasSettings: true, model: 'p1/m1', tools: ['tool1.ts'], skills: ['sk-a', 'sk-b'], packages: ['npm:pkg-a'] },
+      },
+    ]);
+  } finally {
+    rmSync(dir, { recursive: true });
+  }
+});
+
+test('scan: битый settings.json — hasSettings true, прочее пусто', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'pienv-'));
+  try {
+    mkdirSync(join(dir, 'dev'));
+    writeFileSync(join(dir, 'dev', 'settings.json'), '{битый json');
+    assert.deepEqual(scan(dir), [
+      { name: 'dev', path: join(dir, 'dev'), details: { hasSettings: true, model: null, tools: [], skills: [], packages: [] } },
     ]);
   } finally {
     rmSync(dir, { recursive: true });

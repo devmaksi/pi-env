@@ -65,6 +65,7 @@ export interface AppState {
   selected: number;
   sub: Sub;
   colorToggle: boolean;
+  recheckUpdates: boolean;
   quit: boolean;
   catalog: Catalog;
   create: CreateState | null;
@@ -76,7 +77,7 @@ export interface AppState {
 }
 
 export const TABS: readonly Tab[] = ['envs', 'extensions', 'settings', 'about'];
-export const SETTINGS_COUNT = 2;
+export const SETTINGS_COUNT = 3;
 
 /** Индексы строк формы. */
 export const ROW_NAME = 0;
@@ -97,7 +98,7 @@ export const MAX_NAME = 40;
 
 export function initialState(catalog: Catalog = emptyCatalog()): AppState {
   return {
-    tab: 'envs', focus: 'left', selected: 0, sub: null, colorToggle: true, quit: false,
+    tab: 'envs', focus: 'left', selected: 0, sub: null, colorToggle: true, recheckUpdates: false, quit: false,
     catalog, create: null, ext: null, catalogProgress: null, pkgCheck: 'idle', pkgLatest: {},
   };
 }
@@ -269,8 +270,10 @@ export function reducer(state: AppState, action: Action, envNames: string[], two
     return state;
   }
   if (action === 'space') {
-    if (state.tab !== 'settings' || state.sub !== null || state.selected !== 1) return state;
-    return { ...state, colorToggle: !state.colorToggle };
+    if (state.tab !== 'settings' || state.sub !== null) return state;
+    if (state.selected === 1) return { ...state, colorToggle: !state.colorToggle };
+    if (state.selected === 2) return { ...state, recheckUpdates: !state.recheckUpdates };
+    return state;
   }
   if ((action === 'x' || action === 'X') && state.tab === 'extensions' && state.sub === null && state.ext === null) {
     const n = state.catalog.packages.length;

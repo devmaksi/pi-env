@@ -3,6 +3,7 @@ import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { spawn } from 'node:child_process';
 import { scan, Environment } from './environments.js';
+import { loadAppSettings, saveAppSettings } from './appsettings.js';
 import { loadCatalog, parseOutdated, fetchPackageCatalog, normalizePkgSource, ToolItem, SkillItem, type CatalogPkg } from './catalog.js';
 import { computeLayout } from './layout.js';
 import { render } from './render.js';
@@ -83,7 +84,8 @@ export async function run(root: string): Promise<void> {
   const term: Term = createTerm();
   const agentDir = defaultAgentDir();
   let catalog = loadCatalog(agentDir);
-  let state: AppState = initialState(catalog);
+  const app = loadAppSettings(root);
+  let state: AppState = { ...initialState(catalog), colorToggle: app.color, recheckUpdates: app.recheckUpdates };
   let statusMsg: string | null = null;
 
   function load(): { envs: Environment[]; status: string | null } {
@@ -228,6 +230,8 @@ export async function run(root: string): Promise<void> {
 
   async function dispatch(key: Key): Promise<void> {
     statusMsg = null;
+    const prevColor = state.colorToggle;
+    const prevRecheck = state.recheckUpdates;
     const { envs } = load();
     const names = envs.map((e) => e.name);
     const prevView = state.create?.view ?? null;
@@ -274,7 +278,7 @@ export async function run(root: string): Promise<void> {
       }
     }
 
-    if (prevTab !== 'extensions' && state.tab === 'extensions' && state.ext === null && state.pkgCheck === 'idle') {
+    if (prevTab !== 'extensions' && state.tab === 'extensions' && state.ext === null && (state.pkgCheck === 'idle' || state.recheckUpdates)) {
       void checkUpdates(agentDir, 'main');
     }
 
@@ -314,6 +318,10 @@ export async function run(root: string): Promise<void> {
       const res = await launchPi(term, env);
       state = reducer(state, { type: 'run-result', ok: res.ok }, names, twoColumns());
       if (!res.ok) statusMsg = res.message;
+    }
+
+    if (state.colorToggle !== prevColor || state.recheckUpdates !== prevRecheck) {
+      saveAppSettings(root, { color: state.colorToggle, recheckUpdates: state.recheckUpdates });
     }
   }
 
