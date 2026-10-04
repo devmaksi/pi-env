@@ -1,3 +1,6 @@
 node_modules/
 dist/
 .worktrees
+# superpowers-артефакты (планы/спеки) — не коммитим
+docs/superpowers/
+.superpowers/
