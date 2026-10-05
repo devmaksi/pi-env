@@ -1,14 +1,31 @@
 {
-  "name": "pi-env",
+  "name": "@devmaksi/pi-env",
   "version": "0.1.0",
-  "description": "CLI для управления окружениями pi",
+  "description": "Интерактивная TUI-утилита для управления окружениями ИИ-агента pi",
   "type": "module",
   "bin": {
     "pi-env": "dist/index.js"
   },
+  "files": [
+    "dist"
+  ],
   "engines": {
     "node": ">=20"
   },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/devmaksi/pi-env.git"
+  },
+  "homepage": "https://github.com/devmaksi/pi-env#readme",
+  "keywords": [
+    "pi",
+    "pi-coding-agent",
+    "cli",
+    "tui",
+    "environments",
+    "agent"
+  ],
   "scripts": {
     "build": "tsc && rm -rf dist/locales && cp -r src/locales dist/locales",
     "test": "tsx --test test/*.test.ts",
