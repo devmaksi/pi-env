@@ -12,6 +12,10 @@ its configuration from the directory specified by the `PI_CODING_AGENT_DIR`
 environment variable. `pi-env` lets you create, edit, and launch such
 environments and manage extensions — without leaving the terminal.
 
+## Screenshot
+
+![pi-env](docs/screenshot.png)
+
 **Features:**
 
 - list of environments (root directory `~/.pi-env`, overridable via the
