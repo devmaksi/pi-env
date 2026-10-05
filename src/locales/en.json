@@ -105,9 +105,13 @@
   "status.installed": "Installed: {name}",
   "status.install-error": "install error",
   "help.title": "pi-env — CLI for managing pi environments",
-  "help.usage": "Usage: pi-env [--root <path>]",
+  "help.usage": "Usage: pi-env [--root <path>] [env [pi args...]]",
+  "help.passthrough": "  pi-env <env> [pi args...] — run pi in the environment; args are passed to pi as-is (e.g. --mode json)",
   "help.flags": "Flags:",
   "help.root": "  --root <path>   root directory of environments (default ~/.pi-env)",
   "help.help": "  -h, --help      this help",
+  "cli.badUsage": "Unknown flag: {p}",
+  "run.env.not_found": "Environment \"{p}\" not found (root: {r})",
+  "run.pi.not_found": "pi command not found",
   "tty.error": "pi-env requires an interactive terminal (TTY)"
 }

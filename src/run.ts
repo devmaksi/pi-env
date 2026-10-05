@@ -40,6 +40,24 @@ function launchPi(term: Term, env: Environment): Promise<{ ok: boolean; message:
   });
 }
 
+/**
+ * Неинтерактивный проброс: запускает pi в окружении,
+ * передаёт терминал и пробрасывает код выхода.
+ * ponytail: ENOENT → 127, прочие ошибки spawn — сообщение в stderr.
+ */
+export function runPassthrough(envPath: string, args: string[], lang: string): void {
+  const child = spawn('pi', args, {
+    cwd: process.cwd(),
+    env: { ...process.env, PI_CODING_AGENT_DIR: envPath },
+    stdio: 'inherit',
+  });
+  child.on('error', (e: NodeJS.ErrnoException) => {
+    process.stderr.write((e.code === 'ENOENT' ? t(lang, 'run.pi.not_found') : e.message) + '\n');
+    process.exit(127);
+  });
+  child.on('exit', (code) => process.exit(code ?? 1));
+}
+
 /** Таймауты дочерних процессов, мс. */
 const PI_TIMEOUT_MS = 5 * 60_000;
 const NPM_TIMEOUT_MS = 10_000;

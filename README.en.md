@@ -58,6 +58,7 @@ environments and manage extensions — without leaving the terminal.
 npm install -g /path/to/pi-env   # or: npm link in the source directory
 pi-env                          # launch the TUI (environments root — ~/.pi-env)
 pi-env --help                   # help
+pi-env myenv --mode json "Review this repository"   # run pi in the environment (args passed as-is)
 ```
 
 All installation methods (including Node.js setup), removal, and notes

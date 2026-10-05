@@ -1,7 +1,9 @@
 #!/usr/bin/env node
 import { homedir } from 'node:os';
+import { statSync } from 'node:fs';
 import { join } from 'node:path';
-import { run } from './run.js';
+import { run, runPassthrough } from './run.js';
+import { parsePiEnvArgs } from './cli.js';
 import { loadAppSettings } from './appsettings.js';
 import { t, defaultLang, localeCodes } from './i18n.js';
 
@@ -16,6 +18,7 @@ function printHelp(lang: string): void {
       t(lang, 'help.title'),
       '',
       t(lang, 'help.usage'),
+      t(lang, 'help.passthrough'),
       '',
       t(lang, 'help.flags'),
       t(lang, 'help.root'),
@@ -27,13 +30,24 @@ function printHelp(lang: string): void {
 
 function main(): void {
   const argv = process.argv.slice(2);
-  let root: string | undefined;
-  const i = argv.indexOf('--root');
-  if (i !== -1 && argv[i + 1] !== undefined) root = argv[i + 1];
-  if (root === undefined) root = process.env.PI_ENV_ROOT ?? join(homedir(), '.pi-env');
+  const parsed = parsePiEnvArgs(argv);
+  const root = parsed.root ?? process.env.PI_ENV_ROOT ?? join(homedir(), '.pi-env');
   const lang = appLang(root);
-  if (argv.includes('-h') || argv.includes('--help')) {
+  if (parsed.help) {
     printHelp(lang);
+    return;
+  }
+  if (parsed.badUsage !== undefined) {
+    process.stderr.write(t(lang, 'cli.badUsage', { p: parsed.badUsage }) + '\n');
+    process.exit(2);
+  }
+  if (parsed.envName !== undefined) {
+    const envPath = join(root, parsed.envName);
+    if (!statSync(envPath, { throwIfNoEntry: false })?.isDirectory()) {
+      process.stderr.write(t(lang, 'run.env.not_found', { p: parsed.envName, r: root }) + '\n');
+      process.exit(2);
+    }
+    runPassthrough(envPath, parsed.passthrough, lang);
     return;
   }
   if (!process.stdin.isTTY || !process.stdout.isTTY) {

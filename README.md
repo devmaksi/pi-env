@@ -57,6 +57,7 @@
 npm install -g /путь/к/pi-env   # либо: npm link в каталоге исходников
 pi-env                          # запуск TUI (корень окружений — ~/.pi-env)
 pi-env --help                   # справка
+pi-env myenv --mode json "Review this repository"   # запустить pi в окружении (аргументы — как есть)
 ```
 
 Все способы установки (включая установку Node.js), удаление и примечания
