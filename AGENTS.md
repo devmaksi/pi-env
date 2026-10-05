@@ -71,6 +71,33 @@
 - `npm run start` — запуск CLI (`node dist/index.js`)
 - `npx tsx src/index.ts` — запуск без сборки
 
+
+## Публикация новой версии
+
+- npm-пакет — `@devmaksi/pi-env` (безскоупный `pi-env` занят);
+  установка: `npm i -g @devmasksi/pi-env` (или `npx @devmaksi/pi-env`).
+- Релиз: bump `version` в package.json → коммит → `git tag vX.Y.Z` →
+  push тега (уходит в оба remote сразу: у origin два pushurl — git.lan
+  и github.com).
+- CI `.github/workflows/publish.yml` на тег `v*`: `npm ci` → build →
+  проверка «тег = версия» → `npm publish --provenance --access public`
+  → GitHub Release (идемпотентно: существующий релиз не создаёт заново).
+- npm-аккаунт `devmaksi` владеет скоупом `@devmasksi`, 2FA включён
+  (обязателен для provenance); токен — секрет GitHub `NODE_AUTH_TOKEN`.
+  Trusted publisher npm регистрирует сам при первом publish.
+- Ловушки (проверено на v0.1.0):
+  - provenance требует `--access public`: scop'd-пакеты по умолчанию
+    private (иначе `EUSAGE: Can't generate provenance for new or
+    private package`).
+  - Воркфлоу по тегу использует файл workflow из коммита, на который
+    указывает тег: при изменении `publish.yml` тег подвигать
+    (`git tag -f vX.Y.Z && git push -f origin vX.Y.Z`).
+  - Раннер закреплён на `ubuntu-24.04`: `ubuntu-latest` не получил
+    хостед-раннер («job was not acquired by Runner of type hosted»).
+  - Контроль результата без GitHub API (60 req/ч на IP):
+    `curl https://registry.npmjs.org/@devmasksi%2Fpi-env` (200 = опубликован)
+    и `curl https://github.com/devmaksi/pi-env/releases.atom` (релиз).
+
 ## Структура
 
 - `src/index.ts` — вход: аргументы (`--root`, `--help`, проброс в окружение), TTY-проверка, старт
