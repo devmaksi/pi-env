@@ -43,13 +43,13 @@ winget install OpenJS.NodeJS.LTS
 **Из npm-реестра (основной способ):**
 
 ```bash
-npm install -g @devmasksi/pi-env
+npm install -g @devmaksi/pi-env
 ```
 
 Одноразовый запуск без установки:
 
 ```bash
-npx @devmasksi/pi-env
+npx @devmaksi/pi-env
 ```
 
 **Из исходников (для разработки):** глобальный symlink на проект —
@@ -73,13 +73,13 @@ pi-env --help       # справка
 > **Примечание:** утилита требует интерактивный терминал (TTY) — в pipe/CI не
 > запустится и покажет сообщение об ошибке.
 >
-> **Windows (PowerShell/CMD):** всё то же самое — `npm install -g @devmasksi/pi-env`;
+> **Windows (PowerShell/CMD):** всё то же самое — `npm install -g @devmaksi/pi-env`;
 > глобальный prefix npm по умолчанию уже в `PATH`. Если команда не находится —
 > перезапустите терминал.
 
 ## Удаление глобальной установки
 
 ```bash
-npm uninstall -g @devmasksi/pi-env   # либо: npm unlink -g pi-env (для npm link)
+npm uninstall -g @devmaksi/pi-env   # либо: npm unlink -g pi-env (для npm link)
 ```
 

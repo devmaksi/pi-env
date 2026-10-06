@@ -44,13 +44,13 @@ Check: `node -v` (must be ≥ 20) and `npm -v`.
 **From the npm registry (the standard way):**
 
 ```bash
-npm install -g @devmasksi/pi-env
+npm install -g @devmaksi/pi-env
 ```
 
 One-off run without installation:
 
 ```bash
-npx @devmasksi/pi-env
+npx @devmaksi/pi-env
 ```
 
 **From sources (for development):** a global symlink to the project —
@@ -74,12 +74,12 @@ pi-env --help       # help
 > **Note:** the utility requires an interactive terminal (TTY) — it will not
 > start in pipe/CI and will show an error message.
 >
-> **Windows (PowerShell/CMD):** everything is the same — `npm install -g @devmasksi/pi-env`;
+> **Windows (PowerShell/CMD):** everything is the same — `npm install -g @devmaksi/pi-env`;
 > npm's global prefix is already in `PATH` by default. If the command is not found —
 > restart the terminal.
 
 ## Removing the global installation
 
 ```bash
-npm uninstall -g @devmasksi/pi-env   # or: npm unlink -g pi-env (for npm link)
+npm uninstall -g @devmaksi/pi-env   # or: npm unlink -g pi-env (for npm link)
 ```

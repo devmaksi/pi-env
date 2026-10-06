@@ -75,7 +75,7 @@
 ## Публикация новой версии
 
 - npm-пакет — `@devmaksi/pi-env` (безскоупный `pi-env` занят);
-  установка: `npm i -g @devmasksi/pi-env` (или `npx @devmaksi/pi-env`).
+  установка: `npm i -g @devmaksi/pi-env` (или `npx @devmaksi/pi-env`).
 - Релиз: bump `version` в package.json → коммит → `git tag vX.Y.Z` →
   push тега (уходит в оба remote сразу: у origin два pushurl — git.lan
   и github.com).
@@ -85,10 +85,10 @@
   Публикация — через npm Trusted Publishing (OIDC от GitHub): токена
   в репозитории нет, `permissions: id-token: write`, внутри воркфлоу
   npm обновляется до `npm@11` (trusted publishing требует ≥ 11.5.1).
-- npm-аккаунт `devmaksi` владеет скоупом `@devmasksi`, 2FA включён
+- npm-аккаунт `devmaksi` владеет скоупом `@devmaksi`, 2FA включён
   (обязателен для publish). Trusted publisher зарегистрирован на пакете:
   npmjs.com → пакет → Settings → Publishing access → Trusted Publishers
-  (GitHub Actions, org `devmasksi`, repo `pi-env`, файл `publish.yml`,
+  (GitHub Actions, org `devmaksi`, repo `pi-env`, файл `publish.yml`,
   действие `npm publish`).
 - Ловушки (проверено на v0.1.0):
   - provenance требует `--access public`: scop'd-пакеты по умолчанию
@@ -106,7 +106,7 @@
   - Раннер закреплён на `ubuntu-24.04`: `ubuntu-latest` не получил
     хостед-раннер («job was not acquired by Runner of type hosted»).
   - Контроль результата без GitHub API (60 req/ч на IP):
-    `curl https://registry.npmjs.org/@devmasksi%2Fpi-env` (200 = опубликован)
+    `curl https://registry.npmjs.org/@devmaksi%2Fpi-env` (200 = опубликован)
     и `curl https://github.com/devmaksi/pi-env/releases.atom` (релиз).
 
 ## Структура
