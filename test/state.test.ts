@@ -7,7 +7,7 @@ const envs = (n: number) => Array.from({ length: n }, (_, i) => `env${i}`);
 test('initialState', () => {
   assert.deepEqual(initialState(), {
     tab: 'envs', focus: 'left', selected: 0, sub: null, colorToggle: true, recheckUpdates: false, quit: false, language: 'ru',
-    catalog: emptyCatalog(), create: null, ext: null, catalogProgress: null, pkgCheck: 'idle', pkgLatest: {},
+    catalog: emptyCatalog(), create: null, ext: null, mcp: null, catalogProgress: null, pkgCheck: 'idle', pkgLatest: {},
   });
 });
 
@@ -25,6 +25,8 @@ test('TAB циклически переключает вкладки и сбра
   assert.equal(s.tab, 'extensions');
   assert.equal(s.selected, 0);
   assert.equal(s.sub, null);
+  s = reducer(s, 'tab', envs(3), true);
+  assert.equal(s.tab, 'mcp');
   s = reducer(s, 'tab', envs(3), true);
   assert.equal(s.tab, 'settings');
   s = reducer(s, 'tab', envs(3), true);
@@ -319,7 +321,7 @@ test('вкладка extensions: TAB из подэкрана сбрасывае�
   const s = extTabState(2, { ext: extOver({ view: 'catalog', catalogStatus: 'ready' }) });
   const t = reducer(s, 'tab', envs(0), true);
   assert.equal(t.ext, null);
-  assert.equal(t.tab, 'settings');
+  assert.equal(t.tab, 'mcp');
 });
 
 test('каталог: ввод фильтрует список, Backspace стирает, курсор кламнится, Enter — отфильтрованное', () => {

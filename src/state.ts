@@ -2,8 +2,9 @@ import { validateName, baseName, type EnvSettings } from './create.js';
 import type { Catalog, CatalogPkg } from './catalog.js';
 import { normalizePkgSource, filterPackages } from './catalog.js';
 import { localeCodes } from './i18n.js';
+import { validateMcpForm, type McpFormFields, type McpServer, type McpType } from './mcp.js';
 
-export type Tab = 'envs' | 'extensions' | 'settings' | 'about';
+export type Tab = 'envs' | 'extensions' | 'mcp' | 'settings' | 'about';
 export type Sub = 'create' | 'run' | null;
 
 export type ControlKey =
@@ -28,6 +29,36 @@ export interface ExtState {
   catalogStatus: 'loading' | 'ready' | 'error';
   query: string;
 }
+
+/** Поля окна добавления MCP (данные) + UI-состояние формы. */
+export type McpFormAdd = McpFormFields & {
+  cursor: number;
+  caret: number;
+  error: string | null;
+  select: 'type' | 'exposure' | null;
+};
+
+/** Подэкраны вкладки «MCP». */
+export type McpTabView = 'add' | 'submitting' | 'confirm-remove' | 'removing';
+
+export interface McpTab {
+  view: McpTabView;
+  form: McpFormAdd | null;
+  removing: string | null;
+}
+
+/** Строки формы добавления по типу сервера. */
+export function mcpFormRows(type: McpType): string[] {
+  return type === 'stdio'
+    ? ['name', 'type', 'command', 'args', 'env', 'cwd', 'description', 'exposure', 'action']
+    : ['name', 'type', 'url', 'description', 'exposure', 'action'];
+}
+
+/** Результат шага формы добавления: обновлённая форма / закрыть / отправить. */
+export type McpFormStep =
+  | { kind: 'form'; form: McpFormAdd }
+  | { kind: 'close' }
+  | { kind: 'submit' };
 
 /** Строка-кнопка в конце списка расширений. */
 export const UPDATE_ALL_ROW = 'Обновить все'; // внутренний ID, не отображается — подпись через i18n
@@ -73,13 +104,14 @@ export interface AppState {
   catalog: Catalog;
   create: CreateState | null;
   ext: ExtState | null;
+  mcp: McpTab | null;
   /** Прогресс загрузки каталога pi.dev (страницы); null — не грузится. */
   catalogProgress: { loaded: number; total: number } | null;
   pkgCheck: PkgCheck;
   pkgLatest: Record<string, string>;
 }
 
-export const TABS: readonly Tab[] = ['envs', 'extensions', 'settings', 'about'];
+export const TABS: readonly Tab[] = ['envs', 'extensions', 'mcp', 'settings', 'about'];
 export const SETTINGS_COUNT = 4;
 export const LANGUAGE_ROW = 3; // «Язык» — после «Перепроверка обновлений»
 
@@ -103,7 +135,7 @@ export const MAX_NAME = 40;
 export function initialState(catalog: Catalog = emptyCatalog()): AppState {
   return {
     tab: 'envs', focus: 'left', selected: 0, sub: null, colorToggle: true, recheckUpdates: false, quit: false, language: 'ru',
-    catalog, create: null, ext: null, catalogProgress: null, pkgCheck: 'idle', pkgLatest: {},
+    catalog, create: null, ext: null, mcp: null, catalogProgress: null, pkgCheck: 'idle', pkgLatest: {},
   };
 }
 
@@ -157,11 +189,13 @@ export type Action =
   | { type: 'updates-result'; ok: boolean; latest: Record<string, string>; scope: 'main' | 'create' }
   | { type: 'update-result'; ok: boolean; message: string }
   | { type: 'remove-result'; ok: boolean; message: string }
-  | { type: 'install-result'; ok: boolean; message: string; sources?: string[] };
+  | { type: 'install-result'; ok: boolean; message: string; sources?: string[] }
+  | { type: 'mcp-result'; ok: boolean; message: string; scope: 'main' | 'create'; list?: McpServer[] };
 
-export function listLength(tab: Tab, envCount: number, pkgCount = 0): number {
+export function listLength(tab: Tab, envCount: number, pkgCount = 0, mcpCount = 0): number {
   if (tab === 'envs') return envCount + 1; // окружения + «Создать»
   if (tab === 'extensions') return pkgCount + 2; // пакеты + «Обновить все» + «Установить»
+  if (tab === 'mcp') return mcpCount + 1; // серверы + «Добавить»
   if (tab === 'settings') return SETTINGS_COUNT;
   return 0;
 }
@@ -189,6 +223,16 @@ export function reducer(state: AppState, action: Action, envNames: string[], two
         pkgCheck: action.ok ? 'done' : 'error',
         pkgLatest: action.ok ? action.latest : state.pkgLatest,
       };
+    }
+
+    if (action.type === 'mcp-result') {
+      if (action.scope === 'main') {
+        if (state.mcp === null) return state;
+        const servers = action.list ?? state.catalog.mcp;
+        const len = listLength('mcp', 0, 0, servers.length);
+        return { ...state, catalog: { ...state.catalog, mcp: servers }, mcp: null, selected: Math.max(0, Math.min(state.selected, len - 1)) };
+      }
+      return state; // scope 'create' — обрабатывается в createReducer
     }
     if (state.sub === null && state.ext !== null) {
       const extView = state.ext.view;
@@ -236,6 +280,24 @@ export function reducer(state: AppState, action: Action, envNames: string[], two
       return state;
     }
   }
+  if (state.tab === 'mcp' && state.mcp !== null) {
+    const mcp = state.mcp;
+    if (mcp.view === 'add' && mcp.form !== null) {
+      const step = mcpFormStep(mcp.form, action, state.language);
+      if (step !== null) {
+        if (step.kind === 'form') return { ...state, mcp: { ...mcp, form: step.form } };
+        if (step.kind === 'close') return { ...state, mcp: null };
+        return { ...state, mcp: { ...mcp, view: 'submitting' } };
+      }
+      // Непроцессированные клавиши (такие как tab) падают в общую машину
+    } else if (mcp.view === 'confirm-remove') {
+      if (action === 'esc') return { ...state, mcp: null };
+      if (action === 'enter') return { ...state, mcp: { ...mcp, view: 'removing' } };
+    } else {
+      // submitting/removing — клавиши процесс не отменяют
+      return state;
+    }
+  }
   if (action === 'esc') {
     if (state.sub !== null) return { ...state, sub: null };
     return { ...state, quit: true };
@@ -243,11 +305,11 @@ export function reducer(state: AppState, action: Action, envNames: string[], two
   if (action === 'tab') {
     const idx = TABS.indexOf(state.tab);
     const next = TABS[(idx + 1) % TABS.length];
-    return { ...state, tab: next, focus: 'left', selected: 0, sub: null, ext: null };
+    return { ...state, tab: next, focus: 'left', selected: 0, sub: null, ext: null, mcp: null };
   }
   if (action === 'up' || action === 'down') {
     if (state.sub !== null) return state;
-    const len = listLength(state.tab, envNames.length, state.catalog.packages.length);
+    const len = listLength(state.tab, envNames.length, state.catalog.packages.length, state.catalog.mcp.length);
     if (len === 0) return state;
     const delta = action === 'up' ? -1 : 1;
     const selected = Math.min(len - 1, Math.max(0, state.selected + delta));
@@ -281,6 +343,12 @@ export function reducer(state: AppState, action: Action, envNames: string[], two
       if (state.selected === n) return { ...state, ext: freshExt({ view: 'updating', updating: null }) };
       return { ...state, ext: freshExt({ view: 'catalog', catalogStatus: 'loading' }) };
     }
+
+    if (state.tab === 'mcp' && state.mcp === null) {
+      const n = state.catalog.mcp.length;
+      if (state.selected < n) return state; // server — selection only (info panel)
+      return { ...state, mcp: freshMcpTab({ view: 'add', form: freshMcpForm() }) };
+    }
     return state;
   }
   if (action === 'space') {
@@ -289,10 +357,19 @@ export function reducer(state: AppState, action: Action, envNames: string[], two
     if (state.selected === 2) return { ...state, recheckUpdates: !state.recheckUpdates };
     return state;
   }
-  if ((action === 'x' || action === 'X') && state.tab === 'extensions' && state.sub === null && state.ext === null) {
-    const n = state.catalog.packages.length;
-    if (state.selected < n) {
-      return { ...state, ext: freshExt({ view: 'confirm-remove', removing: state.catalog.packages[state.selected].name }) };
+  if ((action === 'x' || action === 'X') && state.sub === null && state.ext === null && state.mcp === null &&
+      (state.tab === 'extensions' || state.tab === 'mcp')) {
+    if (state.tab === 'extensions') {
+      const n = state.catalog.packages.length;
+      if (state.selected < n) {
+        return { ...state, ext: freshExt({ view: 'confirm-remove', removing: state.catalog.packages[state.selected].name }) };
+      }
+    }
+    if (state.tab === 'mcp') {
+      const n = state.catalog.mcp.length;
+      if (state.selected < n) {
+        return { ...state, mcp: freshMcpTab({ view: 'confirm-remove', removing: state.catalog.mcp[state.selected].name }) };
+      }
     }
   }
   return state;
@@ -505,6 +582,90 @@ export function packageListSources(c: CreateState, catalog: Catalog): string[] {
 }
 
 function clampSelected(state: AppState, envNames: string[]): number {
-  const len = listLength(state.tab, envNames.length, state.catalog.packages.length);
+  const len = listLength(state.tab, envNames.length, state.catalog.packages.length, state.catalog.mcp.length);
   return Math.max(0, Math.min(state.selected, len - 1));
+}
+export type McpExposure = 'codemode' | 'deferred' | 'direct' | 'hidden';
+export const MCP_TYPES: readonly McpType[] = ['stdio', 'http'];
+export const MCP_EXPOSURES: readonly McpExposure[] = ['codemode', 'deferred', 'direct', 'hidden'];
+
+/** Текстовые строки формы (редактируются вводом). */
+const TEXT_ROWS = ['name', 'command', 'args', 'env', 'cwd', 'description', 'url'] as const;
+type TextField = (typeof TEXT_ROWS)[number];
+
+/** Чистая форма добавления MCP. */
+export function freshMcpForm(): McpFormAdd {
+  return {
+    name: '', type: 'stdio', command: '', args: '', url: '', env: '', cwd: '', description: '', exposure: 'codemode',
+    cursor: 0, caret: 0, error: null, select: null,
+  };
+}
+
+/** Пустое состояние вкладки «MCP» с переопределением полей. */
+export function freshMcpTab(partial: Partial<McpTab>): McpTab {
+  return { view: 'add', form: null, removing: null, ...partial };
+}
+
+/**
+ * Шаг формы добавления MCP. null — клавиша не относится к форме
+ * (управляющие — обрабатываются общей машиной).
+ */
+export function mcpFormStep(form: McpFormAdd, action: Action, language: string): McpFormStep | null {
+  const rows = mcpFormRows(form.type);
+  const row = rows[form.cursor];
+  const textRow = TEXT_ROWS.includes(row as TextField);
+  if (action === 'up' || action === 'down') {
+    if (form.select === 'type') {
+      const delta = action === 'up' ? -1 : 1;
+      return { kind: 'form', form: { ...form, cursor: (form.cursor + delta + MCP_TYPES.length) % MCP_TYPES.length } };
+    }
+    if (form.select === 'exposure') {
+      const delta = action === 'up' ? -1 : 1;
+      return { kind: 'form', form: { ...form, cursor: (form.cursor + delta + MCP_EXPOSURES.length) % MCP_EXPOSURES.length } };
+    }
+    const delta = action === 'up' ? -1 : 1;
+    return { kind: 'form', form: { ...form, cursor: Math.min(rows.length - 1, Math.max(0, form.cursor + delta)) } };
+  }
+  if (action === 'left' || action === 'right') {
+    if (form.select !== null) {
+      const n = form.select === 'type' ? MCP_TYPES.length : MCP_EXPOSURES.length;
+      const delta = action === 'left' ? -1 : 1;
+      return { kind: 'form', form: { ...form, cursor: (form.cursor + delta + n) % n } };
+    }
+    if (!textRow) return { kind: 'form', form };
+    const v = form[row as TextField];
+    const caret = Math.min(v.length, Math.max(0, form.caret + (action === 'left' ? -1 : 1)));
+    return { kind: 'form', form: { ...form, caret } };
+  }
+  if (action === 'enter') {
+    if (form.select === 'type') return { kind: 'form', form: { ...form, type: MCP_TYPES[form.cursor], select: null, cursor: rows.indexOf('type') } };
+    if (form.select === 'exposure') return { kind: 'form', form: { ...form, exposure: MCP_EXPOSURES[form.cursor], select: null, cursor: rows.indexOf('exposure') } };
+    if (row === 'type') return { kind: 'form', form: { ...form, select: 'type', cursor: form.type === 'http' ? 1 : 0 } };
+    if (row === 'exposure') {
+      const i = MCP_EXPOSURES.indexOf((form.exposure ?? '') as McpExposure);
+      return { kind: 'form', form: { ...form, select: 'exposure', cursor: i === -1 ? 0 : i } };
+    }
+    if (row === 'action') {
+      const error = validateMcpForm(form, language);
+      if (error !== null) return { kind: 'form', form: { ...form, error } };
+      return { kind: 'submit' };
+    }
+    return { kind: 'form', form };
+  }
+  if (action === 'backspace') {
+    if (!textRow) return { kind: 'form', form };
+    const v = form[row as TextField];
+    return { kind: 'form', form: { ...form, [row]: v.slice(0, -1), caret: Math.max(0, form.caret - 1) } as McpFormAdd };
+  }
+  if (action === 'esc') {
+    if (form.select !== null) return { kind: 'form', form: { ...form, select: null } };
+    return { kind: 'close' };
+  }
+  if (typeof action === 'string' && action.length === 1 && action.charCodeAt(0) >= 0x21 && action.charCodeAt(0) <= 0x7e) {
+    if (!textRow) return { kind: 'form', form };
+    const v = form[row as TextField];
+    const caret = Math.min(v.length, form.caret);
+    return { kind: 'form', form: { ...form, [row]: v.slice(0, caret) + action + v.slice(caret), caret: caret + 1 } as McpFormAdd };
+  }
+  return null;
 }
