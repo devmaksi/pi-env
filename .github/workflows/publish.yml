@@ -26,10 +26,11 @@ jobs:
       - name: Tag должен совпадать с версией в package.json
         run: test "v$(node -p 'require("./package.json").version')" = "$GITHUB_REF_NAME"
 
-      - name: Публикация в npm (с provenance)
+      - name: Обновить npm (trusted publishing требует npm >= 11.5.1)
+        run: npm install -g npm@11
+
+      - name: Публикация в npm (trusted publishing, provenance)
         run: npm publish --provenance --access public
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NODE_AUTH_TOKEN }}
 
       - name: GitHub Release
         run: |

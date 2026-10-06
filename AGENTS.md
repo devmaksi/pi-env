@@ -82,13 +82,24 @@
 - CI `.github/workflows/publish.yml` на тег `v*`: `npm ci` → build →
   проверка «тег = версия» → `npm publish --provenance --access public`
   → GitHub Release (идемпотентно: существующий релиз не создаёт заново).
+  Публикация — через npm Trusted Publishing (OIDC от GitHub): токена
+  в репозитории нет, `permissions: id-token: write`, внутри воркфлоу
+  npm обновляется до `npm@11` (trusted publishing требует ≥ 11.5.1).
 - npm-аккаунт `devmaksi` владеет скоупом `@devmasksi`, 2FA включён
-  (обязателен для provenance); токен — секрет GitHub `NODE_AUTH_TOKEN`.
-  Trusted publisher npm регистрирует сам при первом publish.
+  (обязателен для publish). Trusted publisher зарегистрирован на пакете:
+  npmjs.com → пакет → Settings → Publishing access → Trusted Publishers
+  (GitHub Actions, org `devmasksi`, repo `pi-env`, файл `publish.yml`,
+  действие `npm publish`).
 - Ловушки (проверено на v0.1.0):
   - provenance требует `--access public`: scop'd-пакеты по умолчанию
     private (иначе `EUSAGE: Can't generate provenance for new or
     private package`).
+  - publish с 2FA через приложение-аутентификатор требует одноразовый
+    пароль (`--otp`) — из CI его не дать; это и есть сценарий
+    trusted publishing (OIDC) вместо токена.
+  - Trusted publisher регистрируется только на СУЩЕСТВУЮЩЕМ пакете:
+    первый релиз делается вручную (`npm login` → `npm publish --access
+    public` с кодом 2FA), дальше — CI.
   - Воркфлоу по тегу использует файл workflow из коммита, на который
     указывает тег: при изменении `publish.yml` тег подвигать
     (`git tag -f vX.Y.Z && git push -f origin vX.Y.Z`).
