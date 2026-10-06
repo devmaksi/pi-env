@@ -1,6 +1,6 @@
 {
   "name": "@devmaksi/pi-env",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Интерактивная TUI-утилита для управления окружениями ИИ-агента pi",
   "type": "module",
   "bin": {
