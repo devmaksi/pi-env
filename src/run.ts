@@ -8,7 +8,8 @@ import { loadCatalog, interpretOutdated, fetchPackageCatalog, normalizePkgSource
 import { computeLayout } from './layout.js';
 import { render } from './render.js';
 import { createEnvironment, readSettings, updateEnvironment, deleteEnvironment, type CreateRequest } from './create.js';
-import { AppState, initialState, Key, reducer, type Action } from './state.js';
+import { readMcpServers, mcpAddCliArgs, copyMcpEntry, removeMcpEntry, type McpServer } from './mcp.js';
+import { AppState, initialState, Key, reducer, type Action, type McpFormAdd } from './state.js';
 import { createTerm, Term } from './terminal.js';
 import { defaultLang, localeCodes, t } from './i18n.js';
 
@@ -220,6 +221,16 @@ export async function run(root: string): Promise<void> {
     repaint();
   }
 
+  /** pi mcp add: добавляет сервер в указанный каталог агента (main или окружение). */
+  async function doMcpAdd(dir: string, form: McpFormAdd, scope: 'main' | 'create'): Promise<void> {
+    const r = await runCmd('pi', mcpAddCliArgs(form), PI_TIMEOUT_MS, { cwd: process.cwd(), env: piEnv(dir) });
+    const msg = r.ok ? t(state.language, 'status.mcp-added', { name: form.name }) : (r.stderr.trim() || t(state.language, 'status.mcp-add-error'));
+    statusMsg = msg;
+    state = reducer(state, { type: 'mcp-result', ok: r.ok, message: msg, scope, list: scope === 'create' ? readMcpServers(dir) : undefined }, envNames(), twoColumns());
+    if (r.ok && scope === 'main') reloadCatalog();
+    repaint();
+  }
+
   /** Идентификатор последней загрузки каталога: устаревшая не трогает UI. */
   let catalogLoadId = 0;
 
@@ -258,10 +269,11 @@ export async function run(root: string): Promise<void> {
     const names = envs.map((e) => e.name);
     const prevView = state.create?.view ?? null;
     const prevExt = state.ext;
+    const prevMcp = state.mcp;
     const prevTab = state.tab;
     if (key === 'e' && state.tab === 'envs' && state.sub === null && state.selected < envs.length) {
       const settings = readSettings(envs[state.selected].path) ?? {};
-      state = reducer(state, { type: 'edit-start', name: envs[state.selected].name, settings }, names, twoColumns());
+      state = reducer(state, { type: 'edit-start', name: envs[state.selected].name, settings, mcp: readMcpServers(envs[state.selected].path) }, names, twoColumns());
     } else {
       state = reducer(state, key, names, twoColumns());
     }
@@ -280,6 +292,21 @@ export async function run(root: string): Promise<void> {
       } else if (v === 'installing' && prevView === 'install') {
         const envName = state.create.origName ?? state.create.name;
         void doInstall(join(root, envName), 'npm:' + (state.create.installing ?? ''), envName);
+      } else if (v === 'mcp-op' && state.create.mcpOp !== null) {
+        const op = state.create.mcpOp;
+        const envDir = join(root, state.create.origName ?? state.create.name);
+        const r = op.kind === 'copy' ? copyMcpEntry(agentDir, envDir, op.name) : removeMcpEntry(envDir, op.name);
+        const list = readMcpServers(envDir);
+        const okMsg = op.kind === 'copy'
+          ? t(state.language, 'status.mcp-copied', { name: op.name })
+          : t(state.language, 'status.mcp-removed', { name: op.name });
+        const errMsg = op.kind === 'copy' ? t(state.language, 'status.mcp-copy-error') : t(state.language, 'status.mcp-remove-error');
+        const message = r.ok ? okMsg : (r.error !== undefined ? errMsg + ': ' + r.error : errMsg);
+        statusMsg = message;
+        state = reducer(state, { type: 'mcp-result', ok: r.ok, message, scope: 'create', list }, names, twoColumns());
+        repaint();
+      } else if (v === 'mcp-submitting' && prevView === 'mcp' && state.create.mcpAdd !== null) {
+        void doMcpAdd(join(root, state.create.origName ?? state.create.name), state.create.mcpAdd, 'create');
       }
     }
     if (state.ext !== null) {
@@ -300,6 +327,20 @@ export async function run(root: string): Promise<void> {
       }
     }
 
+    if (state.mcp !== null) {
+      const m = state.mcp;
+      if (m.view === 'submitting' && prevMcp !== null && prevMcp.view === 'add' && m.form !== null) {
+        void doMcpAdd(agentDir, m.form, 'main');
+      } else if (m.view === 'removing' && prevMcp !== null && prevMcp.view === 'confirm-remove' && m.removing !== null) {
+        const r = removeMcpEntry(agentDir, m.removing);
+        const msg = r.ok ? t(state.language, 'status.mcp-removed', { name: m.removing }) : t(state.language, 'status.mcp-remove-error');
+        statusMsg = msg;
+        if (r.ok) reloadCatalog();
+        state = reducer(state, { type: 'mcp-result', ok: r.ok, message: msg, scope: 'main' }, names, twoColumns());
+        repaint();
+      }
+    }
+
     if (prevTab !== 'extensions' && state.tab === 'extensions' && state.ext === null && (state.pkgCheck === 'idle' || state.recheckUpdates)) {
       void checkUpdates(agentDir, 'main');
     }
@@ -317,6 +358,9 @@ export async function run(root: string): Promise<void> {
           .map((n) => catalog.skills.find((s) => s.name === n))
           .filter((s): s is SkillItem => s !== undefined),
         packages: cr.packages,
+        mcp: cr.mcp
+          .map((n) => catalog.mcp.find((s) => s.name === n))
+          .filter((s): s is McpServer => s !== undefined),
       };
       const res = cr.mode === 'edit'
         ? updateEnvironment(root, cr.origName ?? cr.name, req, { allTools: catalog.tools, allSkills: catalog.skills, agentDir }, state.language)

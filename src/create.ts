@@ -2,6 +2,7 @@ import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, renameS
 import { join } from 'node:path';
 import type { SkillItem, ToolItem } from './catalog.js';
 import { t } from './i18n.js';
+import { writeMcpFile, type McpServer } from './mcp.js';
 
 export interface CreateRequest {
   name: string;
@@ -10,6 +11,7 @@ export interface CreateRequest {
   tools?: ToolItem[];
   skills?: SkillItem[];
   packages?: string[];
+  mcp?: McpServer[];
 }
 
 export type CreateResult = { ok: true; path: string } | { ok: false; error: string };
@@ -101,6 +103,8 @@ export function createEnvironment(root: string, req: CreateRequest, agentDir?: s
   const packages = uniqueStrings(req.packages ?? []);
   if (packages.length > 0) settings.packages = packages;
 
+  const mcp = req.mcp ?? [];
+  if (mcp.length > 0) writeMcpFile(envDir, mcp);
   writeFileSync(join(envDir, 'settings.json'), JSON.stringify(settings, null, 2) + '\n');
   return { ok: true, path: envDir };
 }
