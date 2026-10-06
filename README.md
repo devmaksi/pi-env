@@ -58,7 +58,7 @@
 (`npm install -g @earendil-works/pi-coding-agent`).
 
 ```bash
-npm install -g /путь/к/pi-env   # либо: npm link в каталоге исходников
+npm install -g @devmasksi/pi-env   # либо одноразово: npx @devmasksi/pi-env
 pi-env                          # запуск TUI (корень окружений — ~/.pi-env)
 pi-env --help                   # справка
 pi-env myenv --mode json "Review this repository"   # запустить pi в окружении (аргументы — как есть)

@@ -39,25 +39,28 @@ winget install OpenJS.NodeJS.LTS
 
 Check: `node -v` (must be ≥ 20) and `npm -v`.
 
-## Global installation of pi-env
+## Installing pi-env
 
-Run in the repository directory (all three options make the `pi-env` command
-available from anywhere in the terminal):
+**From the npm registry (the standard way):**
 
 ```bash
-# 1. npm link — convenient if you work with the sources (creates a global
-#    symlink to the project directory; source changes are visible in the CLI right away)
+npm install -g @devmasksi/pi-env
+```
+
+One-off run without installation:
+
+```bash
+npx @devmasksi/pi-env
+```
+
+**From sources (for development):** a global symlink to the project —
+source changes are visible in the CLI right away:
+
+```bash
 cd /path/to/pi-env
 npm install
 npm run build
 npm link
-
-# 2. npm install -g <path> — copies the package to the global prefix
-npm install -g /path/to/pi-env
-
-# 3. npm pack + installing the archive (if there is no local repository)
-npm pack /path/to/pi-env
-npm install -g pi-env-0.1.0.tgz
 ```
 
 After installation:
@@ -71,12 +74,12 @@ pi-env --help       # help
 > **Note:** the utility requires an interactive terminal (TTY) — it will not
 > start in pipe/CI and will show an error message.
 >
-> **Windows (PowerShell/CMD):** everything is the same — `npm install -g <path>`;
+> **Windows (PowerShell/CMD):** everything is the same — `npm install -g @devmasksi/pi-env`;
 > npm's global prefix is already in `PATH` by default. If the command is not found —
 > restart the terminal.
 
 ## Removing the global installation
 
 ```bash
-npm uninstall -g pi-env   # or: npm unlink -g pi-env (for npm link)
+npm uninstall -g @devmasksi/pi-env   # or: npm unlink -g pi-env (for npm link)
 ```

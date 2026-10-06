@@ -59,7 +59,7 @@ environments and manage extensions — without leaving the terminal.
 (`npm install -g @earendil-works/pi-coding-agent`).
 
 ```bash
-npm install -g /path/to/pi-env   # or: npm link in the source directory
+npm install -g @devmasksi/pi-env   # or one-off: npx @devmasksi/pi-env
 pi-env                          # launch the TUI (environments root — ~/.pi-env)
 pi-env --help                   # help
 pi-env myenv --mode json "Review this repository"   # run pi in the environment (args passed as-is)
