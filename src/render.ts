@@ -1,8 +1,9 @@
 import { Environment } from './environments.js';
 import { computeLayout, NARROW_MIN, LOW_MIN, type Layout } from './layout.js';
 import { type AppState, type PkgCheck } from './state.js';
-import { renderCreate, renderExtTab, renderEnvList, type Ctx, type Section } from './sections.js';
+import { renderCreate, renderExtTab, renderEnvList, renderMcpTab, type Ctx, type Section } from './sections.js';
 import type { PkgItem, CatalogPkg } from './catalog.js';
+import type { McpServer } from './mcp.js';
 import { t, nativeName } from './i18n.js';
 
 export const ANSI = {
@@ -89,7 +90,7 @@ export interface RenderArgs {
   status: string | null;
 }
 
-const TAB_KEYS = { envs: 'tab.envs', extensions: 'tab.extensions', settings: 'tab.settings', about: 'tab.about' } as const;
+const TAB_KEYS = { envs: 'tab.envs', extensions: 'tab.extensions', mcp: 'tab.mcp', settings: 'tab.settings', about: 'tab.about' } as const;
 
 /** Число хромовых строк: таб-бар + разделитель + футер из двух строк. */
 const CHROME_ROWS = 4;
@@ -147,6 +148,7 @@ export function render(a: RenderArgs): string {
     ? renderCreate(state.create, ctx)
     : state.tab === 'envs' ? renderEnvList(envs, state, ctx)
     : state.tab === 'extensions' ? renderExtTab(state.ext, ctx)
+    : state.tab === 'mcp' ? renderMcpTab(state.mcp, ctx)
     : state.tab === 'settings' ? renderSettings(state, ctx)
     : renderAbout(ctx);
   const { left, right, cursorRow } = section;
@@ -249,6 +251,26 @@ export function listRow(i: number, cursor: number, text: string, w: number, useC
 }
 
 /** Инфо-панель пакета для правой колонки. */
+/** Инфо-панель MCP-сервера для правой колонки. */
+export function mcpInfoLines(s: McpServer, L: Layout, useColor: boolean, lang: string = 'ru'): string[] {
+  const lines = [
+    c(ANSI.bold, useColor) + s.name + c(ANSI.reset, useColor),
+    t(lang, 'mcp.info.type', { v: s.type }),
+  ];
+  if (s.type === 'stdio') {
+    const cmd = [s.command ?? '', ...s.args].filter((x) => x !== '').join(' ');
+    if (cmd !== '') lines.push(t(lang, 'mcp.info.command', { v: cmd }));
+    for (const [k, v] of Object.entries(s.env)) lines.push(t(lang, 'mcp.info.env', { v: k + '=' + v }));
+    if (s.cwd !== undefined) lines.push(t(lang, 'mcp.info.cwd', { v: s.cwd }));
+  } else if (s.url !== undefined) {
+    lines.push(t(lang, 'mcp.info.url', { v: s.url }));
+  }
+  if (s.exposure !== undefined) lines.push(t(lang, 'mcp.info.exposure', { v: s.exposure }));
+  if (s.enabled !== undefined) lines.push(t(lang, 'mcp.info.enabled', { m: s.enabled ? '✓' : '—' }));
+  if (s.description !== undefined) lines.push(truncateVisible(s.description, L.rightWidth - 1));
+  return lines;
+}
+
 export function pkgInfoLines(p: PkgItem, check: PkgCheck, latest: Record<string, string>, L: Layout, useColor: boolean, lang: string = 'ru'): string[] {
   const lines = [
     c(ANSI.bold, useColor) + p.name + c(ANSI.reset, useColor),

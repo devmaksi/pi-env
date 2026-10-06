@@ -23,8 +23,8 @@ function createState(over: Partial<AppState['create']> = {}, app: Partial<AppSta
   return { ...initialState(catalog), ...app, sub: 'create', create: { ...freshCreate(), ...over } };
 }
 
-test('форма создания: все пять пунктов + действие', () => {
-  const s = render({ state: createState({ tools: ['searxng-search.ts'], skills: ['own-skill'] }), envs, width: 62, height: 10, root: '/root', useColor: false, status: null });
+test('форма создания: все шесть пунктов + действие', () => {
+  const s = render({ state: createState({ tools: ['searxng-search.ts'], skills: ['own-skill'] }), envs, width: 62, height: 12, root: '/root', useColor: false, status: null });
   assert.ok(s.includes('Имя:'));
   assert.ok(s.includes('Модель:'));
   assert.ok(s.includes('Свои инструменты: 1'));
@@ -50,7 +50,7 @@ test('форма: ошибка валидации видна', () => {
 });
 
 test('форма: после создания — Готово и сообщение', () => {
-  const s = render({ state: createState({ name: 'prod', done: '/root/prod' }), envs, width: 62, height: 10, root: '/root', useColor: false, status: null });
+  const s = render({ state: createState({ name: 'prod', done: '/root/prod' }), envs, width: 62, height: 12, root: '/root', useColor: false, status: null });
   assert.ok(s.includes('Готово'));
   assert.ok(s.includes('Создано: /root/prod'));
 });
@@ -86,9 +86,9 @@ test('submitting — пометка процесса', () => {
 });
 
 test('узкий режим: форма рендерится одной колонкой', () => {
-  const s = render({ state: createState({ name: 'prod', caret: 4 }), envs, width: 40, height: 10, root: '/root', useColor: false, status: null });
+  const s = render({ state: createState({ name: 'prod', caret: 4 }), envs, width: 40, height: 12, root: '/root', useColor: false, status: null });
   const lines = s.split('\n');
-  assert.equal(lines.length, 10);
+  assert.equal(lines.length, 12);
   assert.ok(lines[1].includes('─'));
   assert.ok(!lines[1].includes('┬'));
   assert.ok(s.includes('Имя: prod▌'));
@@ -99,7 +99,7 @@ function editState(over: Partial<AppState['create']> = {}, app: Partial<AppState
   return { ...initialState(catalog), ...app, sub: 'create', create: { ...freshCreate(), mode: 'edit' as const, origName: 'dev', name: 'dev', ...over } };
 }
 
-test('форма edit: 7 строк — Сохранить и Удалить', () => {
+test('форма edit: 8 строк — Сохранить и Удалить', () => {
   const s = render({ state: editState(), envs, width: 62, height: 12, root: '/root', useColor: false, status: null });
   assert.ok(s.includes('Сохранить'));
   assert.ok(s.includes('Удалить'));
@@ -137,7 +137,7 @@ test('статус-строка: подсказка E — правка', () => {
 });
 
 test('инфо-панель окружения: подсказка E — редактировать', () => {
-  const s = render({ state: initialState(catalog), envs, width: 80, height: 12, root: '/root', useColor: false, status: null });
+  const s = render({ state: initialState(catalog), envs, width: 80, height: 13, root: '/root', useColor: false, status: null });
   assert.ok(s.includes('E — редактировать'));
 });
 
@@ -254,7 +254,7 @@ test('install: список каталога, команда установки,
 });
 
 test('форма на английском', () => {
-  const s = render({ state: createState({}, { language: 'en' }), envs, width: 62, height: 10, root: '/root', useColor: false, status: null });
+  const s = render({ state: createState({}, { language: 'en' }), envs, width: 62, height: 12, root: '/root', useColor: false, status: null });
   assert.ok(s.includes('Name:'));
   assert.ok(s.includes('Model:'));
   assert.ok(s.includes('Custom tools: 0'));

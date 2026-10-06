@@ -1,9 +1,15 @@
 import type { Layout } from './layout.js';
 import {
+  MCP_EXPOSURES,
+  MCP_TYPES,
+  mcpFormRows,
+  mcpListNames,
   packageListSources,
   type AppState,
   type CreateState,
   type ExtState,
+  type McpFormAdd,
+  type McpTab,
 } from './state.js';
 import type { Environment } from './environments.js';
 import { filterPackages } from './catalog.js';
@@ -18,6 +24,7 @@ import {
   formPkgMarker,
   catalogPickerLines,
   PKG_NAME_MAX,
+  mcpInfoLines,
 } from './render.js';
 import { t, type StrKey } from './i18n.js';
 
@@ -44,6 +51,7 @@ export function renderCreate(cr: CreateState, ctx: Ctx): Section {
   const r =
     cr.view === 'form' ? createForm(cr, ctx)
     : cr.view === 'packages' ? createPackages(cr, ctx)
+    : cr.view === 'mcp' ? createMcp(cr, ctx)
     : cr.view === 'install' ? createInstall(cr, ctx)
     : cr.view === 'providers' || cr.view === 'models' || cr.view === 'tools' || cr.view === 'skills'
       ? createSelects(cr, ctx)
@@ -66,6 +74,7 @@ function createForm(cr: CreateState, ctx: Ctx): Section {
     t(ctx.lang, 'form.tools') + cr.tools.length,
     t(ctx.lang, 'form.packages') + cr.packages.length,
     t(ctx.lang, 'form.skills') + cr.skills.length,
+    t(ctx.lang, 'form.mcp') + (cr.mode === 'edit' ? cr.envMcp.length : cr.mcp.length),
     cr.done !== null ? t(ctx.lang, 'form.done') : cr.mode === 'edit' ? t(ctx.lang, 'form.save') : t(ctx.lang, 'form.create'),
   ];
   if (cr.mode === 'edit' && cr.done === null) rows.push(t(ctx.lang, 'form.delete'));
@@ -138,6 +147,116 @@ function createInstall(cr: CreateState, ctx: Ctx): Section {
   return { left, right, cursorRow: cr.installStatus === 'ready' ? 2 + cr.cursor : -1 };
 }
 
+/** Список MCP в форме окружения: create — отметки, edit — union + copy/remove. */
+function createMcp(cr: CreateState, ctx: Ctx): Section {
+  if (cr.mcpAdd !== null) {
+    return renderMcpForm(cr.mcpAdd, ctx, t(ctx.lang, 'mcp.form.title-env', { name: cr.name }));
+  }
+  const left: string[] = [];
+  const right: string[] = [];
+  const mainMcp = ctx.state.catalog.mcp;
+  const names = cr.mode === 'edit' ? mcpListNames(cr.envMcp, mainMcp) : mainMcp.map((s) => s.name);
+  const inEnv = (n: string) => cr.envMcp.some((s) => s.name === n);
+  const inMain = (n: string) => mainMcp.some((s) => s.name === n);
+  const title = cr.mode === 'edit' ? t(ctx.lang, 'mcp.env-title', { name: cr.name }) : t(ctx.lang, 'mcp.title');
+  left.push(c(ANSI.bold, ctx.useColor) + title + c(ANSI.reset, ctx.useColor));
+  if (names.length === 0) left.push(c(ANSI.dim, ctx.useColor) + t(ctx.lang, 'empty') + c(ANSI.reset, ctx.useColor));
+  names.forEach((n, i) => {
+    const checked = cr.mode === 'edit' ? inEnv(n) : cr.mcp.includes(n);
+    const marker = cr.mode === 'edit' && inMain(n) && !inEnv(n) ? '  ' + t(ctx.lang, 'mcp.in-main') : '';
+    left.push(listRow(i, cr.cursor, (checked ? '✓ ' : '  ') + n + marker, ctx.L.leftWidth, ctx.useColor));
+  });
+  if (cr.mode === 'edit') {
+    left.push(listRow(names.length, cr.cursor, '＋ ' + t(ctx.lang, 'mcp.add'), ctx.L.leftWidth, ctx.useColor));
+  }
+  const curName = names[cr.cursor];
+  if (curName !== undefined) {
+    const main = mainMcp.find((s) => s.name === curName);
+    if (main !== undefined) {
+      right.push(...mcpInfoLines(main, ctx.L, ctx.useColor, ctx.lang));
+      if (cr.mode === 'edit') right.push(t(ctx.lang, 'mcp.in-env', { m: inEnv(curName) ? '✓' : '—' }));
+    } else {
+      right.push(c(ANSI.bold, ctx.useColor) + curName + c(ANSI.reset, ctx.useColor));
+      right.push(t(ctx.lang, 'mcp.in-env', { m: '✓' }));
+    }
+  } else if (cr.mode === 'edit' && cr.cursor === names.length) {
+    right.push(t(ctx.lang, 'mcp.hint.add'));
+  }
+  right.push(c(ANSI.dim, ctx.useColor) + t(ctx.lang, 'hint.select') + c(ANSI.reset, ctx.useColor));
+  if (cr.mode === 'edit') right.push(c(ANSI.dim, ctx.useColor) + t(ctx.lang, 'hint.delete') + c(ANSI.reset, ctx.useColor));
+  right.push(c(ANSI.dim, ctx.useColor) + t(ctx.lang, 'hint.back') + c(ANSI.reset, ctx.useColor));
+  return { left, right, cursorRow: 1 + cr.cursor };
+}
+
+/** Форма добавления MCP (общая для вкладки и формы окружения). */
+export function renderMcpForm(f: McpFormAdd, ctx: Ctx, title: string): Section {
+  const left: string[] = [];
+  const right: string[] = [];
+  const rows = mcpFormRows(f.type);
+  const textRows = new Set(['name', 'command', 'args', 'env', 'cwd', 'description', 'url']);
+  const selRow = f.select === 'type' ? rows.indexOf('type') : f.select === 'exposure' ? rows.indexOf('exposure') : f.cursor;
+  left.push(c(ANSI.bold, ctx.useColor) + title + c(ANSI.reset, ctx.useColor));
+  rows.forEach((row, i) => {
+    let label = '';
+    let value = '';
+    switch (row) {
+      case 'name':
+        label = t(ctx.lang, 'form.mcp.name');
+        value = f.name;
+        break;
+      case 'type':
+        if (f.select === 'type') {
+          value = t(ctx.lang, ('form.mcp.type.' + MCP_TYPES[f.cursor]) as StrKey);
+        } else {
+          label = t(ctx.lang, 'form.mcp.type');
+          value = t(ctx.lang, ('form.mcp.type.' + f.type) as StrKey);
+        }
+        break;
+      case 'command':
+        label = t(ctx.lang, 'form.mcp.command');
+        value = f.command;
+        break;
+      case 'args':
+        label = t(ctx.lang, 'form.mcp.args');
+        value = f.args;
+        break;
+      case 'url':
+        label = t(ctx.lang, 'form.mcp.url');
+        value = f.url;
+        break;
+      case 'env':
+        label = t(ctx.lang, 'form.mcp.env');
+        value = f.env;
+        break;
+      case 'cwd':
+        label = t(ctx.lang, 'form.mcp.cwd');
+        value = f.cwd;
+        break;
+      case 'description':
+        label = t(ctx.lang, 'form.mcp.description');
+        value = f.description;
+        break;
+      case 'exposure': {
+        const opt = f.select === 'exposure' ? MCP_EXPOSURES[f.cursor] : (f.exposure ?? 'codemode');
+        if (f.select !== 'exposure') label = t(ctx.lang, 'form.mcp.exposure');
+        value = t(ctx.lang, ('form.mcp.exposure.' + opt) as StrKey);
+        break;
+      }
+      case 'action':
+        value = t(ctx.lang, 'form.mcp.action');
+        break;
+    }
+    if (textRows.has(row) && i === f.cursor && f.select === null) {
+      value = value.slice(0, f.caret) + '▌' + value.slice(f.caret);
+    }
+    left.push(listRow(i, selRow, label + value, ctx.L.leftWidth, ctx.useColor));
+  });
+  if (f.error) right.push(c(ANSI.bold, ctx.useColor) + '⚠ ' + f.error + c(ANSI.reset, ctx.useColor));
+  right.push(c(ANSI.dim, ctx.useColor) + t(ctx.lang, 'form.hint.enter') + c(ANSI.reset, ctx.useColor));
+  right.push(c(ANSI.dim, ctx.useColor) + t(ctx.lang, 'form.hint.esc') + c(ANSI.reset, ctx.useColor));
+  return { left, right, cursorRow: 1 + selRow };
+}
+
 /** Списки выбора: провайдер / модель / инструменты / скиллы. */
 function createSelects(cr: CreateState, ctx: Ctx): Section {
   // вызывается диспетчером только для четырёх списочных view
@@ -179,6 +298,12 @@ const CREATE_BUSY: Record<string, { text: (cr: CreateState, lang: string) => str
   'removing': { text: (_cr, lang) => t(lang, 'busy.deleting'), hints: ['hint.back'] },
   'updating': { text: (_cr, lang) => t(lang, 'busy.updating'), hints: ['hint.back'] },
   'installing': { text: (cr, lang) => t(lang, 'busy.installing', { name: cr.installing ?? '' }), hints: ['hint.back'] },
+  'mcp-op': {
+    text: (cr, lang) => (cr.mcpOp?.kind === 'remove' ? t(lang, 'busy.mcp-deleting') : t(lang, 'busy.mcp-add', { name: cr.mcpOp?.name ?? '' })),
+    hints: ['hint.back'],
+  },
+  'mcp-submitting': { text: (cr, lang) => t(lang, 'busy.mcp-add', { name: cr.mcpAdd?.name ?? '' }), hints: ['hint.back'] },
+  'mcp-confirm-remove': { text: (cr, lang) => t(lang, 'busy.mcp-remove', { name: cr.removingMcp ?? '' }), bold: true, hints: ['hint.confirm', 'hint.cancel'] },
 };
 
 function createBusy(cr: CreateState, ctx: Ctx): Section {
@@ -236,6 +361,7 @@ export function renderEnvList(envs: Environment[], state: AppState, ctx: Ctx): S
     detailSection(t(ctx.lang, 'envs.tools'), d.tools, right, ctx.L.rightWidth, ctx.lang);
     detailSection(t(ctx.lang, 'envs.skills'), d.skills, right, ctx.L.rightWidth, ctx.lang);
     detailSection(t(ctx.lang, 'envs.extensions'), d.packages.map((s) => s.replace(/^npm:/, '')), right, ctx.L.rightWidth, ctx.lang);
+    detailSection(t(ctx.lang, 'envs.mcp'), d.mcp, right, ctx.L.rightWidth, ctx.lang);
     right.push(c(ANSI.dim, ctx.useColor) + t(ctx.lang, 'envs.hint.edit') + c(ANSI.reset, ctx.useColor));
   } else {
     right.push(c(ANSI.dim, ctx.useColor) + t(ctx.lang, 'envs.pick') + c(ANSI.reset, ctx.useColor));
@@ -254,6 +380,56 @@ export function renderExtTab(ext: ExtState | null, ctx: Ctx): Section {
     : extBusy(ext, ctx);
   if (!ctx.twoCol) r.left.push(...r.right);
   return r;
+}
+
+/** Вкладка «MCP»: диспетчер по состоянию mcp. */
+export function renderMcpTab(mt: McpTab | null, ctx: Ctx): Section {
+  const r =
+    mt === null ? mcpList(ctx)
+    : mt.view === 'add' && mt.form !== null
+      ? renderMcpForm(mt.form, ctx, t(ctx.lang, 'mcp.form.title-main'))
+      : mcpTabBusy(mt, ctx);
+  if (!ctx.twoCol) r.left.push(...r.right);
+  return r;
+}
+
+// Вкладка «MCP»: список серверов main-агента + кнопка «Добавить»
+function mcpList(ctx: Ctx): Section {
+  const left: string[] = [];
+  const right: string[] = [];
+  const servers = ctx.state.catalog.mcp;
+  left.push(c(ANSI.bold, ctx.useColor) + t(ctx.lang, 'mcp.title') + c(ANSI.reset, ctx.useColor));
+  if (servers.length === 0) left.push(c(ANSI.dim, ctx.useColor) + t(ctx.lang, 'empty') + c(ANSI.reset, ctx.useColor));
+  servers.forEach((s, i) => {
+    left.push(listRow(i, ctx.state.selected, s.name, ctx.L.leftWidth, ctx.useColor));
+  });
+  if (servers.length > 0) left.push(c(ANSI.dim, ctx.useColor) + '─'.repeat(ctx.L.leftWidth - 2) + c(ANSI.reset, ctx.useColor));
+  left.push(listRow(servers.length, ctx.state.selected, '＋ ' + t(ctx.lang, 'mcp.add'), ctx.L.leftWidth, ctx.useColor));
+  const cur = servers[ctx.state.selected];
+  if (cur !== undefined) {
+    right.push(...mcpInfoLines(cur, ctx.L, ctx.useColor, ctx.lang));
+  } else {
+    right.push(t(ctx.lang, 'mcp.hint.add'));
+  }
+  right.push(c(ANSI.dim, ctx.useColor) + t(ctx.lang, 'hint.delete') + c(ANSI.reset, ctx.useColor));
+  const n = servers.length;
+  const sel = ctx.state.selected;
+  const cursorRow = sel < n ? 1 + sel : n === 0 ? 1 : n + 2;
+  return { left, right, cursorRow };
+}
+
+// Вкладка «MCP»: состояния добавления/удаления
+const MCP_TAB_BUSY: Record<string, { text: (mt: McpTab, lang: string) => string; bold?: boolean; hints: StrKey[] }> = {
+  'submitting': { text: (mt, lang) => t(lang, 'busy.mcp-add', { name: mt.form?.name ?? '' }), hints: ['hint.back'] },
+  'removing': { text: (_mt, lang) => t(lang, 'busy.mcp-deleting'), hints: ['hint.back'] },
+  'confirm-remove': { text: (mt, lang) => t(lang, 'busy.mcp-remove', { name: mt.removing ?? '' }), bold: true, hints: ['hint.confirm', 'hint.cancel'] },
+};
+
+function mcpTabBusy(mt: McpTab, ctx: Ctx): Section {
+  const b = MCP_TAB_BUSY[mt.view];
+  const left = [c(b.bold ? ANSI.bold : ANSI.dim, ctx.useColor) + b.text(mt, ctx.lang) + c(ANSI.reset, ctx.useColor)];
+  const right = b.hints.map((h) => c(ANSI.dim, ctx.useColor) + t(ctx.lang, h) + c(ANSI.reset, ctx.useColor));
+  return { left, right, cursorRow: -1 };
 }
 
 // Вкладка «Расширения»: список пакетов main-агента + кнопки
