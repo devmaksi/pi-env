@@ -113,5 +113,10 @@
   "cli.badUsage": "Unknown flag: {p}",
   "run.env.not_found": "Environment \"{p}\" not found (root: {r})",
   "run.pi.not_found": "pi command not found",
-  "tty.error": "pi-env requires an interactive terminal (TTY)"
+  "tty.error": "pi-env requires an interactive terminal (TTY)",
+  "err.mcp-name-empty": "Enter a server name",
+  "err.mcp-name-invalid": "Name: Latin letters, digits, «_» and «-» only",
+  "err.mcp-command": "Specify a command (stdio)",
+  "err.mcp-url": "Specify a URL (http)",
+  "err.mcp-env": "Variables: K=V pairs separated by spaces, no spaces in values"
 }
