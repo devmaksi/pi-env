@@ -115,6 +115,7 @@ test('edit-start: форма предзаполняется из settings', () =
       packages: ['pkg-a'],
       skills: ['skills/own-skill'],
     },
+    mcp: [],
   }, envs(1), true);
   assert.equal(next.sub, 'create');
   const c = next.create!;
@@ -136,25 +137,26 @@ test('edit-start: collision-суффикс скилла не отмечаетс�
     type: 'edit-start',
     name: 'dev',
     settings: { skills: ['skills/own-skill-2'] },
+    mcp: [],
   }, envs(1), true);
   assert.deepEqual(next.create!.skills, []);
 });
 
 test('edit-start: игнорируется при открытом суб-экране', () => {
   const s = { ...initialState(catalog2), sub: 'create' as const, create: freshCreate() };
-  const next = reducer(s, { type: 'edit-start', name: 'dev', settings: {} }, envs(1), true);
+  const next = reducer(s, { type: 'edit-start', name: 'dev', settings: {}, mcp: [] }, envs(1), true);
   assert.deepEqual(next, s);
 });
 
 function editState(name = 'env0', cursor = 5): AppState {
   let s = { ...initialState(catalog2), selected: 0 };
-  s = reducer(s, { type: 'edit-start', name, settings: {} }, envs(2), true);
+  s = reducer(s, { type: 'edit-start', name, settings: {}, mcp: [] }, envs(2), true);
   for (let i = 0; i < cursor; i++) s = reducer(s, 'down', envs(2), true);
   return s;
 }
 
 test('edit: сохранение с неизменённым именем — без коллизии с собой', () => {
-  const s = editState('env0', 5);
+  const s = editState('env0', 6);
   const next = reducer(s, 'enter', envs(2), true);
   assert.equal(next.create!.view, 'submitting');
 });
@@ -165,18 +167,18 @@ test('edit: переименование в занятое имя — ошибк
   const t = reducer(b, '1', envs(2), true); // env1
   assert.equal(t.create!.name, 'env1');
   let s2 = t;
-  for (let i = 0; i < 5; i++) s2 = reducer(s2, 'down', envs(2), true);
+  for (let i = 0; i < 6; i++) s2 = reducer(s2, 'down', envs(2), true);
   s2 = reducer(s2, 'enter', envs(2), true);
   assert.equal(s2.create!.error, 'Окружение с таким именем уже есть');
 });
 
-test('edit: курсор 6 — Удалить → confirm-delete, Esc — в форму, Enter → deleting', () => {
-  let s = editState('env0', 6);
+test('edit: курсор 7 — Удалить → confirm-delete, Esc — в форму, Enter → deleting', () => {
+  let s = editState('env0', 7);
   s = reducer(s, 'enter', envs(2), true);
   assert.equal(s.create!.view, 'confirm-delete');
   s = reducer(s, 'esc', envs(2), true);
   assert.equal(s.create!.view, 'form');
-  assert.equal(s.create!.cursor, 6);
+  assert.equal(s.create!.cursor, 7);
   s = reducer(s, 'enter', envs(2), true);
   assert.equal(s.create!.view, 'confirm-delete');
   s = reducer(s, 'enter', envs(2), true);
@@ -184,7 +186,7 @@ test('edit: курсор 6 — Удалить → confirm-delete, Esc — в ф�
 });
 
 test('delete-result: ok — форма закрывается, ошибка — в форму', () => {
-  const s = editState('env0', 6);
+  const s = editState('env0', 7);
   const del = reducer(reducer(s, 'enter', envs(2), true), 'enter', envs(2), true);
   assert.equal(del.create!.view, 'deleting');
   const ok = reducer(del, { type: 'delete-result', ok: true, message: 'env0' }, envs(2), true);
@@ -200,10 +202,10 @@ test('run-result: sub сбрасывается в null', () => {
   assert.equal(reducer(s, { type: 'run-result', ok: true }, envs(2), true).sub, null);
 });
 
-test('edit: курсор цикла на 7 строках', () => {
-  const s = editState('env0', 6);
+test('edit: курсор цикла на 8 строках', () => {
+  const s = editState('env0', 7);
   assert.equal(reducer(s, 'down', envs(2), true).create!.cursor, 0);
-  assert.equal(reducer(s, 'up', envs(2), true).create!.cursor, 5);
+  assert.equal(reducer(s, 'up', envs(2), true).create!.cursor, 6);
 });
 
 function extCatalog(n: number): Catalog {

@@ -163,7 +163,7 @@ test('отправка: валидное имя → submitting', () => {
 
 test('отправка: пустое имя → ошибка', () => {
   let s = withCreate();
-  for (const ch of [5, 4, 3, 2, 1]) s = reducer(s, 'down', [], true);
+  for (const ch of [6, 5, 4, 3, 2, 1]) s = reducer(s, 'down', [], true);
   s = reducer(s, 'enter', [], true);
   assert.equal(s.create!.view, 'form');
   assert.match(s.create!.error!, /имя/i);

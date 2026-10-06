@@ -14,7 +14,7 @@ export type ControlKey =
 /** Управление (ControlKey) или любой одиночный печатный символ. */
 export type Key = ControlKey | (string & {});
 
-export type CreateView = 'form' | 'providers' | 'models' | 'tools' | 'packages' | 'skills' | 'submitting' | 'updating' | 'confirm-delete' | 'deleting' | 'confirm-remove' | 'removing' | 'install' | 'installing';
+export type CreateView = 'form' | 'providers' | 'models' | 'tools' | 'packages' | 'skills' | 'submitting' | 'updating' | 'confirm-delete' | 'deleting' | 'confirm-remove' | 'removing' | 'install' | 'installing' | 'mcp' | 'mcp-op' | 'mcp-submitting' | 'mcp-confirm-remove';
 
 /** Подэкраны вкладки «Расширения». */
 export type ExtView = 'catalog' | 'installing' | 'updating' | 'confirm-remove' | 'removing';
@@ -89,6 +89,12 @@ export interface CreateState {
   removing: string | null;
   check: PkgCheck;
   latest: Record<string, string>;
+  mcpAdd: McpFormAdd | null;
+  envMcp: McpServer[];
+  /** Имена MCP, отмеченные для окружения в режиме создания. */
+  mcp: string[];
+  mcpOp: { name: string; kind: 'copy' | 'remove' } | null;
+  removingMcp: string | null;
 }
 
 export interface AppState {
@@ -121,10 +127,11 @@ export const ROW_MODEL = 1;
 export const ROW_TOOLS = 2;
 export const ROW_PACKAGES = 3;
 export const ROW_SKILLS = 4;
-export const ROW_ACTION = 5;
-export const ROW_DELETE = 6;
+export const ROW_MCP = 5;
+export const ROW_ACTION = 6;
+export const ROW_DELETE = 7;
 
-export const FORM_ROWS = 6; // имя, модель, инструменты, расширения, скиллы, действие
+export const FORM_ROWS = 7; // имя, модель, инструменты, расширения, скиллы, MCP, действие
 
 /** Число строк формы: в edit-режиме добавляется «Удалить». */
 export function formRows(mode: 'create' | 'edit'): number {
@@ -150,11 +157,12 @@ export function freshCreate(): CreateState {
     tools: [], packages: [], skills: [], view: 'form', error: null, done: null,
     removing: null, installCatalog: [], installStatus: 'idle', installing: null, query: '',
     check: 'idle', latest: {},
+    mcpAdd: null, envMcp: [], mcp: [], mcpOp: null, removingMcp: null,
   };
 }
 
 /** Чистая форма редактирования: предзаполнение из settings окружения. */
-export function freshEdit(name: string, settings: EnvSettings, catalog: Catalog): CreateState {
+export function freshEdit(name: string, settings: EnvSettings, catalog: Catalog, envMcp: McpServer[] = []): CreateState {
   const ext = settings.extensions ?? [];
   const sk = settings.skills ?? [];
   return {
@@ -176,14 +184,23 @@ export function freshEdit(name: string, settings: EnvSettings, catalog: Catalog)
     done: null,
     removing: null, installCatalog: [], installStatus: 'idle', installing: null, query: '',
     check: 'idle', latest: {},
+    mcpAdd: null, envMcp, mcp: [], mcpOp: null, removingMcp: null,
   };
 }
+/** Имена MCP для списка формы: окружение (сортированы) + только-в-main (сортированы). */
+export function mcpListNames(envMcp: McpServer[], mainMcp: McpServer[]): string[] {
+  const names = [...envMcp.map((s) => s.name)].sort();
+  const inEnv = new Set(names);
+  for (const n of [...mainMcp.map((s) => s.name)].sort()) if (!inEnv.has(n)) names.push(n);
+  return names;
+}
+
 
 /** Клавиша или сервисное действие (результат создания). */
 export type Action =
   | Key
   | { type: 'create-result'; ok: boolean; message: string }
-  | { type: 'edit-start'; name: string; settings: EnvSettings }
+  | { type: 'edit-start'; name: string; settings: EnvSettings; mcp?: McpServer[] }
   | { type: 'run-result'; ok: boolean }
   | { type: 'delete-result'; ok: boolean; message: string }
   | { type: 'updates-result'; ok: boolean; latest: Record<string, string>; scope: 'main' | 'create' }
@@ -207,7 +224,7 @@ export function reducer(state: AppState, action: Action, envNames: string[], two
   if (typeof action === 'object') {
     if (action.type === 'edit-start') {
       if (state.sub !== null || state.tab !== 'envs') return state;
-      return { ...state, sub: 'create', create: freshEdit(action.name, action.settings, state.catalog) };
+      return { ...state, sub: 'create', create: freshEdit(action.name, action.settings, state.catalog, action.mcp ?? []) };
     }
     if (action.type === 'run-result') return { ...state, sub: null };
     if (action.type === 'updates-result') {
@@ -225,14 +242,12 @@ export function reducer(state: AppState, action: Action, envNames: string[], two
       };
     }
 
-    if (action.type === 'mcp-result') {
-      if (action.scope === 'main') {
-        if (state.mcp === null) return state;
-        const servers = action.list ?? state.catalog.mcp;
-        const len = listLength('mcp', 0, 0, servers.length);
-        return { ...state, catalog: { ...state.catalog, mcp: servers }, mcp: null, selected: Math.max(0, Math.min(state.selected, len - 1)) };
-      }
-      return state; // scope 'create' — обрабатывается в createReducer
+    if (action.type === 'mcp-result' && action.scope === 'main') {
+      if (state.mcp === null) return state;
+      const servers = action.list ?? state.catalog.mcp;
+      const len = listLength('mcp', 0, 0, servers.length);
+      return { ...state, catalog: { ...state.catalog, mcp: servers }, mcp: null, selected: Math.max(0, Math.min(state.selected, len - 1)) };
+      // scope 'create' — проходит в createReducer
     }
     if (state.sub === null && state.ext !== null) {
       const extView = state.ext.view;
@@ -424,6 +439,18 @@ function createReducer(
       if (!action.ok) return { ...c, view: 'install', installing: null, error: action.message };
       return { ...c, view: 'packages', cursor: 0, installing: null, error: null, packages: action.sources ?? c.packages };
     }
+    if (action.type === 'mcp-result') {
+      return {
+        ...c,
+        view: 'mcp',
+        mcpAdd: null,
+        mcpOp: null,
+        removingMcp: null,
+        envMcp: action.list ?? c.envMcp,
+        cursor: 0,
+        error: action.ok ? null : action.message,
+      };
+    }
   }
 
   switch (c.view) {
@@ -501,6 +528,56 @@ function createReducer(
       }));
     case 'installing':
       return c;
+    case 'mcp': {
+      if (c.mcpAdd !== null) {
+        const step = mcpFormStep(c.mcpAdd, action, language);
+        if (step === null) return c;
+        if (step.kind === 'form') return { ...c, mcpAdd: step.form };
+        if (step.kind === 'close') return { ...c, mcpAdd: null };
+        return { ...c, view: 'mcp-submitting' };
+      }
+      const names = c.mode === 'edit' ? mcpListNames(c.envMcp, catalog.mcp) : catalog.mcp.map((s) => s.name);
+      const inEnv = (n: string) => c.envMcp.some((s) => s.name === n);
+      const total = c.mode === 'edit' ? names.length + 1 : names.length;
+      if (action === 'up' || action === 'down') {
+        if (total === 0) return c;
+        const delta = action === 'up' ? -1 : 1;
+        return { ...c, cursor: (c.cursor + delta + total) % total };
+      }
+      if (action === 'esc') return { ...c, view: 'form', cursor: ROW_MCP };
+      if (action === 'enter' || action === 'space') {
+        if (c.mode === 'edit') {
+          if (c.cursor === names.length) return { ...c, mcpAdd: freshMcpForm() };
+          const name = names[c.cursor];
+          if (name === undefined) return c;
+          const inMain = catalog.mcp.some((s) => s.name === name);
+          if (inMain && !inEnv(name)) return { ...c, view: 'mcp-op', mcpOp: { name, kind: 'copy' } };
+          if (inEnv(name)) return { ...c, view: 'mcp-op', mcpOp: { name, kind: 'remove' } };
+          return c;
+        }
+        const name = names[c.cursor];
+        if (name === undefined) return c;
+        const sel = c.mcp;
+        return { ...c, mcp: sel.includes(name) ? sel.filter((x) => x !== name) : [...sel, name] };
+      }
+      if ((action === 'x' || action === 'X') && c.mode === 'edit') {
+        if (c.cursor >= names.length) return c;
+        const name = names[c.cursor];
+        if (name !== undefined && inEnv(name)) return { ...c, view: 'mcp-confirm-remove', removingMcp: name };
+      }
+      return c;
+    }
+    case 'mcp-confirm-remove':
+      if (action === 'esc') return { ...c, view: 'mcp', removingMcp: null };
+      if (action === 'enter') {
+        const name = c.removingMcp;
+        return name === null ? c : { ...c, view: 'mcp-op', mcpOp: { name, kind: 'remove' }, removingMcp: null };
+      }
+      return c;
+    case 'mcp-op':
+    case 'mcp-submitting':
+      // процесс не отменяется — ждём mcp-result
+      return c;
   }
 }
 
@@ -533,6 +610,7 @@ function formReducer(c: CreateState, action: Action, envNames: string[], languag
     if (c.cursor === ROW_MODEL) return { ...c, view: 'providers', cursor: ROW_NAME };
     if (c.cursor === ROW_TOOLS) return { ...c, view: 'tools', cursor: ROW_NAME };
     if (c.cursor === ROW_PACKAGES) return { ...c, view: 'packages', cursor: ROW_NAME };
+    if (c.cursor === ROW_MCP) return { ...c, view: 'mcp', cursor: 0 };
     if (c.cursor === ROW_SKILLS) return { ...c, view: 'skills', cursor: ROW_NAME };
     if (c.cursor === ROW_ACTION) {
       const others = c.mode === 'edit' ? envNames.filter((n) => n !== c.origName) : envNames;
