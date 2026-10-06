@@ -12,10 +12,11 @@ const catalog: Catalog = {
   tools: [{ name: 'searxng-search.ts', path: '/x/searxng.ts' }],
   packages: [{ source: 'npm:pkg-a', name: 'pkg-a', path: '/p/a', version: '1.2.3', description: 'Тестовый пакет', extensions: ['./index.ts'], skills: [] }],
   skills: [{ name: 'own-skill', path: '/s/own' }],
+  mcp: [],
 };
 
 const envs: Environment[] = [
-  { name: 'dev', path: '/root/dev', details: { hasSettings: true, model: null, tools: [], skills: [], packages: [] } },
+  { name: 'dev', path: '/root/dev', details: { hasSettings: true, model: null, tools: [], skills: [], packages: [], mcp: [] } },
 ];
 
 function createState(over: Partial<AppState['create']> = {}, app: Partial<AppState> = {}): AppState {

@@ -1,5 +1,6 @@
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { readMcpServers } from './mcp.js';
 
 export interface EnvDetails {
   hasSettings: boolean;
@@ -7,6 +8,7 @@ export interface EnvDetails {
   tools: string[];
   skills: string[];
   packages: string[];
+  mcp: string[];
 }
 
 export interface Environment {
@@ -60,7 +62,7 @@ function readDetails(dir: string): EnvDetails {
       /* битый settings.json — оставляем пустые значения */
     }
   }
-  return { hasSettings, model, tools: listFiles(join(dir, 'extensions')), skills: listDirs(join(dir, 'skills')), packages };
+  return { hasSettings, model, tools: listFiles(join(dir, 'extensions')), skills: listDirs(join(dir, 'skills')), packages, mcp: readMcpServers(dir).map((s) => s.name) };
 }
 
 function listFiles(dir: string): string[] {

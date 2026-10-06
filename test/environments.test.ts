@@ -28,8 +28,8 @@ test('scan: только каталоги, сортировка, пустая д
     writeFileSync(join(dir, 'a', 'settings.json'), '{}');
     writeFileSync(join(dir, 'file.txt'), 'x');
     assert.deepEqual(scan(dir), [
-      { name: 'a', path: join(dir, 'a'), details: { hasSettings: true, model: null, tools: [], skills: [], packages: [] } },
-      { name: 'b', path: join(dir, 'b'), details: { hasSettings: false, model: null, tools: [], skills: [], packages: [] } },
+      { name: 'a', path: join(dir, 'a'), details: { hasSettings: true, model: null, tools: [], skills: [], packages: [], mcp: [] } },
+      { name: 'b', path: join(dir, 'b'), details: { hasSettings: false, model: null, tools: [], skills: [], packages: [], mcp: [] } },
     ]);
   } finally {
     rmSync(dir, { recursive: true });
@@ -49,7 +49,7 @@ test('scan: детализация — модель, инструменты, с�
       {
         name: 'dev',
         path: join(dir, 'dev'),
-        details: { hasSettings: true, model: 'p1/m1', tools: ['tool1.ts'], skills: ['sk-a', 'sk-b'], packages: ['npm:pkg-a'] },
+        details: { hasSettings: true, model: 'p1/m1', tools: ['tool1.ts'], skills: ['sk-a', 'sk-b'], packages: ['npm:pkg-a'], mcp: [] },
       },
     ]);
   } finally {
@@ -63,7 +63,21 @@ test('scan: битый settings.json — hasSettings true, прочее пуст
     mkdirSync(join(dir, 'dev'));
     writeFileSync(join(dir, 'dev', 'settings.json'), '{битый json');
     assert.deepEqual(scan(dir), [
-      { name: 'dev', path: join(dir, 'dev'), details: { hasSettings: true, model: null, tools: [], skills: [], packages: [] } },
+      { name: 'dev', path: join(dir, 'dev'), details: { hasSettings: true, model: null, tools: [], skills: [], packages: [], mcp: [] } },
+    ]);
+  } finally {
+    rmSync(dir, { recursive: true });
+  }
+});
+
+test('scan: mcp.json окружения — имена в details.mcp', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'pienv-'));
+  try {
+    mkdirSync(join(dir, 'dev'));
+    writeFileSync(join(dir, 'dev', 'mcp.json'),
+      JSON.stringify({ mcpServers: { browsermcp: { command: 'npx' } } }));
+    assert.deepEqual(scan(dir), [
+      { name: 'dev', path: join(dir, 'dev'), details: { hasSettings: false, model: null, tools: [], skills: [], packages: [], mcp: ['browsermcp'] } },
     ]);
   } finally {
     rmSync(dir, { recursive: true });

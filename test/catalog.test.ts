@@ -4,6 +4,7 @@ import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { listProviders, listCustomTools, listPackages, listSkills, parseOutdated, interpretOutdated, parsePackageCatalog, normalizePkgSource, filterPackages, type PkgItem } from '../src/catalog.js';
+import { loadCatalog } from '../src/catalog.js';
 
 function makeAgentDir(): string {
   const dir = mkdtempSync(join(tmpdir(), 'pi-env-test-'));
@@ -370,5 +371,33 @@ test('fetchPackageCatalog: без пагинации — только одна �
     assert.deepEqual(progress, []);
   } finally {
     await srv.close();
+  }
+});
+
+test('loadCatalog: mcp.json main-агента попадает в catalog.mcp', () => {
+  const dir = makeAgentDir();
+  try {
+    writeFileSync(
+      join(dir, 'mcp.json'),
+      JSON.stringify({
+        mcpServers: {
+          bb: { command: 'cmd2' },
+          aa: { command: 'cmd1' },
+        },
+      }),
+    );
+    const catalog = loadCatalog(dir);
+    assert.deepEqual(catalog.mcp.map((s) => s.name), ['aa', 'bb']);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('loadCatalog: нет mcp.json — catalog.mcp пуст', () => {
+  const dir = makeAgentDir();
+  try {
+    assert.deepEqual(loadCatalog(dir).mcp, []);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
   }
 });

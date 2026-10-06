@@ -98,6 +98,7 @@ const catalog2 = {
     { name: 'own-skill', path: '/s/own-skill' },
     { name: 'zzz', path: '/s/zzz' },
   ],
+  mcp: [],
 };
 
 test('edit-start: форма предзаполняется из settings', () => {
@@ -217,6 +218,7 @@ function extCatalog(n: number): Catalog {
       skills: [],
     })),
     skills: [],
+    mcp: [],
   };
 }
 

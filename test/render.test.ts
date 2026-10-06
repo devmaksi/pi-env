@@ -28,8 +28,8 @@ function lastCol(line: string, cells: (ch: string) => number, width: number): nu
 }
 
 const envs: Environment[] = [
-  { name: 'dev', path: '/root/dev', details: { hasSettings: true, model: 'p1/m1', tools: ['tool1.ts'], skills: ['sk-a'], packages: ['npm:pkg-a'] } },
-  { name: 'prod', path: '/root/prod', details: { hasSettings: false, model: null, tools: [], skills: [], packages: [] } },
+  { name: 'dev', path: '/root/dev', details: { hasSettings: true, model: 'p1/m1', tools: ['tool1.ts'], skills: ['sk-a'], packages: ['npm:pkg-a'], mcp: [] } },
+  { name: 'prod', path: '/root/prod', details: { hasSettings: false, model: null, tools: [], skills: [], packages: [], mcp: [] } },
 ];
 
 const base = { root: '/root', useColor: false, status: null };
@@ -68,7 +68,7 @@ test('широкий режим: список, курсор, детализац�
 });
 
 test('детализация: длинные списки обрезаются, модель без settings.json — «—»', () => {
-  const many = { name: 'big', path: '/root/big', details: { hasSettings: false, model: null, tools: ['a', 'b', 'c', 'd', 'e', 'f'], skills: [], packages: [] } };
+  const many = { name: 'big', path: '/root/big', details: { hasSettings: false, model: null, tools: ['a', 'b', 'c', 'd', 'e', 'f'], skills: [], packages: [], mcp: [] } };
   const s = render({ state: initialState(), envs: [many], width: 62, height: 16, ...base });
   assert.ok(s.includes('Инструменты: 6'));
   assert.ok(s.includes('  a'));
@@ -199,6 +199,7 @@ const extCatalog: Catalog = {
   providers: [],
   tools: [],
   skills: [],
+  mcp: [],
   packages: [
     { source: 'npm:pkg-a', name: 'pkg-a', path: '/p/a', version: '1.0.0', description: 'Пакет A', extensions: ['./index.ts'], skills: [] },
   ],
@@ -458,6 +459,7 @@ const extCatalogWide: Catalog = {
   providers: [],
   tools: [],
   skills: [],
+  mcp: [],
   packages: [
     { source: 'npm:pkg-a', name: 'pkg-a', path: '/p/a', version: '1.0.0', description: 'Пакет A', extensions: ['./index.ts'], skills: [] },
     { source: 'npm:very-long-package-name-here', name: 'very-long-package-name-here', path: '/p/v', version: '1.0.0', description: null, extensions: [], skills: [] },
@@ -476,7 +478,7 @@ test('вкладка «Расширения»: курсорная строка �
 
 test('цветной кадр: каждая строка заканчивается с чистым SGR-состоянием', () => {
   const wideEnvs: Environment[] = [
-    { name: 'dev—prod', path: '/root/d', details: { hasSettings: false, model: null, tools: [], skills: [], packages: [] } },
+    { name: 'dev—prod', path: '/root/d', details: { hasSettings: false, model: null, tools: [], skills: [], packages: [], mcp: [] } },
   ];
   const cases: Array<{ state: AppState; width: number; height: number; envs: Environment[] }> = [
     { state: { ...initialState(extCatalogWide), tab: 'extensions' as const, selected: 1 }, width: 100, height: 12, envs }, // имя с «…»

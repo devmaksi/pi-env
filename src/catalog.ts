@@ -1,5 +1,6 @@
 import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
 import { homedir as osHomedir } from 'node:os';
+import { readMcpServers, type McpServer } from './mcp.js';
 import { isAbsolute, join, sep } from 'node:path';
 
 export interface ModelInfo {
@@ -91,6 +92,7 @@ export interface Catalog {
   tools: ToolItem[];
   packages: PkgItem[];
   skills: SkillItem[];
+  mcp: McpServer[];
 }
 
 /**
@@ -102,6 +104,7 @@ export function loadCatalog(agentDir: string): Catalog {
     tools: listCustomTools(agentDir),
     packages: listPackages(agentDir),
     skills: listSkills(agentDir),
+    mcp: readMcpServers(agentDir),
   };
 }
 

@@ -108,7 +108,7 @@ export function initialState(catalog: Catalog = emptyCatalog()): AppState {
 }
 
 export function emptyCatalog(): Catalog {
-  return { providers: [], tools: [], packages: [], skills: [] };
+  return { providers: [], tools: [], packages: [], skills: [], mcp: [] };
 }
 
 export function freshCreate(): CreateState {
