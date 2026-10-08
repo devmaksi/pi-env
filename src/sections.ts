@@ -5,6 +5,7 @@ import {
   mcpFormRows,
   mcpListNames,
   packageListSources,
+  TEXT_ROWS,
   type AppState,
   type CreateState,
   type ExtState,
@@ -55,7 +56,7 @@ export function renderCreate(cr: CreateState, ctx: Ctx): Section {
     : cr.view === 'install' ? createInstall(cr, ctx)
     : cr.view === 'providers' || cr.view === 'models' || cr.view === 'tools' || cr.view === 'skills'
       ? createSelects(cr, ctx)
-      : createBusy(cr, ctx);
+      : busySection(CREATE_BUSY, cr.view, cr, ctx);
   if (!ctx.twoCol) r.left.push(...r.right);
   return r;
 }
@@ -193,7 +194,7 @@ export function renderMcpForm(f: McpFormAdd, ctx: Ctx, title: string): Section {
   const left: string[] = [];
   const right: string[] = [];
   const rows = mcpFormRows(f.type);
-  const textRows = new Set(['name', 'command', 'args', 'env', 'cwd', 'description', 'url']);
+  const textRows = new Set<string>(TEXT_ROWS);
   const selRow = f.select === 'type' ? rows.indexOf('type') : f.select === 'exposure' ? rows.indexOf('exposure') : f.cursor;
   left.push(c(ANSI.bold, ctx.useColor) + title + c(ANSI.reset, ctx.useColor));
   rows.forEach((row, i) => {
@@ -306,9 +307,14 @@ const CREATE_BUSY: Record<string, { text: (cr: CreateState, lang: string) => str
   'mcp-confirm-remove': { text: (cr, lang) => t(lang, 'busy.mcp-remove', { name: cr.removingMcp ?? '' }), bold: true, hints: ['hint.confirm', 'hint.cancel'] },
 };
 
-function createBusy(cr: CreateState, ctx: Ctx): Section {
-  const b = CREATE_BUSY[cr.view];
-  const left = [c(b.bold ? ANSI.bold : ANSI.dim, ctx.useColor) + b.text(cr, ctx.lang) + c(ANSI.reset, ctx.useColor)];
+function busySection<S>(
+  busy: Record<string, { text: (s: S, lang: string) => string; bold?: boolean; hints: StrKey[] }>,
+  view: string,
+  s: S,
+  ctx: Ctx,
+): Section {
+  const b = busy[view];
+  const left = [c(b.bold ? ANSI.bold : ANSI.dim, ctx.useColor) + b.text(s, ctx.lang) + c(ANSI.reset, ctx.useColor)];
   const right = b.hints.map((h) => c(ANSI.dim, ctx.useColor) + t(ctx.lang, h) + c(ANSI.reset, ctx.useColor));
   return { left, right, cursorRow: -1 };
 }
@@ -377,7 +383,7 @@ export function renderExtTab(ext: ExtState | null, ctx: Ctx): Section {
   const r =
     ext === null ? extList(ctx)
     : ext.view === 'catalog' ? extCatalogView(ext, ctx)
-    : extBusy(ext, ctx);
+    : busySection(EXT_BUSY, ext.view, ext, ctx);
   if (!ctx.twoCol) r.left.push(...r.right);
   return r;
 }
@@ -388,7 +394,7 @@ export function renderMcpTab(mt: McpTab | null, ctx: Ctx): Section {
     mt === null ? mcpList(ctx)
     : mt.view === 'add' && mt.form !== null
       ? renderMcpForm(mt.form, ctx, t(ctx.lang, 'mcp.form.title-main'))
-      : mcpTabBusy(mt, ctx);
+      : busySection(MCP_TAB_BUSY, mt.view, mt, ctx);
   if (!ctx.twoCol) r.left.push(...r.right);
   return r;
 }
@@ -424,13 +430,6 @@ const MCP_TAB_BUSY: Record<string, { text: (mt: McpTab, lang: string) => string;
   'removing': { text: (_mt, lang) => t(lang, 'busy.mcp-deleting'), hints: ['hint.back'] },
   'confirm-remove': { text: (mt, lang) => t(lang, 'busy.mcp-remove', { name: mt.removing ?? '' }), bold: true, hints: ['hint.confirm', 'hint.cancel'] },
 };
-
-function mcpTabBusy(mt: McpTab, ctx: Ctx): Section {
-  const b = MCP_TAB_BUSY[mt.view];
-  const left = [c(b.bold ? ANSI.bold : ANSI.dim, ctx.useColor) + b.text(mt, ctx.lang) + c(ANSI.reset, ctx.useColor)];
-  const right = b.hints.map((h) => c(ANSI.dim, ctx.useColor) + t(ctx.lang, h) + c(ANSI.reset, ctx.useColor));
-  return { left, right, cursorRow: -1 };
-}
 
 // Вкладка «Расширения»: список пакетов main-агента + кнопки
 function extList(ctx: Ctx): Section {
@@ -491,10 +490,3 @@ const EXT_BUSY: Record<string, { text: (ext: ExtState, lang: string) => string; 
   'removing': { text: (_ext, lang) => t(lang, 'busy.deleting'), hints: ['hint.back'] },
   'confirm-remove': { text: (ext, lang) => t(lang, 'busy.delete-ext', { name: ext.removing ?? '' }), bold: true, hints: ['hint.confirm', 'hint.cancel'] },
 };
-
-function extBusy(ext: ExtState, ctx: Ctx): Section {
-  const b = EXT_BUSY[ext.view];
-  const left = [c(b.bold ? ANSI.bold : ANSI.dim, ctx.useColor) + b.text(ext, ctx.lang) + c(ANSI.reset, ctx.useColor)];
-  const right = b.hints.map((h) => c(ANSI.dim, ctx.useColor) + t(ctx.lang, h) + c(ANSI.reset, ctx.useColor));
-  return { left, right, cursorRow: -1 };
-}

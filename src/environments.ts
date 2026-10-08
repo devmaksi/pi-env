@@ -1,4 +1,4 @@
-import { existsSync, readdirSync, readFileSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync, type Dirent } from 'node:fs';
 import { join } from 'node:path';
 import { readMcpServers } from './mcp.js';
 
@@ -62,28 +62,13 @@ function readDetails(dir: string): EnvDetails {
       /* битый settings.json — оставляем пустые значения */
     }
   }
-  return { hasSettings, model, tools: listFiles(join(dir, 'extensions')), skills: listDirs(join(dir, 'skills')), packages, mcp: readMcpServers(dir).map((s) => s.name) };
+  return { hasSettings, model, tools: listEntries(join(dir, 'extensions'), (e) => e.isFile()), skills: listEntries(join(dir, 'skills'), (e) => e.isDirectory()), packages, mcp: readMcpServers(dir).map((s) => s.name) };
 }
 
-function listFiles(dir: string): string[] {
+function listEntries(dir: string, is: (e: Dirent) => boolean): string[] {
   if (!existsSync(dir)) return [];
   try {
-    return readdirSync(dir, { withFileTypes: true })
-      .filter((e) => e.isFile())
-      .map((e) => e.name)
-      .sort();
-  } catch {
-    return [];
-  }
-}
-
-function listDirs(dir: string): string[] {
-  if (!existsSync(dir)) return [];
-  try {
-    return readdirSync(dir, { withFileTypes: true })
-      .filter((e) => e.isDirectory())
-      .map((e) => e.name)
-      .sort();
+    return readdirSync(dir, { withFileTypes: true }).filter(is).map((e) => e.name).sort();
   } catch {
     return [];
   }

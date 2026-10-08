@@ -7,20 +7,20 @@
 
 Все пункты — одной пачкой; проверка — полный прогон `npm test`.
 
-- [ ] Общий `readJsonFile(path)` (regex trailing-commas) вместо трёх копий:
+- [x] Общий `readJsonFile(path)` (regex trailing-commas) вместо трёх копий:
       `catalog.ts readJson`, `mcp.ts readMcpServers`, `mcp.ts removeMcpEntry`.
       Хелпер в mcp.ts (catalog его уже импортирует), остальное — импорт.
-- [ ] `listFiles`/`listDirs` (environments.ts) → один `listEntries(dir, is)`.
-- [ ] `createBusy`/`extBusy`/`mcpTabBusy` (sections.ts) → общий
+- [x] `listFiles`/`listDirs` (environments.ts) → один `listEntries(dir, is)`.
+- [x] `createBusy`/`extBusy`/`mcpTabBusy` (sections.ts) → общий
       `busySection(record, view, ctx)` (шаблон Record[view] → строка → hints).
-- [ ] `baseName` ×2 (экспорт create.ts + частный catalog.ts) → `basename`
+- [x] `baseName` ×2 (экспорт create.ts + частный catalog.ts) → `basename`
       из node:path в state.ts/create.ts/catalog.ts; из catalog.ts убрать
       `import { sep }`.
-- [ ] `parentDir` (create.ts) → `dirname` из node:path.
-- [ ] `homeDir` (catalog.ts) → `osHomedir()` (он сам смотрит $HOME).
-- [ ] `TEXT_ROWS` (state.ts) и `textRows` Set (sections.ts renderMcpForm) —
+- [x] `parentDir` (create.ts) → `dirname` из node:path.
+- [x] `homeDir` (catalog.ts) → `osHomedir()` (он сам смотрит $HOME).
+- [x] `TEXT_ROWS` (state.ts) и `textRows` Set (sections.ts renderMcpForm) —
       один экспортированный `TEXT_ROWS`.
-- [ ] `mcpFormStep` (state.ts): дублирующая проверка печатного символа →
+- [x] `mcpFormStep` (state.ts): дублирующая проверка печатного символа →
       `isPrintable`.
 
 ## 2. Версия в «О программе» (2 строки, прицепить к любому ближайшему коммиту)

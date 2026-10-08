@@ -1,7 +1,7 @@
-import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
+import { existsSync, readdirSync, statSync } from 'node:fs';
 import { homedir as osHomedir } from 'node:os';
-import { readMcpServers, type McpServer } from './mcp.js';
-import { isAbsolute, join, sep } from 'node:path';
+import { readMcpServers, readJsonFile, type McpServer } from './mcp.js';
+import { basename, isAbsolute, join } from 'node:path';
 
 export interface ModelInfo {
   id: string;
@@ -32,7 +32,7 @@ export function listProviders(agentDir: string): Provider[] {
     merged.set(provider, prev);
   };
 
-  const custom = readJson(join(agentDir, 'models.json'));
+  const custom = readJsonFile(join(agentDir, 'models.json'));
   if (custom && typeof custom === 'object') {
     const providers = (custom as { providers?: unknown }).providers;
     if (providers && typeof providers === 'object') {
@@ -42,7 +42,7 @@ export function listProviders(agentDir: string): Provider[] {
     }
   }
 
-  const store = readJson(join(agentDir, 'models-store.json'));
+  const store = readJsonFile(join(agentDir, 'models-store.json'));
   if (store && typeof store === 'object') {
     for (const [name, value] of Object.entries(store as Record<string, unknown>)) {
       add(name, (value as { models?: unknown }).models);
@@ -55,16 +55,6 @@ export function listProviders(agentDir: string): Provider[] {
       name,
       models: [...ids].sort().map((id) => ({ id })),
     }));
-}
-
-function readJson(path: string): unknown {
-  if (!existsSync(path)) return null;
-  try {
-    // ponytail: файлы каталогов пи допускают trailing commas — срезаем перед парсом
-    return JSON.parse(readFileSync(path, 'utf8').replace(/,\s*([}\]])/g, '$1'));
-  } catch {
-    return null;
-  }
 }
 
 export interface ToolItem {
@@ -125,7 +115,7 @@ export function listCustomTools(agentDir: string): ToolItem[] {
  * Неразрешимые источники (git, отсутствующие) пропускаются.
  */
 export function listPackages(agentDir: string): PkgItem[] {
-  const settings = readJson(join(agentDir, 'settings.json'));
+  const settings = readJsonFile(join(agentDir, 'settings.json'));
   const sources: string[] =
     settings && Array.isArray((settings as { packages?: unknown }).packages)
       ? ((settings as { packages: string[] }).packages).filter((s) => typeof s === 'string')
@@ -134,7 +124,7 @@ export function listPackages(agentDir: string): PkgItem[] {
   for (const source of sources) {
     const path = resolvePkgPath(agentDir, source);
     if (path === null) continue;
-    const pkg = readJson(join(path, 'package.json'));
+    const pkg = readJsonFile(join(path, 'package.json'));
     if (pkg === null || typeof pkg !== 'object') continue;
     const pi = (pkg as { pi?: unknown }).pi;
     const piObj = pi && typeof pi === 'object' ? (pi as Record<string, unknown>) : {};
@@ -340,7 +330,7 @@ export function listSkills(agentDir: string): SkillItem[] {
       if (existsSync(base) && statIsDir(base)) {
         for (const e of readDir(base)) items.push({ name: e.name, path: join(base, e.name), pkgShort: short });
       } else if (existsSync(base)) {
-        items.push({ name: baseName(base), path: base, pkgShort: short });
+        items.push({ name: basename(base), path: base, pkgShort: short });
       }
     }
   }
@@ -366,13 +356,13 @@ function resolvePkgPath(agentDir: string, source: string): string | null {
   }
   // ponytail: git-источники и прочие схемы не поддерживаются — только локальные пути
   if (/^[a-z]+:/.test(source)) return null;
-  const expanded = source.startsWith('~') ? join(homeDir(), source.slice(1)) : source;
+  const expanded = source.startsWith('~') ? join(osHomedir(), source.slice(1)) : source;
   const path = isAbsolute(expanded) ? expanded : join(agentDir, expanded);
   return existsSync(path) ? path : null;
 }
 
 function resolveInPkg(pkgPath: string, entry: string): string | null {
-  const expanded = entry.startsWith('~') ? join(homeDir(), entry.slice(1)) : entry;
+  const expanded = entry.startsWith('~') ? join(osHomedir(), entry.slice(1)) : entry;
   const path = isAbsolute(expanded) ? expanded : join(pkgPath, expanded);
   return existsSync(path) ? path : null;
 }
@@ -395,13 +385,4 @@ function statIsDir(p: string): boolean {
   } catch {
     return false;
   }
-}
-
-function baseName(p: string): string {
-  const i = p.lastIndexOf(sep);
-  return i >= 0 ? p.slice(i + 1) : p;
-}
-
-function homeDir(): string {
-  return process.env.HOME ?? osHomedir();
 }

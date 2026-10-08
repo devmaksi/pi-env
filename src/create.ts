@@ -1,5 +1,5 @@
 import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, statSync, unlinkSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { basename, dirname, join } from 'node:path';
 import type { SkillItem, ToolItem } from './catalog.js';
 import { t } from './i18n.js';
 import { writeMcpFile, type McpServer } from './mcp.js';
@@ -82,7 +82,7 @@ export function createEnvironment(root: string, req: CreateRequest, agentDir?: s
 
   const extNames: string[] = [];
   for (const tool of req.tools ?? []) {
-    const base = baseName(tool.path);
+    const base = basename(tool.path);
     mkdirSync(join(envDir, 'extensions'), { recursive: true });
     copyFileSync(tool.path, join(envDir, 'extensions', base));
     extNames.push(`extensions/${base}`);
@@ -92,7 +92,7 @@ export function createEnvironment(root: string, req: CreateRequest, agentDir?: s
   const usedSkillNames = new Set<string>();
   const skillNames: string[] = [];
   for (const skill of req.skills ?? []) {
-    const dirName = uniqueName(baseName(skill.path), usedSkillNames);
+    const dirName = uniqueName(basename(skill.path), usedSkillNames);
     usedSkillNames.add(dirName);
     mkdirSync(join(envDir, 'skills'), { recursive: true });
     copyRecursive(skill.path, join(envDir, 'skills', dirName));
@@ -147,7 +147,7 @@ export function updateEnvironment(
   }
   if (ctx.agentDir !== undefined) copyModelFiles(ctx.agentDir, envDir);
 
-  const selectedTools = new Set((req.tools ?? []).map((t) => baseName(t.path)));
+  const selectedTools = new Set((req.tools ?? []).map((t) => basename(t.path)));
   for (const t of ctx.allTools) {
     const file = join(envDir, 'extensions', t.name);
     if (selectedTools.has(t.name) && !existsSync(file)) {
@@ -158,7 +158,7 @@ export function updateEnvironment(
     }
   }
 
-  const selectedSkills = new Set((req.skills ?? []).map((s) => baseName(s.path)));
+  const selectedSkills = new Set((req.skills ?? []).map((s) => basename(s.path)));
   for (const s of ctx.allSkills) {
     const dir = join(envDir, 'skills', s.name);
     if (selectedSkills.has(s.name) && !existsSync(dir)) {
@@ -201,11 +201,6 @@ export function deleteEnvironment(root: string, name: string, lang: string = 'ru
   return { ok: true, path: envDir };
 }
 
-export function baseName(p: string): string {
-  const i = Math.max(p.lastIndexOf('/'), p.lastIndexOf('\\'));
-  return i >= 0 ? p.slice(i + 1) : p;
-}
-
 function uniqueName(base: string, used: Set<string>): string {
   let name = base;
   let n = 2;
@@ -225,7 +220,7 @@ function copyRecursive(src: string, dest: string): void {
       copyRecursive(join(src, entry), join(dest, entry));
     }
   } else {
-    mkdirSync(parentDir(dest), { recursive: true });
+    mkdirSync(dirname(dest), { recursive: true });
     copyFileSync(src, dest);
   }
 }
@@ -236,9 +231,4 @@ function copyModelFiles(agentDir: string, envDir: string): void {
     const src = join(agentDir, name);
     if (existsSync(src)) copyFileSync(src, join(envDir, name));
   }
-}
-
-function parentDir(p: string): string {
-  const i = Math.max(p.lastIndexOf('/'), p.lastIndexOf('\\'));
-  return i >= 0 ? p.slice(0, i) : '.';
 }

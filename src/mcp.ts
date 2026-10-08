@@ -33,19 +33,25 @@ export interface McpFormFields {
 }
 
 /**
+ * Читает JSON-файл; нет файла или битый JSON — null.
+ * ponytail: trailing commas допускаются (особенность файлов пи).
+ */
+export function readJsonFile(path: string): unknown {
+  if (!existsSync(path)) return null;
+  try {
+    return JSON.parse(readFileSync(path, 'utf8').replace(/,\s*([}\]])/g, '$1'));
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Читает mcpServers из <dir>/mcp.json.
  * Нет файла, битый JSON или битая запись — пропускаются без исключений.
- * ponytail: trailing commas допускаются (особенность файлов pi, как в catalog.ts).
  */
 export function readMcpServers(dir: string): McpServer[] {
-  const p = join(dir, 'mcp.json');
-  if (!existsSync(p)) return [];
-  let raw: unknown;
-  try {
-    raw = JSON.parse(readFileSync(p, 'utf8').replace(/,\s*([}\]])/g, '$1'));
-  } catch {
-    return [];
-  }
+  const raw = readJsonFile(join(dir, 'mcp.json'));
+  if (raw === null) return [];
   const obj = raw as { mcpServers?: unknown };
   if (obj.mcpServers === null || typeof obj.mcpServers !== 'object' || Array.isArray(obj.mcpServers)) return [];
   const out: McpServer[] = [];
@@ -168,12 +174,8 @@ export function copyMcpEntry(mainDir: string, envDir: string, name: string): { o
 export function removeMcpEntry(dir: string, name: string): { ok: boolean; error?: string } {
   const p = join(dir, 'mcp.json');
   if (!existsSync(p)) return { ok: false, error: 'no mcp.json in ' + dir };
-  let raw: unknown;
-  try {
-    raw = JSON.parse(readFileSync(p, 'utf8').replace(/,\s*([}\]])/g, '$1'));
-  } catch {
-    return { ok: false, error: 'bad json in ' + p };
-  }
+  const raw = readJsonFile(p);
+  if (raw === null) return { ok: false, error: 'bad json in ' + p };
   const obj = raw as { mcpServers?: unknown };
   if (obj.mcpServers === null || typeof obj.mcpServers !== 'object' || Array.isArray(obj.mcpServers)) {
     return { ok: false, error: 'no mcpServers in ' + p };

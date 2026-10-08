@@ -1,4 +1,5 @@
-import { validateName, baseName, type EnvSettings } from './create.js';
+import { basename } from 'node:path';
+import { validateName, type EnvSettings } from './create.js';
 import type { Catalog, CatalogPkg } from './catalog.js';
 import { normalizePkgSource, filterPackages } from './catalog.js';
 import { localeCodes } from './i18n.js';
@@ -176,7 +177,7 @@ export function freshEdit(name: string, settings: EnvSettings, catalog: Catalog,
     tools: catalog.tools.filter((t) => ext.includes(`extensions/${t.name}`)).map((t) => t.name),
     packages: (settings.packages ?? []).map((s) => normalizePkgSource(s, catalog.packages)),
     skills: catalog.skills.filter((s) => {
-      const base = baseName(s.path);
+      const base = basename(s.path);
       return sk.includes(`skills/${base}`) || sk.includes(`skills/${s.name}`);
     }).map((s) => s.name),
     view: 'form',
@@ -668,7 +669,7 @@ export const MCP_TYPES: readonly McpType[] = ['stdio', 'http'];
 export const MCP_EXPOSURES: readonly McpExposure[] = ['codemode', 'deferred', 'direct', 'hidden'];
 
 /** Текстовые строки формы (редактируются вводом). */
-const TEXT_ROWS = ['name', 'command', 'args', 'env', 'cwd', 'description', 'url'] as const;
+export const TEXT_ROWS = ['name', 'command', 'args', 'env', 'cwd', 'description', 'url'] as const;
 type TextField = (typeof TEXT_ROWS)[number];
 
 /** Чистая форма добавления MCP. */
@@ -739,7 +740,7 @@ export function mcpFormStep(form: McpFormAdd, action: Action, language: string):
     if (form.select !== null) return { kind: 'form', form: { ...form, select: null } };
     return { kind: 'close' };
   }
-  if (typeof action === 'string' && action.length === 1 && action.charCodeAt(0) >= 0x21 && action.charCodeAt(0) <= 0x7e) {
+  if (isPrintable(action)) {
     if (!textRow) return { kind: 'form', form };
     const v = form[row as TextField];
     const caret = Math.min(v.length, form.caret);
