@@ -5,6 +5,7 @@ import { renderCreate, renderExtTab, renderEnvList, renderMcpTab, type Ctx, type
 import type { PkgItem, CatalogPkg } from './catalog.js';
 import type { McpServer } from './mcp.js';
 import { t, nativeName } from './i18n.js';
+import { createRequire } from 'node:module';
 
 export const ANSI = {
   bright: '\x1b[96m',
@@ -208,10 +209,12 @@ function renderSettings(state: AppState, ctx: Ctx): Section {
   return { left, right, cursorRow: state.selected };
 }
 
+/** Версия из package.json (читается один раз при импорте модуля). */
+const VERSION = createRequire(import.meta.url)('../package.json').version;
 /** Вкладка «О программе»: центрированный блок на всю ширину. */
 function renderAbout(ctx: Ctx): Section {
   const block = [
-    c(ANSI.bold, ctx.useColor) + 'pi-env 0.1.0' + c(ANSI.reset, ctx.useColor),
+    c(ANSI.bold, ctx.useColor) + `pi-env ${VERSION}` + c(ANSI.reset, ctx.useColor),
     t(ctx.lang, 'about.subtitle'),
     '',
     t(ctx.lang, 'about.keys'),

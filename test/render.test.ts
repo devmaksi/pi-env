@@ -1,4 +1,5 @@
 import { test } from 'node:test';
+import { readFileSync } from 'node:fs';
 import assert from 'node:assert';
 import { render, scrollTop, catalogPickerLines, visibleWidth, truncateVisible, padRight, wideCount } from '../src/render.js';
 import { computeLayout } from '../src/layout.js';
@@ -193,6 +194,12 @@ test('вкладка «О программе» в широком режиме н
   }
   // строка не обрезана на половине ширины
   assert.ok(s.includes('CLI для управления окружениями pi'));
+});
+
+test('«О программе» показывает версию из package.json', () => {
+  const pkg = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8'));
+  const s = render({ state: { ...initialState(), tab: 'about' }, envs, width: 62, height: 10, ...base });
+  assert.ok(s.includes('pi-env ' + pkg.version));
 });
 
 const extCatalog: Catalog = {
