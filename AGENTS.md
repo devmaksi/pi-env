@@ -138,7 +138,7 @@
   `fetchPackageCatalog` (каталог pi.dev/packages: все страницы пагинации
   параллельно, `lastCatalogPage`, прогресс, дедупликация), `normalizePkgSource`,
   `filterPackages` (поиск по имени пакета) (чистые)
-- `src/mcp.ts` — mcp.json: `McpServer`/`McpFormFields`, `readMcpServers`,
+- `src/mcp.ts` — mcp.json: `McpServer`/`McpFormFields`, `readJsonFile`, `readMcpServers`,
   `writeMcpFile`, `mcpAddCliArgs` (аргументы `pi mcp add`), `validateMcpForm`,
   `copyMcpEntry`/`removeMcpEntry` (чистые)
 - `src/create.ts` — `validateName`, `createEnvironment` (создание каталога,
