@@ -92,7 +92,7 @@ export function createEnvironment(root: string, req: CreateRequest, agentDir?: s
   const usedSkillNames = new Set<string>();
   const skillNames: string[] = [];
   for (const skill of req.skills ?? []) {
-    const dirName = uniqueName(basename(skill.path), usedSkillNames);
+    const dirName = uniqueName(envSkillDirName(skill), usedSkillNames);
     usedSkillNames.add(dirName);
     mkdirSync(join(envDir, 'skills'), { recursive: true });
     copyRecursive(skill.path, join(envDir, 'skills', dirName));
@@ -158,12 +158,13 @@ export function updateEnvironment(
     }
   }
 
-  const selectedSkills = new Set((req.skills ?? []).map((s) => basename(s.path)));
+  const selectedSkills = new Set((req.skills ?? []).map(envSkillDirName));
   for (const s of ctx.allSkills) {
-    const dir = join(envDir, 'skills', s.name);
-    if (selectedSkills.has(s.name) && !existsSync(dir)) {
+    const dirName = envSkillDirName(s);
+    const dir = join(envDir, 'skills', dirName);
+    if (selectedSkills.has(dirName) && !existsSync(dir)) {
       copyRecursive(s.path, dir);
-    } else if (!selectedSkills.has(s.name) && existsSync(dir)) {
+    } else if (!selectedSkills.has(dirName) && existsSync(dir)) {
       rmSync(dir, { recursive: true, force: true });
     }
   }
@@ -187,6 +188,11 @@ export function updateEnvironment(
   if (packages.length > 0) settings.packages = packages;
   writeFileSync(join(envDir, 'settings.json'), JSON.stringify(settings, null, 2) + '\n');
   return { ok: true, path: envDir };
+}
+
+/** Имя каталога скилла в окружении: имя из каталога main-агента, слэш → дефис. */
+export function envSkillDirName(skill: SkillItem): string {
+  return skill.name.replace(/\//g, '-');
 }
 
 /** Удаляет каталог окружения <root>/<name> вместе с содержимым. */

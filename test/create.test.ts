@@ -4,6 +4,7 @@ import { mkdtempSync, mkdirSync, writeFileSync, rmSync, readFileSync, readdirSyn
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { validateName, createEnvironment, readSettings, updateEnvironment, deleteEnvironment } from '../src/create.js';
+import { listSkills } from '../src/catalog.js';
 
 function tmpDir(): string {
   return mkdtempSync(join(tmpdir(), 'pi-env-create-'));
@@ -140,6 +141,43 @@ test('createEnvironment: коллизия скиллов по имени — в�
     rmSync(root, { recursive: true, force: true });
     rmSync(a, { recursive: true, force: true });
     rmSync(b, { recursive: true, force: true });
+  }
+});
+
+test('updateEnvironment: коллизия пакетных скиллов — снятый скилл удаляется', () => {
+  const root = tmpDir();
+  const agent = tmpDir();
+  try {
+    for (const pkg of ['pkg-a', 'pkg-b']) {
+      const dir = join(agent, 'npm', 'node_modules', pkg, 'skills', 'dup');
+      mkdirSync(dir, { recursive: true });
+      writeFileSync(join(dir, 'SKILL.md'), `# ${pkg}`);
+      writeFileSync(
+        join(agent, 'npm', 'node_modules', pkg, 'package.json'),
+        JSON.stringify({ name: pkg, version: '1.0.0', pi: { skills: ['./skills'] } }),
+      );
+    }
+    writeFileSync(join(agent, 'settings.json'), JSON.stringify({ packages: ['npm:pkg-a', 'npm:pkg-b'] }));
+    const skills = listSkills(agent);
+    assert.deepEqual(skills.map((s) => s.name).sort(), ['dup', 'pkg-b/dup']);
+
+    const res = createEnvironment(root, { name: 'env', skills }, agent);
+    assert.equal(res.ok, true);
+    const envDir = join(root, 'env');
+    assert.deepEqual(readdirSync(join(envDir, 'skills')), ['dup', 'pkg-b-dup']);
+    assert.deepEqual(readSettings(envDir)!.skills, ['skills/dup', 'skills/pkg-b-dup']);
+
+    const upd = updateEnvironment(
+      root, 'env',
+      { name: 'env', skills: skills.filter((s) => s.name === 'dup') },
+      { allTools: [], allSkills: skills, agentDir: agent },
+    );
+    assert.equal(upd.ok, true);
+    assert.deepEqual(readdirSync(join(envDir, 'skills')), ['dup']);
+    assert.deepEqual(readSettings(envDir)!.skills, ['skills/dup']);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+    rmSync(agent, { recursive: true, force: true });
   }
 });
 
