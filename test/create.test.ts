@@ -164,7 +164,7 @@ test('updateEnvironment: коллизия пакетных скиллов — с
     const res = createEnvironment(root, { name: 'env', skills }, agent);
     assert.equal(res.ok, true);
     const envDir = join(root, 'env');
-    assert.deepEqual(readdirSync(join(envDir, 'skills')), ['dup', 'pkg-b-dup']);
+    assert.deepEqual(readdirSync(join(envDir, 'skills')).sort(), ['dup', 'pkg-b-dup']);
     assert.deepEqual(readSettings(envDir)!.skills, ['skills/dup', 'skills/pkg-b-dup']);
 
     const upd = updateEnvironment(
@@ -173,8 +173,43 @@ test('updateEnvironment: коллизия пакетных скиллов — с
       { allTools: [], allSkills: skills, agentDir: agent },
     );
     assert.equal(upd.ok, true);
-    assert.deepEqual(readdirSync(join(envDir, 'skills')), ['dup']);
+    assert.deepEqual(readdirSync(join(envDir, 'skills')).sort(), ['dup']);
     assert.deepEqual(readSettings(envDir)!.skills, ['skills/dup']);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+    rmSync(agent, { recursive: true, force: true });
+  }
+});
+
+test('updateEnvironment: свой скилл и пакетный одного имени — снятие удаляет свой', () => {
+  const root = tmpDir();
+  const agent = tmpDir();
+  try {
+    mkdirSync(join(agent, 'skills', 'dup'), { recursive: true });
+    writeFileSync(join(agent, 'skills', 'dup', 'SKILL.md'), 'own');
+    const pkgSkill = join(agent, 'npm', 'node_modules', 'pkg-b', 'skills', 'dup');
+    mkdirSync(pkgSkill, { recursive: true });
+    writeFileSync(join(pkgSkill, 'SKILL.md'), 'pkg');
+    writeFileSync(
+      join(agent, 'npm', 'node_modules', 'pkg-b', 'package.json'),
+      JSON.stringify({ name: 'pkg-b', version: '1.0.0', pi: { skills: ['./skills'] } }),
+    );
+    writeFileSync(join(agent, 'settings.json'), JSON.stringify({ packages: ['npm:pkg-b'] }));
+    const skills = listSkills(agent);
+    assert.deepEqual(skills.map((s) => s.name).sort(), ['dup', 'pkg-b/dup']);
+
+    assert.equal(createEnvironment(root, { name: 'env', skills }, agent).ok, true);
+    const envDir = join(root, 'env');
+    assert.deepEqual(readdirSync(join(envDir, 'skills')).sort(), ['dup', 'pkg-b-dup']);
+
+    const upd = updateEnvironment(
+      root, 'env',
+      { name: 'env', skills: skills.filter((s) => s.name !== 'dup') },
+      { allTools: [], allSkills: skills, agentDir: agent },
+    );
+    assert.equal(upd.ok, true);
+    assert.deepEqual(readdirSync(join(envDir, 'skills')).sort(), ['pkg-b-dup']);
+    assert.deepEqual(readSettings(envDir)!.skills, ['skills/pkg-b-dup']);
   } finally {
     rmSync(root, { recursive: true, force: true });
     rmSync(agent, { recursive: true, force: true });

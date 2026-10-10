@@ -191,6 +191,8 @@ export function updateEnvironment(
 }
 
 /** Имя каталога скилла в окружении: имя из каталога main-агента, слэш → дефис. */
+// ponytail: не инъективно (own-скилл `pkg-x-dup` и пакетный `pkg-x/dup` дают один каталог) —
+// кейс редкий; при жалобах: уникализация имён каталогов по всему списку скиллов.
 export function envSkillDirName(skill: SkillItem): string {
   return skill.name.replace(/\//g, '-');
 }
