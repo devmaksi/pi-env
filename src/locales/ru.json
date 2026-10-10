@@ -14,6 +14,7 @@
   "settings.hint.recheck": "Перепроверка: npm outdated при каждом входе во вкладку «Расширения»",
   "settings.hint.language": "←→ — язык",
   "about.subtitle": "CLI для управления окружениями pi",
+  "about.support": "Поддержать автора:",
   "about.keys": "↑↓ перемещение  TAB вкладки  Enter ОК  Space toggle  Esc назад/выход",
   "footer.legend1": "↑↓ перемещение  ←→ колонки  TAB вкладки  Enter ОК",
   "footer.legend1.narrow": "↑↓ TAB Enter Space Esc",

@@ -14,6 +14,7 @@
   "settings.hint.recheck": "Recheck: npm outdated on every visit to the \"Extensions\" tab",
   "settings.hint.language": "←→ — language",
   "about.subtitle": "CLI for managing pi environments",
+  "about.support": "Support the author:",
   "about.keys": "↑↓ move  TAB tabs  Enter OK  Space toggle  Esc back/exit",
   "footer.legend1": "↑↓ move  ←→ columns  TAB tabs  Enter OK",
   "footer.legend1.narrow": "↑↓ TAB Enter Space Esc",

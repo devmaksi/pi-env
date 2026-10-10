@@ -211,12 +211,15 @@ function renderSettings(state: AppState, ctx: Ctx): Section {
 
 /** Версия из package.json (читается один раз при импорте модуля). */
 const VERSION = createRequire(import.meta.url)('../package.json').version;
+const SUPPORT_URL = 'https://boosty.to/devmaksi';
 /** Вкладка «О программе»: центрированный блок на всю ширину. */
 function renderAbout(ctx: Ctx): Section {
   const block = [
     c(ANSI.bold, ctx.useColor) + `pi-env ${VERSION}` + c(ANSI.reset, ctx.useColor),
     t(ctx.lang, 'about.subtitle'),
     '',
+    t(ctx.lang, 'about.support'),
+    SUPPORT_URL,
     t(ctx.lang, 'about.keys'),
   ];
   const top = Math.max(0, Math.floor((ctx.contentRows - block.length) / 2));

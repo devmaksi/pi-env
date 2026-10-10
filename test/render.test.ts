@@ -202,6 +202,13 @@ test('«О программе» показывает версию из package.j
   assert.ok(s.includes('pi-env ' + pkg.version));
 });
 
+test('«О программе»: ссылка на поддержку автора видна и в узком режиме', () => {
+  for (const width of [62, 30]) {
+    const s = render({ state: { ...initialState(), tab: 'about' }, envs, width, height: 10, ...base });
+    assert.ok(s.includes('https://boosty.to/devmaksi'), `width=${width}`);
+  }
+});
+
 const extCatalog: Catalog = {
   providers: [],
   tools: [],
