@@ -1,5 +1,4 @@
-import { basename } from 'node:path';
-import { validateName, type EnvSettings } from './create.js';
+import { validateName, envSkillDirName, type EnvSettings } from './create.js';
 import type { Catalog, CatalogPkg } from './catalog.js';
 import { normalizePkgSource, filterPackages } from './catalog.js';
 import { localeCodes } from './i18n.js';
@@ -176,10 +175,7 @@ export function freshEdit(name: string, settings: EnvSettings, catalog: Catalog,
     model: settings.defaultModel ?? null,
     tools: catalog.tools.filter((t) => ext.includes(`extensions/${t.name}`)).map((t) => t.name),
     packages: (settings.packages ?? []).map((s) => normalizePkgSource(s, catalog.packages)),
-    skills: catalog.skills.filter((s) => {
-      const base = basename(s.path);
-      return sk.includes(`skills/${base}`) || sk.includes(`skills/${s.name}`);
-    }).map((s) => s.name),
+    skills: catalog.skills.filter((s) => sk.includes(`skills/${envSkillDirName(s)}`)).map((s) => s.name),
     view: 'form',
     error: null,
     done: null,

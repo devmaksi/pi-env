@@ -188,6 +188,28 @@ test('listSkills: коллизия имён — добавляется преф�
   }
 });
 
+test('listSkills: коллизия коротких имён пакетов — дублей имён нет', () => {
+  const dir = makeAgentDir();
+  try {
+    for (const scope of ['a', 'b', 'c']) {
+      makePkg(join(dir, 'npm', 'node_modules'), `@${scope}/pkg-x`, {
+        name: `@${scope}/pkg-x`,
+        pi: { skills: ['./skills'] },
+      });
+      mkdirSync(join(dir, 'npm', 'node_modules', `@${scope}/pkg-x`, 'skills', 'dup'), { recursive: true });
+    }
+    writeFileSync(
+      join(dir, 'settings.json'),
+      JSON.stringify({ packages: ['npm:@a/pkg-x', 'npm:@b/pkg-x', 'npm:@c/pkg-x'] }),
+    );
+    const names = listSkills(dir).map((s) => s.name);
+    assert.deepEqual(names.sort(), ['dup', 'pkg-x/dup', 'pkg-x/dup-2']);
+    assert.equal(new Set(names).size, names.length);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test('parseOutdated: валидный JSON → имя → latest', () => {
   assert.deepEqual(
     parseOutdated('{"pkg-a":{"current":"1.0.0","latest":"2.0.0"},"pkg-b":{"latest":"1.1.0"}}'),
