@@ -117,6 +117,9 @@
   - Контроль результата без GitHub API (60 req/ч на IP):
     `curl https://registry.npmjs.org/@devmaksi%2Fpi-env` (200 = опубликован)
     и `curl https://github.com/devmaksi/pi-env/releases.atom` (релиз).
+  - Реестр npm отстаёт от зелёного CI: после успешного publish версия
+    появляется в `registry.npmjs.org` через ~4 минуты (0.1.3 — 404 на `/0.1.3`
+    при завершённом job и созданном релизе). Проверять повторно, а не чинить CI.
 
 ## Структура
 
