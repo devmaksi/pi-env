@@ -334,17 +334,23 @@ export function listSkills(agentDir: string): SkillItem[] {
       }
     }
   }
-  const seen = new Set<string>();
+  const used = new Set<string>();
   return items
     .map((it) => {
-      let name = it.name;
-      if (seen.has(name)) {
-        name = it.pkgShort !== null ? `${it.pkgShort}/${name}` : name;
-      }
-      seen.add(name);
+      const base = used.has(it.name) && it.pkgShort !== null ? `${it.pkgShort}/${it.name}` : it.name;
+      const name = uniqueName(base, used);
+      used.add(name);
       return { name, path: it.path };
     })
     .sort((a, b) => a.name.localeCompare(b.name));
+}
+
+/** Свободное имя среди занятых: base, иначе base-2, base-3… */
+export function uniqueName(base: string, used: Set<string>): string {
+  let name = base;
+  let n = 2;
+  while (used.has(name)) name = `${base}-${n++}`;
+  return name;
 }
 
 function resolvePkgPath(agentDir: string, source: string): string | null {

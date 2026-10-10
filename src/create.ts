@@ -1,6 +1,6 @@
 import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, statSync, unlinkSync, writeFileSync } from 'node:fs';
 import { basename, dirname, join } from 'node:path';
-import type { SkillItem, ToolItem } from './catalog.js';
+import { uniqueName, type SkillItem, type ToolItem } from './catalog.js';
 import { t } from './i18n.js';
 import { writeMcpFile, type McpServer } from './mcp.js';
 
@@ -199,13 +199,6 @@ export function deleteEnvironment(root: string, name: string, lang: string = 'ru
     return { ok: false, error: t(lang, 'err.delete', { name }) };
   }
   return { ok: true, path: envDir };
-}
-
-function uniqueName(base: string, used: Set<string>): string {
-  let name = base;
-  let n = 2;
-  while (used.has(name)) name = `${base}-${n++}`;
-  return name;
 }
 
 function uniqueStrings(list: string[]): string[] {
