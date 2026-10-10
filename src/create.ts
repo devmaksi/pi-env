@@ -192,7 +192,9 @@ export function updateEnvironment(
 
 /** Имя каталога скилла в окружении: имя из каталога main-агента, слэш → дефис. */
 // ponytail: не инъективно (own-скилл `pkg-x-dup` и пакетный `pkg-x/dup` дают один каталог) —
-// кейс редкий; при жалобах: уникализация имён каталогов по всему списку скиллов.
+// кейс редкий; симптом хуже, чем кажется: create сдвигает имена через uniqueName, update маппит
+// сыро — снятие одного скилла удаляет каталог с контентом другого отмеченного. Апгрейд:
+// uniqueName по всему списку скиллов и в create, и в update.
 export function envSkillDirName(skill: SkillItem): string {
   return skill.name.replace(/\//g, '-');
 }
