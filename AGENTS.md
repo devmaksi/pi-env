@@ -134,7 +134,7 @@
   (settings.json, extensions/, skills/, mcp.json) (чистая)
 - `src/layout.ts` — `computeLayout` (чистая), константы порогов
 - `src/catalog.ts` — `loadCatalog` + `listProviders/listCustomTools/`
-  `listPackages/listSkills`, `parseOutdated`, `parsePackageCatalog`/
+  `listPackages/listSkills` (`listSkills` уникализированы `uniqueName`), `parseOutdated`, `parsePackageCatalog`/
   `fetchPackageCatalog` (каталог pi.dev/packages: все страницы пагинации
   параллельно, `lastCatalogPage`, прогресс, дедупликация), `normalizePkgSource`,
   `filterPackages` (поиск по имени пакета) (чистые)
@@ -144,7 +144,9 @@
 - `src/create.ts` — `validateName`, `createEnvironment` (создание каталога,
   копирование инструментов/скиллов/каталога моделей, запись settings.json),
   `readSettings`, `updateEnvironment` (синхронизация + переименование),
-  `deleteEnvironment` (+ запись `mcp.json` из `req.mcp` при создании)
+  `deleteEnvironment` (+ запись `mcp.json` из `req.mcp` при создании),
+  `envSkillDirName` (идентичность скилла: имя из каталога main-агента, `/` → `-`
+  — одно имя используется в create, update и `freshEdit`)
 - `src/state.ts` — `AppState` (+ `pkgCheck`, `pkgLatest`, `ext`, `mcp`), `reducer`
   (`updates-result` с scope `main`/`create`, `mcp-result` с scope
   `main`/`create`), машина создания `CreateState` (views `install`/`installing`,
