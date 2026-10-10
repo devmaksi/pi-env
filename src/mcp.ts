@@ -34,12 +34,14 @@ export interface McpFormFields {
 
 /**
  * Читает JSON-файл; нет файла или битый JSON — null.
- * ponytail: trailing commas допускаются (особенность файлов пи).
+ * Trailing commas допускаются (особенность файлов пи): строковый литерал —
+ * первая альтернатива regex, иначе запятые внутри строк вырезаются.
  */
 export function readJsonFile(path: string): unknown {
   if (!existsSync(path)) return null;
   try {
-    return JSON.parse(readFileSync(path, 'utf8').replace(/,\s*([}\]])/g, '$1'));
+    const repaired = readFileSync(path, 'utf8').replace(/"(?:[^"\\]|\\.)*"|,\s*([}\]])/g, (m, closer) => closer ?? m);
+    return JSON.parse(repaired);
   } catch {
     return null;
   }

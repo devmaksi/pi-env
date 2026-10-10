@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { readMcpServers, writeMcpFile, mcpAddCliArgs, validateMcpForm, copyMcpEntry, removeMcpEntry, type McpFormFields, type McpServer } from '../src/mcp.js';
+import { readJsonFile, readMcpServers, writeMcpFile, mcpAddCliArgs, validateMcpForm, copyMcpEntry, removeMcpEntry, type McpFormFields, type McpServer } from '../src/mcp.js';
 import { t } from '../src/i18n.js';
 
 function dir(): string {
@@ -67,6 +67,27 @@ test('readMcpServers: trailing commas допускаются', () => {
   writeMcp(d, '{\n  "mcpServers": {\n    "fs": {\n      "command": "npx",\n      "args": ["-y", "x"],\n    },\n  },\n}');
   const servers = readMcpServers(d);
   assert.deepEqual(servers.map((s) => s.name), ['fs']);
+  rmSync(d, { recursive: true, force: true });
+});
+
+test('readJsonFile: запятая внутри строкового значения не вырезается', () => {
+  const d = dir();
+  writeFileSync(join(d, 'f.json'), '{"a":"hello, }world","b":["x, ]y"]}');
+  assert.deepEqual(readJsonFile(join(d, 'f.json')), { a: 'hello, }world', b: ['x, ]y'] });
+  rmSync(d, { recursive: true, force: true });
+});
+
+test('readJsonFile: экранированные кавычки не сбивают распознавание строк', () => {
+  const d = dir();
+  writeFileSync(join(d, 'f.json'), '{"a":"текст \\" кавычка, } хвост"}');
+  assert.deepEqual(readJsonFile(join(d, 'f.json')), { a: 'текст " кавычка, } хвост' });
+  rmSync(d, { recursive: true, force: true });
+});
+
+test('readJsonFile: trailing commas чинятся, не трогая строки', () => {
+  const d = dir();
+  writeFileSync(join(d, 'f.json'), '{\n  "mcpServers": {\n    "fs": {\n      "description": "сервер, } с запятой",\n      "args": ["-y", "x"],\n    },\n  },\n}');
+  assert.deepEqual(readJsonFile(join(d, 'f.json')), { mcpServers: { fs: { description: 'сервер, } с запятой', args: ['-y', 'x'] } } });
   rmSync(d, { recursive: true, force: true });
 });
 
