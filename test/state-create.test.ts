@@ -346,6 +346,14 @@ test('freshEdit: пакеты — источники, legacy-имя нормал
   assert.equal(c.origName, 'dev');
 });
 
+test('freshEdit: коллизирующий скилл предмечается только по своему каталогу', () => {
+  const skills = [{ name: 'dup', path: '/a/skills/dup' }, { name: 'pkg-b/dup', path: '/b/skills/dup' }];
+  const both = freshEdit('dev', { skills: ['skills/dup', 'skills/pkg-b-dup'] }, { ...catalog, skills });
+  assert.deepEqual(both.skills, ['dup', 'pkg-b/dup']);
+  const off = freshEdit('dev', { skills: ['skills/dup'] }, { ...catalog, skills });
+  assert.deepEqual(off.skills, ['dup']);
+});
+
 test('edit packages: строки env-only и кнопка «Установить» в конце', () => {
   let s = { ...initialState(catalog), sub: 'create' as const, create: freshEdit('dev', { packages: ['npm:env-only'] }, catalog) };
   s = openPackages(s);
