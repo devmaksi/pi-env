@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { readJsonFile, readMcpServers, writeMcpFile, mcpAddCliArgs, validateMcpForm, copyMcpEntry, removeMcpEntry, type McpFormFields, type McpServer } from '../src/mcp.js';
+import { readJsonFile, readMcpServers, writeMcpFile, mcpAddCliArgs, validateMcpForm, copyMcpEntry, removeMcpEntry, parseMcpList, mergeLive, liveMarker, type McpFormFields, type McpLiveStatus, type McpServer } from '../src/mcp.js';
 import { t } from '../src/i18n.js';
 
 function dir(): string {
@@ -170,4 +170,105 @@ test('removeMcpEntry: не последняя запись — файл оста
   const raw = JSON.parse(readFileSync(join(d, 'mcp.json'), 'utf8'));
   assert.deepEqual(Object.keys(raw.mcpServers), ['docs']);
   rmSync(d, { recursive: true, force: true });
+});
+
+// --- parseMcpList: вывод `pi mcp list --json` ---
+
+test('parseMcpList: полный вывод — серверы и ошибки разбираются', () => {
+  const raw = JSON.stringify({
+    servers: [
+      { name: 'fs', scope: 'global', source: '/a/mcp.json', enabled: true, exposure: 'direct', transport: 'npx -y fs .', state: 'connected', tools: ['read', 'write'], resources: true },
+      { name: 'docs', scope: 'project', source: '/p/.pi/mcp.json', enabled: true, exposure: 'codemode', transport: 'https://e/mcp', state: 'needs-auth', tools: [], error: 'fetch failed', override: 'project override', toolExposure: { search: 'deferred' } },
+    ],
+    errors: ['bad entry: x'],
+  });
+  const parsed = parseMcpList(raw)!;
+  assert.deepEqual(parsed.servers.map((s) => s.name), ['fs', 'docs']);
+  const fs = parsed.servers[0];
+  assert.equal(fs.scope, 'global');
+  assert.equal(fs.source, '/a/mcp.json');
+  assert.equal(fs.enabled, true);
+  assert.equal(fs.exposure, 'direct');
+  assert.equal(fs.transport, 'npx -y fs .');
+  assert.equal(fs.state, 'connected');
+  assert.deepEqual(fs.tools, ['read', 'write']);
+  assert.equal(fs.resources, true);
+  assert.equal(fs.error, undefined);
+  const docs = parsed.servers[1];
+  assert.equal(docs.state, 'needs-auth');
+  assert.equal(docs.error, 'fetch failed');
+  assert.equal(docs.override, 'project override');
+  assert.deepEqual(docs.toolExposure, { search: 'deferred' });
+  assert.deepEqual(parsed.errors, ['bad entry: x']);
+});
+
+test('parseMcpList: выключенный сервер — state disabled', () => {
+  const parsed = parseMcpList(JSON.stringify({
+    servers: [{ name: 'off', scope: 'global', source: '/a/mcp.json', enabled: false, exposure: 'codemode', transport: 'cmd', state: 'disabled', tools: [] }],
+    errors: [],
+  }))!;
+  assert.equal(parsed.servers[0].state, 'disabled');
+  assert.equal(parsed.servers[0].enabled, false);
+});
+
+test('parseMcpList: пустой список — пустые серверы и ошибки', () => {
+  const parsed = parseMcpList(JSON.stringify({ servers: [], errors: [] }))!;
+  assert.deepEqual(parsed.servers, []);
+  assert.deepEqual(parsed.errors, []);
+});
+
+test('parseMcpList: битый JSON или отсутствие servers — null', () => {
+  assert.equal(parseMcpList(''), null);
+  assert.equal(parseMcpList('not a json'), null);
+  assert.equal(parseMcpList(JSON.stringify({ errors: [] })), null);
+  assert.equal(parseMcpList(JSON.stringify({ servers: 'x' })), null);
+});
+
+test('parseMcpList: запись без полей — дефолты, невалидные записи отбрасываются', () => {
+  const parsed = parseMcpList(JSON.stringify({
+    servers: [{ name: 'x' }, { name: 1, state: 'connected', tools: 'nope' }],
+    errors: 'bad',
+  }))!;
+  assert.equal(parsed.servers.length, 1);
+  const s = parsed.servers[0];
+  assert.equal(s.name, 'x');
+  assert.equal(s.enabled, true);
+  assert.equal(s.state, 'unknown');
+  assert.equal(s.transport, '');
+  assert.equal(s.scope, 'global');
+  assert.deepEqual(s.tools, []);
+  assert.deepEqual(parsed.errors, []);
+});
+
+// --- mergeLive / liveMarker ---
+
+const liveFs: McpLiveStatus = { name: 'fs', scope: 'global', source: '/a/mcp.json', enabled: true, exposure: 'direct', transport: 'npx', state: 'connected', tools: ['read'] };
+const liveDocs: McpLiveStatus = { name: 'docs', scope: 'global', source: '/a/mcp.json', enabled: true, exposure: 'codemode', transport: 'https://e/mcp', state: 'failed', tools: [], error: 'fetch failed' };
+
+test('mergeLive: живой статус по имени конфига, без проверки — null', () => {
+  const merged = mergeLive([stdioFixture, httpFixture], { servers: [liveFs], errors: [] });
+  assert.deepEqual(merged.map((m) => [m.name, m.live?.state ?? null]), [['docs', null], ['fs', 'connected']]);
+});
+
+test('mergeLive: живой сервер вне конфига — отдельная запись config: null', () => {
+  const merged = mergeLive([stdioFixture], { servers: [liveFs, liveDocs], errors: [] });
+  assert.deepEqual(merged.map((m) => m.name), ['docs', 'fs']);
+  assert.equal(merged[0].config, null);
+  assert.equal(merged[0].live!.state, 'failed');
+});
+
+test('mergeLive: union имён сортирован', () => {
+  const merged = mergeLive([{ ...stdioFixture, name: 'zz' }], { servers: [{ ...liveFs, name: 'aa' }], errors: [] });
+  assert.deepEqual(merged.map((m) => m.name), ['aa', 'zz']);
+});
+
+test('liveMarker: connected — галочка и число инструментов', () => {
+  assert.match(liveMarker({ ...liveFs, tools: ['a', 'b'] }, 'ru'), /✓ 2/);
+  assert.match(liveMarker({ ...liveFs, tools: [] }, 'en'), /✓ 0/);
+});
+
+test('liveMarker: needs-auth / failed / disabled', () => {
+  assert.match(liveMarker({ ...liveFs, state: 'needs-auth' }, 'ru'), /⚠/);
+  assert.match(liveMarker({ ...liveFs, state: 'failed' }, 'ru'), /✗/);
+  assert.match(liveMarker({ ...liveFs, state: 'disabled' }, 'ru'), /—/);
 });

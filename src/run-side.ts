@@ -7,7 +7,7 @@ import { buildCreateRequest } from './pi-actions.js';
 import { launchPi } from './pirun.js';
 import type { Catalog } from './catalog.js';
 import type { Environment } from './environments.js';
-import type { AppState, CreateView, ExtState, McpFormAdd, McpTab, Tab, ReducerCtx } from './state.js';
+import type { AppState, CreateView, ExtState, McpFormAdd, McpTab, PkgCheck, Tab, ReducerCtx } from './state.js';
 import type { Term } from './terminal.js';
 
 /** Снимок суб-экранов и вкладки до обработки клавиши. */
@@ -16,6 +16,8 @@ export interface PrevSnap {
   ext: ExtState | null;
   mcp: McpTab | null;
   tab: Tab;
+  mcpCheck: PkgCheck;
+  createMcpCheck: PkgCheck;
 }
 
 /** Окно в состояние цикла запуска для обработчиков побочных эффектов. */
@@ -38,6 +40,7 @@ export interface Loop {
   doUpdateOne(source: string): void;
   doInstall(installDir: string, source: string, envName: string | null): void;
   doMcpAdd(dir: string, form: McpFormAdd, scope: 'main' | 'create'): void;
+  doMcpCheck(dir: string, scope: 'main' | 'create'): void;
 }
 
 /** Контекст reducer для side-effect-хуков. */
@@ -51,6 +54,7 @@ export async function runSideEffects(loop: Loop, envs: Environment[], prev: Prev
   hooksCreate(loop, prev.view, names);
   hooksExt(loop, prev.ext);
   hooksMcp(loop, prev.mcp, names);
+  hooksMcpCheck(loop, prev);
   if (prev.tab !== 'extensions' && loop.state().tab === 'extensions' && loop.state().ext === null &&
       (loop.state().pkgCheck === 'idle' || loop.state().recheckUpdates)) {
     loop.checkUpdates(loop.agentDir, 'main');
@@ -137,6 +141,39 @@ function hooksMcp(loop: Loop, prevMcp: McpTab | null, names: string[]): void {
     loop.setState(reducer(loop.state(), { type: 'mcp-result', ok: r.ok, message: msg, scope: 'main' }, rctx(loop, names)));
     loop.repaint();
   }
+}
+
+/**
+ * Живой статус MCP: запуск `pi mcp list` — по R (переход mcpCheck → checking)
+ * и при входе в список: первый вход (idle) или каждый, если включена
+ * настройка «Перепроверять MCP».
+ */
+function hooksMcpCheck(loop: Loop, prev: PrevSnap): void {
+  const st = loop.state();
+  if (st.tab === 'mcp' && st.mcp === null) {
+    if (st.mcpCheck === 'checking' && prev.mcpCheck !== 'checking') {
+      loop.doMcpCheck(loop.agentDir, 'main');
+      return;
+    }
+    if (prev.tab !== 'mcp' && (st.mcpCheck === 'idle' || st.recheckMcp)) startMcpCheck(loop, loop.agentDir, 'main');
+    return;
+  }
+  const cr = st.create;
+  if (st.sub !== 'create' || cr === null || cr.view !== 'mcp' || cr.mcpAdd !== null) return;
+  if (cr.mcpCheck === 'checking' && prev.createMcpCheck !== 'checking') {
+    loop.doMcpCheck(formTargetDir(loop), 'create');
+    return;
+  }
+  if (prev.view !== 'mcp' && (cr.mcpCheck === 'idle' || st.recheckMcp)) startMcpCheck(loop, formTargetDir(loop), 'create');
+}
+
+/** Отметка «проверка идёт» (нужна для индикатора) и запуск команды. */
+function startMcpCheck(loop: Loop, dir: string, scope: 'main' | 'create'): void {
+  const st = loop.state();
+  loop.setState(scope === 'main'
+    ? { ...st, mcpCheck: 'checking' }
+    : { ...st, create: { ...st.create!, mcpCheck: 'checking' } });
+  loop.doMcpCheck(dir, scope);
 }
 
 function doSubmit(loop: Loop, names: string[]): void {

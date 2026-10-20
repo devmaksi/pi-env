@@ -7,11 +7,11 @@ import { loadCatalog, fetchPackageCatalog, normalizePkgSource, type CatalogPkg }
 import { computeLayout } from './layout.js';
 import { render } from './render.js';
 import { readSettings } from './create.js';
-import { readMcpServers } from './mcp.js';
+import { parseMcpList, readMcpServers } from './mcp.js';
 import { AppState, initialState, Key, reducer, type Action, type McpFormAdd, makeCtx, type ReducerCtx } from './state.js';
 import { createTerm, Term } from './terminal.js';
 import { defaultLang, localeCodes, t } from './i18n.js';
-import { piUpdateAll, piUpdateOne, piRemove, piInstall, piMcpAdd, npmOutdated } from './pi-actions.js';
+import { piUpdateAll, piUpdateOne, piRemove, piInstall, piMcpAdd, piMcpList, npmOutdated } from './pi-actions.js';
 import { runSideEffects, type Loop, type PrevSnap } from './run-side.js';
 
 function defaultAgentDir(): string {
@@ -29,7 +29,7 @@ export async function run(root: string): Promise<void> {
   let catalog = loadCatalog(agentDir);
   const app = loadAppSettings(root);
   const lang0 = app.language ?? defaultLang(localeCodes());
-  let state: AppState = { ...initialState(catalog), colorToggle: app.color, recheckUpdates: app.recheckUpdates, language: lang0 };
+  let state: AppState = { ...initialState(catalog), colorToggle: app.color, recheckUpdates: app.recheckUpdates, recheckMcp: app.recheckMcp, language: lang0 };
   let statusMsg: string | null = null;
 
   function load(): { envs: Environment[]; status: string | null } {
@@ -133,6 +133,17 @@ export async function run(root: string): Promise<void> {
     repaint();
   }
 
+  /**
+   * pi mcp list --json: живой статус серверов каталога dir.
+   * Успех — по содержимому stdout: код 1 — норма при неподключённых серверах.
+   */
+  async function doMcpCheck(dir: string, scope: 'main' | 'create'): Promise<void> {
+    const r = await piMcpList(dir);
+    const report = parseMcpList(r.stdout);
+    state = reducer(state, { type: 'mcp-live-result', ok: r.ok, message: r.stderr.trim(), scope, report }, rctx());
+    repaint();
+  }
+
   async function doMcpAdd(dir: string, form: McpFormAdd, scope: 'main' | 'create'): Promise<void> {
     const r = await piMcpAdd(dir, form);
     const msg = r.ok ? t(state.language, 'status.mcp-added', { name: form.name }) : (r.stderr.trim() || t(state.language, 'status.mcp-add-error'));
@@ -188,24 +199,26 @@ export async function run(root: string): Promise<void> {
     doUpdateOne: (source) => { void doUpdateOne(source); },
     doInstall: (dir, source, envName) => { void doInstall(dir, source, envName); },
     doMcpAdd: (dir, form, scope) => { void doMcpAdd(dir, form, scope); },
+    doMcpCheck: (dir, scope) => { void doMcpCheck(dir, scope); },
   };
 
   function applyKey(key: Key): { envs: Environment[]; prev: PrevSnap } {
     statusMsg = null;
     const prevColor = state.colorToggle;
     const prevRecheck = state.recheckUpdates;
+    const prevRecheckMcp = state.recheckMcp;
     const prevLang = state.language;
     const { envs } = load();
     const names = envs.map((e) => e.name);
-    const prev: PrevSnap = { view: state.create?.view ?? null, ext: state.ext, mcp: state.mcp, tab: state.tab };
+    const prev: PrevSnap = { view: state.create?.view ?? null, ext: state.ext, mcp: state.mcp, tab: state.tab, mcpCheck: state.mcpCheck, createMcpCheck: state.create?.mcpCheck ?? 'idle' };
     if (key === 'e' && state.tab === 'envs' && state.sub === null && state.selected < envs.length) {
       const settings = readSettings(envs[state.selected].path) ?? {};
       state = reducer(state, { type: 'edit-start', name: envs[state.selected].name, settings, mcp: readMcpServers(envs[state.selected].path) }, rctx(names));
     } else {
       state = reducer(state, key, rctx(names));
     }
-    if (state.colorToggle !== prevColor || state.recheckUpdates !== prevRecheck || state.language !== prevLang) {
-      saveAppSettings(root, { color: state.colorToggle, recheckUpdates: state.recheckUpdates, language: state.language });
+    if (state.colorToggle !== prevColor || state.recheckUpdates !== prevRecheck || state.recheckMcp !== prevRecheckMcp || state.language !== prevLang) {
+      saveAppSettings(root, { color: state.colorToggle, recheckUpdates: state.recheckUpdates, recheckMcp: state.recheckMcp, language: state.language });
     }
     return { envs, prev };
   }

@@ -3,6 +3,8 @@ import { spawn } from 'node:child_process';
 /** Таймауты дочерних процессов, мс. */
 export const PI_TIMEOUT_MS = 5 * 60_000;
 export const NPM_TIMEOUT_MS = 10_000;
+/** Проверка живого статуса MCP: `pi mcp list` подключается ко всем серверам, мс. */
+export const MCP_TIMEOUT_MS = 30_000;
 
 /** Окружение для pi-команд: каталог агента и вывод без цвета. */
 export function piEnv(dir: string): NodeJS.ProcessEnv {

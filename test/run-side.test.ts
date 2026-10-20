@@ -16,7 +16,7 @@ const CATALOG: Catalog = { ...emptyCatalog(), packages: [PKG_A] };
 const ENV0: Environment = { name: 'e0', path: '/root/e0', details: { hasSettings: true, model: null, tools: [], skills: [], packages: [], mcp: [] } };
 
 /** Фиксированный снимок до обработки клавиши. */
-const prev = (p: Partial<PrevSnap>): PrevSnap => ({ view: null, ext: null, mcp: null, tab: 'envs', ...p });
+const prev = (p: Partial<PrevSnap>): PrevSnap => ({ view: null, ext: null, mcp: null, tab: 'envs', mcpCheck: 'idle', createMcpCheck: 'idle', ...p });
 
 function makeLoop(initial: AppState, root = '/root', agentDir = '/agent') {
   let state = initial;
@@ -39,6 +39,7 @@ function makeLoop(initial: AppState, root = '/root', agentDir = '/agent') {
     doUpdateOne: (src) => { log.push('doUpdateOne:' + src); },
     doInstall: (d, src, env) => { log.push(`doInstall:${d}:${src}:${env}`); },
     doMcpAdd: (d, f, s) => { log.push(`doMcpAdd:${d}:${f.name}:${s}`); },
+    doMcpCheck: (d, s) => { log.push(`doMcpCheck:${d}:${s}`); },
   };
   return { loop, log, get state() { return state; } };
 }
@@ -173,4 +174,48 @@ test('ничего не происходит в покое: списки, submit
   assert.deepEqual(h.log, []);
   const h2 = await run(cr({ view: 'form' }), { view: 'form'});
   assert.deepEqual(h2.log, []);
+});
+
+// --- живой статус MCP: запуск pi mcp list ---
+
+const mcpTab = (p: Partial<AppState>): AppState => ({ ...initialState(CATALOG), tab: 'mcp', ...p });
+const editForm = (p: Partial<CreateState>): AppState => ({
+  ...initialState(CATALOG), sub: 'create',
+  create: { ...freshCreate(), mode: 'edit', origName: 'e0', name: 'e0', view: 'mcp', ...p },
+});
+
+test('вкладка «MCP»: первый вход — проверка по main-агенту', async () => {
+  const h = await run(mcpTab({}), { tab: 'envs' });
+  assert.deepEqual(h.log, ['doMcpCheck:/agent:main']);
+  assert.equal(h.state.mcpCheck, 'checking');
+});
+
+test('вкладка «MCP»: повторный вход без recheckMcp — проверки нет', async () => {
+  const h = await run(mcpTab({ mcpCheck: 'done' }), { tab: 'envs', mcpCheck: 'done' });
+  assert.deepEqual(h.log, []);
+});
+
+test('вкладка «MCP»: recheckMcp — проверка при каждом входе', async () => {
+  const h = await run(mcpTab({ mcpCheck: 'done', recheckMcp: true }), { tab: 'envs', mcpCheck: 'done' });
+  assert.deepEqual(h.log, ['doMcpCheck:/agent:main']);
+});
+
+test('вкладка «MCP»: R (mcpCheck idle → checking) — запуск проверки', async () => {
+  const h = await run(mcpTab({ mcpCheck: 'checking' }), { tab: 'mcp', mcpCheck: 'idle' });
+  assert.deepEqual(h.log, ['doMcpCheck:/agent:main']);
+});
+
+test('форма edit: вход в список MCP — проверка по каталогу окружения', async () => {
+  const h = await run(editForm({}), { view: 'form' });
+  assert.deepEqual(h.log, ['doMcpCheck:/root/e0:create']);
+});
+
+test('форма create: вход в список MCP — проверка по main-агенту', async () => {
+  const h = await run({ ...initialState(CATALOG), sub: 'create', create: { ...freshCreate(), view: 'mcp' } }, { view: 'form' });
+  assert.deepEqual(h.log, ['doMcpCheck:/agent:create']);
+});
+
+test('форма: открыта форма добавления MCP — проверки нет', async () => {
+  const h = await run(editForm({ mcpAdd: freshMcpForm() }), { view: 'mcp' });
+  assert.deepEqual(h.log, []);
 });

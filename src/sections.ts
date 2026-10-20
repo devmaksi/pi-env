@@ -14,6 +14,7 @@ import {
 } from './state.js';
 import type { Environment } from './environments.js';
 import { filterPackages } from './catalog.js';
+import { liveMarker, mergeLive } from './mcp.js';
 import {
   c,
   ANSI,
@@ -157,6 +158,8 @@ function createMcp(cr: CreateState, ctx: Ctx): Section {
   const right: string[] = [];
   const mainMcp = ctx.state.catalog.mcp;
   const names = cr.mode === 'edit' ? mcpListNames(cr.envMcp, mainMcp) : mainMcp.map((s) => s.name);
+  const liveOf = (n: string) => cr.mcpLive?.servers.find((s) => s.name === n) ?? null;
+  const liveSuffix = (n: string) => { const l = liveOf(n); return l === null ? '' : ' ' + liveMarker(l, ctx.lang); };
   const inEnv = (n: string) => cr.envMcp.some((s) => s.name === n);
   const inMain = (n: string) => mainMcp.some((s) => s.name === n);
   const title = cr.mode === 'edit' ? t(ctx.lang, 'mcp.env-title', { name: cr.name }) : t(ctx.lang, 'mcp.title');
@@ -165,27 +168,26 @@ function createMcp(cr: CreateState, ctx: Ctx): Section {
   names.forEach((n, i) => {
     const checked = cr.mode === 'edit' ? inEnv(n) : cr.mcp.includes(n);
     const marker = cr.mode === 'edit' && inMain(n) && !inEnv(n) ? '  ' + t(ctx.lang, 'mcp.in-main') : '';
-    left.push(listRow(i, cr.cursor, (checked ? '✓ ' : '  ') + n + marker, ctx.L.leftWidth, ctx.useColor));
+    left.push(listRow(i, cr.cursor, (checked ? '✓ ' : '  ') + n + liveSuffix(n) + marker, ctx.L.leftWidth, ctx.useColor));
   });
   if (cr.mode === 'edit') {
     left.push(listRow(names.length, cr.cursor, '＋ ' + t(ctx.lang, 'mcp.add'), ctx.L.leftWidth, ctx.useColor));
   }
   const curName = names[cr.cursor];
   if (curName !== undefined) {
-    const main = mainMcp.find((s) => s.name === curName);
-    if (main !== undefined) {
-      right.push(...mcpInfoLines(main, ctx.L, ctx.useColor, ctx.lang));
-      if (cr.mode === 'edit') right.push(t(ctx.lang, 'mcp.in-env', { m: inEnv(curName) ? '✓' : '—' }));
-    } else {
-      right.push(c(ANSI.bold, ctx.useColor) + curName + c(ANSI.reset, ctx.useColor));
-      right.push(t(ctx.lang, 'mcp.in-env', { m: '✓' }));
-    }
-  } else if (cr.mode === 'edit' && cr.cursor === names.length) {
+    const cfg = mainMcp.find((s) => s.name === curName) ?? cr.envMcp.find((s) => s.name === curName) ?? null;
+    right.push(...mcpInfoLines(cfg, ctx.L, ctx.useColor, ctx.lang, liveOf(curName)));
+    if (cr.mode === 'edit') right.push(t(ctx.lang, 'mcp.in-env', { m: inEnv(curName) ? '✓' : '—' }));
+  }
+  if (curName === undefined && cr.mode === 'edit' && cr.cursor === names.length) {
     right.push(t(ctx.lang, 'mcp.hint.add'));
   }
+  if (cr.mcpCheck === 'checking') right.push(c(ANSI.dim, ctx.useColor) + t(ctx.lang, 'mcp.live.checking') + c(ANSI.reset, ctx.useColor));
+  if (cr.mcpCheck === 'error') right.push(c(ANSI.dim, ctx.useColor) + t(ctx.lang, 'mcp.live.error') + c(ANSI.reset, ctx.useColor));
   right.push(c(ANSI.dim, ctx.useColor) + t(ctx.lang, 'hint.select') + c(ANSI.reset, ctx.useColor));
   if (cr.mode === 'edit') right.push(c(ANSI.dim, ctx.useColor) + t(ctx.lang, 'hint.delete') + c(ANSI.reset, ctx.useColor));
   right.push(c(ANSI.dim, ctx.useColor) + t(ctx.lang, 'hint.back') + c(ANSI.reset, ctx.useColor));
+  right.push(c(ANSI.dim, ctx.useColor) + t(ctx.lang, 'mcp.hint.refresh') + c(ANSI.reset, ctx.useColor));
   return { left, right, cursorRow: 1 + cr.cursor };
 }
 
@@ -403,23 +405,31 @@ export function renderMcpTab(mt: McpTab | null, ctx: Ctx): Section {
 function mcpList(ctx: Ctx): Section {
   const left: string[] = [];
   const right: string[] = [];
-  const servers = ctx.state.catalog.mcp;
+  const state = ctx.state;
+  const entries = mergeLive(state.catalog.mcp, state.mcpLive);
   left.push(c(ANSI.bold, ctx.useColor) + t(ctx.lang, 'mcp.title') + c(ANSI.reset, ctx.useColor));
-  if (servers.length === 0) left.push(c(ANSI.dim, ctx.useColor) + t(ctx.lang, 'empty') + c(ANSI.reset, ctx.useColor));
-  servers.forEach((s, i) => {
-    left.push(listRow(i, ctx.state.selected, s.name, ctx.L.leftWidth, ctx.useColor));
+  if (entries.length === 0) left.push(c(ANSI.dim, ctx.useColor) + t(ctx.lang, 'empty') + c(ANSI.reset, ctx.useColor));
+  entries.forEach((e, i) => {
+    const marker = e.live === null ? '' : ' ' + liveMarker(e.live, ctx.lang);
+    left.push(listRow(i, state.selected, e.name + marker, ctx.L.leftWidth, ctx.useColor));
   });
-  if (servers.length > 0) left.push(c(ANSI.dim, ctx.useColor) + '─'.repeat(ctx.L.leftWidth - 2) + c(ANSI.reset, ctx.useColor));
-  left.push(listRow(servers.length, ctx.state.selected, '＋ ' + t(ctx.lang, 'mcp.add'), ctx.L.leftWidth, ctx.useColor));
-  const cur = servers[ctx.state.selected];
+  if (entries.length > 0) left.push(c(ANSI.dim, ctx.useColor) + '─'.repeat(ctx.L.leftWidth - 2) + c(ANSI.reset, ctx.useColor));
+  left.push(listRow(entries.length, state.selected, '＋ ' + t(ctx.lang, 'mcp.add'), ctx.L.leftWidth, ctx.useColor));
+  const cur = entries[state.selected];
   if (cur !== undefined) {
-    right.push(...mcpInfoLines(cur, ctx.L, ctx.useColor, ctx.lang));
+    right.push(...mcpInfoLines(cur.config, ctx.L, ctx.useColor, ctx.lang, cur.live));
   } else {
     right.push(t(ctx.lang, 'mcp.hint.add'));
   }
+  if (state.mcpCheck === 'checking') right.push(c(ANSI.dim, ctx.useColor) + t(ctx.lang, 'mcp.live.checking') + c(ANSI.reset, ctx.useColor));
+  if (state.mcpCheck === 'error') right.push(c(ANSI.dim, ctx.useColor) + t(ctx.lang, 'mcp.live.error') + c(ANSI.reset, ctx.useColor));
+  for (const err of state.mcpLive?.errors ?? []) {
+    right.push(c(ANSI.dim, ctx.useColor) + t(ctx.lang, 'mcp.config.error', { v: err }) + c(ANSI.reset, ctx.useColor));
+  }
   right.push(c(ANSI.dim, ctx.useColor) + t(ctx.lang, 'hint.delete') + c(ANSI.reset, ctx.useColor));
-  const n = servers.length;
-  const sel = ctx.state.selected;
+  right.push(c(ANSI.dim, ctx.useColor) + t(ctx.lang, 'mcp.hint.refresh') + c(ANSI.reset, ctx.useColor));
+  const n = entries.length;
+  const sel = state.selected;
   const cursorRow = sel < n ? 1 + sel : n === 0 ? 1 : n + 2;
   return { left, right, cursorRow };
 }

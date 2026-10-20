@@ -162,3 +162,47 @@ test('edit-start: envMcp из action', () => {
   const s = reducer(initialState(catalog), { type: 'edit-start', name: 'dev', settings: {}, mcp: envMcp }, rc(envs(1)));
   assert.deepEqual(s.create?.envMcp, envMcp);
 });
+
+// --- живой статус MCP в форме окружения ---
+
+const liveReport = { servers: [{ name: 'fs', scope: 'global', source: '/a', enabled: true, exposure: 'codemode', transport: 'npx', state: 'connected' as const, tools: ['read', 'write'] }], errors: [] };
+
+test('freshCreate/freshEdit: mcpCheck idle, mcpLive null', () => {
+  assert.equal(freshCreate().mcpCheck, 'idle');
+  assert.equal(freshCreate().mcpLive, null);
+  assert.equal(freshEdit('dev', {}, catalog, envMcp).mcpCheck, 'idle');
+});
+
+test('R в списке MCP формы (edit) — запуск проверки', () => {
+  const s = reducer(editState(), 'R', rc(envs(1)));
+  assert.equal(s.create?.mcpCheck, 'checking');
+});
+
+test('R в списке MCP формы (create) — запуск проверки', () => {
+  const s = reducer(createState({ view: 'mcp' }), 'R', rc(envs(1)));
+  assert.equal(s.create?.mcpCheck, 'checking');
+});
+
+test('R во время проверки — состояние не меняется', () => {
+  const s = reducer(editState({ mcpCheck: 'checking' }), 'R', rc(envs(1)));
+  assert.equal(s.create?.mcpCheck, 'checking');
+});
+
+test('R в форме добавления MCP — игнор (проверку не перезапускает)', () => {
+  let s = reducer(editState({ cursor: 2 }), 'space', rc(envs(1))); // открыли форму добавления
+  const before = s.create?.mcpCheck;
+  s = reducer(s, 'R', rc(envs(1)));
+  assert.equal(s.create?.mcpCheck, before);
+});
+
+test('mcp-live-result (create) — отчёт и статус done', () => {
+  const s = reducer(editState({ mcpCheck: 'checking' }), { type: 'mcp-live-result', ok: true, message: '', scope: 'create', report: liveReport }, rc(envs(1)));
+  assert.equal(s.create?.mcpCheck, 'done');
+  assert.deepEqual(s.create?.mcpLive, liveReport);
+});
+
+test('mcp-live-result (create) с null — статус error, прежний отчёт остаётся', () => {
+  const s = reducer(editState({ mcpCheck: 'checking', mcpLive: liveReport }), { type: 'mcp-live-result', ok: false, message: 'boom', scope: 'create', report: null }, rc(envs(1)));
+  assert.equal(s.create?.mcpCheck, 'error');
+  assert.deepEqual(s.create?.mcpLive, liveReport);
+});

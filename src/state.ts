@@ -1,8 +1,8 @@
 import { type EnvSettings } from './create.js';
 import type { Catalog } from './catalog.js';
 import { localeCodes } from './i18n.js';
-import type { McpServer } from './mcp.js';
-import { mcpMachine, freshMcpForm, freshMcpTab } from './state-mcp.js';
+import type { McpLiveReport, McpServer } from './mcp.js';
+import { mcpMachine, freshMcpForm, freshMcpTab, applyMcpLiveMain, onRefreshMcp } from './state-mcp.js';
 import { extMachine, freshExt } from './state-ext.js';
 import { createReducer } from './state-create.js';
 import { freshCreate, freshEdit } from './state-form.js';
@@ -37,6 +37,8 @@ export interface AppState {
   sub: Sub;
   colorToggle: boolean;
   recheckUpdates: boolean;
+  /** Перепроверять живой статус MCP при каждом входе во вкладку «MCP»/в список MCP формы. */
+  recheckMcp: boolean;
   /** Язык интерфейса; доступные языки — файлы src/locales/*.json. */
   language: string;
   quit: boolean;
@@ -44,6 +46,9 @@ export interface AppState {
   create: CreateState | null;
   ext: ExtState | null;
   mcp: McpTab | null;
+  /** Проверка живого статуса MCP и её результат (вкладка «MCP», main-агент). */
+  mcpCheck: PkgCheck;
+  mcpLive: McpLiveReport | null;
   /** Прогресс загрузки каталога pi.dev (страницы); null — не грузится. */
   catalogProgress: { loaded: number; total: number } | null;
   pkgCheck: PkgCheck;
@@ -51,13 +56,13 @@ export interface AppState {
 }
 
 export const TABS: readonly Tab[] = ['envs', 'extensions', 'mcp', 'settings', 'about'];
-export const SETTINGS_COUNT = 4;
-export const LANGUAGE_ROW = 3; // «Язык» — после «Перепроверка обновлений»
+export const SETTINGS_COUNT = 5;
+export const LANGUAGE_ROW = 4; // «Язык» — последняя строка, после переключателей
 
 export function initialState(catalog: Catalog = emptyCatalog()): AppState {
   return {
-    tab: 'envs', focus: 'left', selected: 0, sub: null, colorToggle: true, recheckUpdates: false, quit: false, language: 'ru',
-    catalog, create: null, ext: null, mcp: null, catalogProgress: null, pkgCheck: 'idle', pkgLatest: {},
+    tab: 'envs', focus: 'left', selected: 0, sub: null, colorToggle: true, recheckUpdates: false, recheckMcp: false, quit: false, language: 'ru',
+    catalog, create: null, ext: null, mcp: null, catalogProgress: null, pkgCheck: 'idle', pkgLatest: {}, mcpCheck: 'idle', mcpLive: null,
   };
 }
 
@@ -76,7 +81,8 @@ export type Action =
   | { type: 'update-result'; ok: boolean; message: string }
   | { type: 'remove-result'; ok: boolean; message: string }
   | { type: 'install-result'; ok: boolean; message: string; sources?: string[] }
-  | { type: 'mcp-result'; ok: boolean; message: string; scope: 'main' | 'create'; list?: McpServer[] };
+  | { type: 'mcp-result'; ok: boolean; message: string; scope: 'main' | 'create'; list?: McpServer[] }
+  | { type: 'mcp-live-result'; ok: boolean; message: string; scope: 'main' | 'create'; report: McpLiveReport | null };
 
 export function listLength(tab: Tab, envCount: number, pkgCount = 0, mcpCount = 0): number {
   if (tab === 'envs') return envCount + 1; // окружения + «Создать»
@@ -138,6 +144,7 @@ function applyResults(state: AppState, action: Action, ctx: ReducerCtx): AppStat
   if (action.type === 'run-result') return { ...state, sub: null };
   if (action.type === 'updates-result') return applyUpdatesResult(state, action);
   if (action.type === 'mcp-result' && action.scope === 'main') return applyMcpResultMain(state, action);
+  if (action.type === 'mcp-live-result' && action.scope === 'main') return applyMcpLiveMain(state, action);
   // scope 'create' — проходит в createReducer
   if (state.sub === null && state.ext !== null) return applyExtResult(state, action, ctx);
   return null;
@@ -191,6 +198,7 @@ function reducerMain(state: AppState, action: Action, ctx: ReducerCtx): AppState
   if (action === 'space') return onSpace(state);
   if ((action === 'x' || action === 'X') && state.sub === null && state.ext === null && state.mcp === null &&
       (state.tab === 'extensions' || state.tab === 'mcp')) return onX(state);
+  if (action === 'R') return onRefreshMcp(state);
   return state;
 }
 
@@ -261,6 +269,7 @@ function onSpace(state: AppState): AppState {
   if (state.tab !== 'settings' || state.sub !== null) return state;
   if (state.selected === 1) return { ...state, colorToggle: !state.colorToggle };
   if (state.selected === 2) return { ...state, recheckUpdates: !state.recheckUpdates };
+  if (state.selected === 3) return { ...state, recheckMcp: !state.recheckMcp };
   return state;
 }
 
@@ -279,3 +288,4 @@ function onX(state: AppState): AppState {
   }
   return state;
 }
+

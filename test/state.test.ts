@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert';
-import { initialState, reducer, listLength, emptyCatalog, freshCreate, type AppState, type ReducerCtx, type Catalog, type CatalogPkg, type ExtState } from '../src/state.js';
+import { initialState, reducer, listLength, emptyCatalog, freshCreate, SETTINGS_COUNT, LANGUAGE_ROW, type AppState, type ReducerCtx, type Catalog, type CatalogPkg, type ExtState } from '../src/state.js';
 
 /** Контекст reducer: имена окружений + раскладка. */
 const rc = (names: string[], two = true): ReducerCtx => ({ envNames: names, twoColumns: two });
@@ -9,8 +9,8 @@ const envs = (n: number) => Array.from({ length: n }, (_, i) => `env${i}`);
 
 test('initialState', () => {
   assert.deepEqual(initialState(), {
-    tab: 'envs', focus: 'left', selected: 0, sub: null, colorToggle: true, recheckUpdates: false, quit: false, language: 'ru',
-    catalog: emptyCatalog(), create: null, ext: null, mcp: null, catalogProgress: null, pkgCheck: 'idle', pkgLatest: {},
+    tab: 'envs', focus: 'left', selected: 0, sub: null, colorToggle: true, recheckUpdates: false, recheckMcp: false, quit: false, language: 'ru',
+    catalog: emptyCatalog(), create: null, ext: null, mcp: null, catalogProgress: null, pkgCheck: 'idle', pkgLatest: {}, mcpCheck: 'idle', mcpLive: null,
   });
 });
 
@@ -18,7 +18,9 @@ test('listLength', () => {
   assert.equal(listLength('envs', 3), 4);
   assert.equal(listLength('extensions', 0, 3), 5);
   assert.equal(listLength('extensions', 0), 2);
-  assert.equal(listLength('settings', 0), 4);
+  assert.equal(listLength('settings', 0), SETTINGS_COUNT);
+  assert.equal(SETTINGS_COUNT, 5);
+  assert.equal(LANGUAGE_ROW, 4);
   assert.equal(listLength('about', 5), 0);
 });
 
@@ -364,7 +366,7 @@ test('каталог: Enter при пустом результате фильт�
 });
 
 test('←/→: на строке «Язык» цикл по языкам с wrap', () => {
-  let s = { ...initialState(), tab: 'settings' as const, selected: 3, language: 'ru' };
+  let s = { ...initialState(), tab: 'settings' as const, selected: LANGUAGE_ROW, language: 'ru' };
   s = reducer(s, 'right', rc(envs(1)));
   assert.equal(s.language, 'en');
   s = reducer(s, 'right', rc(envs(1))); // en → ru (wrap, 2 языка)
@@ -379,6 +381,22 @@ test('←/→: не на строке «Язык» — без действия',
 });
 
 test('←/→: язык без файла — right к первому известному', () => {
-  const s = { ...initialState(), tab: 'settings' as const, selected: 3, language: 'de' };
+  const s = { ...initialState(), tab: 'settings' as const, selected: LANGUAGE_ROW, language: 'de' };
   assert.equal(reducer(s, 'right', rc(envs(1))).language, 'en');
+});
+
+test('initialState: recheckMcp выкл', () => {
+  assert.equal(initialState().recheckMcp, false);
+});
+
+test('Space: пункт 3 вкладки settings — «Перепроверять MCP»', () => {
+  const s = { ...initialState(), tab: 'settings' as const, selected: 3 };
+  const next = reducer(s, 'space', rc(envs(1)));
+  assert.equal(next.recheckMcp, true);
+  assert.equal(reducer(next, 'space', rc(envs(1))).recheckMcp, false);
+});
+
+test('Space на строке «Язык» — recheckMcp не меняется', () => {
+  const s = { ...initialState(), tab: 'settings' as const, selected: LANGUAGE_ROW };
+  assert.equal(reducer(s, 'space', rc(envs(1))).recheckMcp, false);
 });

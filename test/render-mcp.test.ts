@@ -145,3 +145,58 @@ test('ANSI не обрывается (useColor) — вкладка и форма
   const form = mcpState({ mcp: { view: 'add', form: { ...freshMcpForm(), name: 'fs', caret: 2 }, removing: null } });
   assertBalancedRowEnds(render({ state: form, envs, width: 100, height: 16, useColor: true, status: null }));
 });
+
+// --- живой статус MCP (pi mcp list) ---
+
+const fsLive = { name: 'fs', scope: 'global', source: '/a/mcp.json', enabled: true, exposure: 'codemode', transport: 'npx -y pkg', state: 'connected' as const, tools: ['read', 'write'] };
+const docsLive = { name: 'docs', scope: 'global', source: '/a/mcp.json', enabled: true, exposure: 'deferred', transport: 'https://e/mcp', state: 'failed' as const, tools: [], error: 'fetch failed' };
+
+test('Вкладка: маркеры живого статуса в списке', () => {
+  const state = mcpState({ mcpCheck: 'done', mcpLive: { servers: [fsLive, docsLive], errors: [] } });
+  const s = render({ state, envs, width: 100, height: 16, ...base });
+  assert.ok(s.includes('fs ✓ 2'), s);
+  assert.ok(s.includes('docs ✗ ошибка'), s);
+});
+
+test('Вкладка: инфо-панель — состояние, число инструментов, ошибка', () => {
+  const state = mcpState({ mcpCheck: 'done', mcpLive: { servers: [fsLive, docsLive], errors: [] }, selected: 0 });
+  const s = render({ state, envs, width: 100, height: 16, ...base });
+  assert.ok(s.includes('Состояние: ошибка'), s);
+  assert.ok(s.includes('Ошибка: fetch failed'), s);
+  const s0 = render({ state: mcpState({ mcpCheck: 'done', mcpLive: { servers: [fsLive, docsLive], errors: [] }, selected: 1 }), envs, width: 100, height: 16, ...base });
+  assert.ok(s0.includes('Состояние: подключён (2)'), s0);
+});
+
+test('Вкладка: живой сервер вне конфига — отдельная строка списка', () => {
+  const extra = { ...fsLive, name: 'project-only' };
+  const state = mcpState({ mcpCheck: 'done', mcpLive: { servers: [extra], errors: [] } });
+  const s = render({ state, envs, width: 100, height: 16, ...base });
+  assert.ok(s.includes('project-only'), s);
+});
+
+test('Вкладка: ошибка конфигурации из pi mcp list', () => {
+  const state = mcpState({ mcpCheck: 'done', mcpLive: { servers: [], errors: ['bad entry: x'] } });
+  const s = render({ state, envs, width: 100, height: 16, ...base });
+  assert.ok(s.includes('bad entry: x'), s);
+});
+
+test('Вкладка: проверка идёт — индикатор и подсказка R', () => {
+  const checking = render({ state: mcpState({ mcpCheck: 'checking' }), envs, width: 100, height: 16, ...base });
+  assert.ok(checking.includes('Проверка MCP'), checking);
+  const idle = render({ state: mcpState(), envs, width: 100, height: 16, ...base });
+  assert.ok(idle.includes('R — обновить статус'), idle);
+});
+
+test('Форма окружения: маркеры живого статуса в списке MCP', () => {
+  const create = { ...freshEdit('dev', {}, catalog, envMcp), view: 'mcp' as const, cursor: 0, mcpCheck: 'done' as const, mcpLive: { servers: [fsLive], errors: [] } };
+  const state = { ...initialState(catalog), sub: 'create' as const, create };
+  const s = render({ state, envs, width: 100, height: 16, ...base });
+  assert.ok(s.includes('fs ✓ 2'), s);
+});
+
+test('Форма окружения: подсказка R и индикатор проверки', () => {
+  const done = { ...initialState(catalog), sub: 'create' as const, create: { ...freshEdit('dev', {}, catalog, envMcp), view: 'mcp' as const, cursor: 0, mcpCheck: 'done' as const } };
+  assert.ok(render({ state: done, envs, width: 100, height: 16, ...base }).includes('R — обновить статус'));
+  const checking = { ...initialState(catalog), sub: 'create' as const, create: { ...freshEdit('dev', {}, catalog, envMcp), view: 'mcp' as const, cursor: 0, mcpCheck: 'checking' as const } };
+  assert.ok(render({ state: checking, envs, width: 100, height: 16, ...base }).includes('Проверка MCP'));
+});

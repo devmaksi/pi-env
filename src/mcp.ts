@@ -192,3 +192,6 @@ export function removeMcpEntry(dir: string, name: string): { ok: boolean; error?
   }
   return { ok: true };
 }
+
+// Живой статус серверов (`pi mcp list`): разбор, сводка с конфигом и маркер — в mcp-live.ts.
+export * from './mcp-live.js';
