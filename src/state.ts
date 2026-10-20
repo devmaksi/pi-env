@@ -2,7 +2,12 @@ import { validateName, envSkillDirName, type EnvSettings } from './create.js';
 import type { Catalog, CatalogPkg } from './catalog.js';
 import { normalizePkgSource, filterPackages } from './catalog.js';
 import { localeCodes } from './i18n.js';
-import { validateMcpForm, type McpFormFields, type McpServer, type McpType } from './mcp.js';
+import type { McpServer } from './mcp.js';
+import { mcpMachine, mcpFormStep, mcpListNames, freshMcpForm, freshMcpTab, isPrintable } from './state-mcp.js';
+import type { McpFormAdd, McpTab } from './state-mcp.js';
+
+export { mcpFormRows, mcpFormStep, mcpListNames, freshMcpForm, freshMcpTab, MCP_TYPES, MCP_EXPOSURES, TEXT_ROWS } from './state-mcp.js';
+export type { McpFormAdd, McpTabView, McpTab, McpFormStep, McpExposure } from './state-mcp.js';
 
 export type Tab = 'envs' | 'extensions' | 'mcp' | 'settings' | 'about';
 export type Sub = 'create' | 'run' | null;
@@ -30,35 +35,6 @@ export interface ExtState {
   query: string;
 }
 
-/** Поля окна добавления MCP (данные) + UI-состояние формы. */
-export type McpFormAdd = McpFormFields & {
-  cursor: number;
-  caret: number;
-  error: string | null;
-  select: 'type' | 'exposure' | null;
-};
-
-/** Подэкраны вкладки «MCP». */
-export type McpTabView = 'add' | 'submitting' | 'confirm-remove' | 'removing';
-
-export interface McpTab {
-  view: McpTabView;
-  form: McpFormAdd | null;
-  removing: string | null;
-}
-
-/** Строки формы добавления по типу сервера. */
-export function mcpFormRows(type: McpType): string[] {
-  return type === 'stdio'
-    ? ['name', 'type', 'command', 'args', 'env', 'cwd', 'description', 'exposure', 'action']
-    : ['name', 'type', 'url', 'description', 'exposure', 'action'];
-}
-
-/** Результат шага формы добавления: обновлённая форма / закрыть / отправить. */
-export type McpFormStep =
-  | { kind: 'form'; form: McpFormAdd }
-  | { kind: 'close' }
-  | { kind: 'submit' };
 
 /** Строка-кнопка в конце списка расширений. */
 export const UPDATE_ALL_ROW = 'Обновить все'; // внутренний ID, не отображается — подпись через i18n
@@ -184,13 +160,6 @@ export function freshEdit(name: string, settings: EnvSettings, catalog: Catalog,
     mcpAdd: null, envMcp, mcp: [], mcpOp: null, removingMcp: null,
   };
 }
-/** Имена MCP для списка формы: окружение (сортированы) + только-в-main (сортированы). */
-export function mcpListNames(envMcp: McpServer[], mainMcp: McpServer[]): string[] {
-  const names = [...envMcp.map((s) => s.name)].sort();
-  const inEnv = new Set(names);
-  for (const n of [...mainMcp.map((s) => s.name)].sort()) if (!inEnv.has(n)) names.push(n);
-  return names;
-}
 
 
 /** Клавиша или сервисное действие (результат создания). */
@@ -293,22 +262,8 @@ export function reducer(state: AppState, action: Action, envNames: string[], two
     }
   }
   if (state.tab === 'mcp' && state.mcp !== null) {
-    const mcp = state.mcp;
-    if (mcp.view === 'add' && mcp.form !== null) {
-      const step = mcpFormStep(mcp.form, action, state.language);
-      if (step !== null) {
-        if (step.kind === 'form') return { ...state, mcp: { ...mcp, form: step.form } };
-        if (step.kind === 'close') return { ...state, mcp: null };
-        return { ...state, mcp: { ...mcp, view: 'submitting' } };
-      }
-      // Непроцессированные клавиши (такие как tab) падают в общую машину
-    } else if (mcp.view === 'confirm-remove') {
-      if (action === 'esc') return { ...state, mcp: null };
-      if (action === 'enter') return { ...state, mcp: { ...mcp, view: 'removing' } };
-    } else {
-      // submitting/removing — клавиши процесс не отменяют
-      return state;
-    }
+    const next = mcpMachine(state, action);
+    if (next !== null) return next;
   }
   if (action === 'esc') {
     if (state.sub !== null) return { ...state, sub: null };
@@ -387,9 +342,6 @@ export function reducer(state: AppState, action: Action, envNames: string[], two
   return state;
 }
 
-function isPrintable(a: Action): a is string {
-  return typeof a === 'string' && a.length === 1 && a.charCodeAt(0) >= 0x21 && a.charCodeAt(0) <= 0x7e;
-}
 
 /** Кламп курсора к длине списка: пусто — 0. Двигает курсор только вниз. */
 function clampToLen(cursor: number, len: number): number {
@@ -659,88 +611,4 @@ export function packageListSources(c: CreateState, catalog: Catalog): string[] {
 function clampSelected(state: AppState, envNames: string[]): number {
   const len = listLength(state.tab, envNames.length, state.catalog.packages.length, state.catalog.mcp.length);
   return Math.max(0, Math.min(state.selected, len - 1));
-}
-export type McpExposure = 'codemode' | 'deferred' | 'direct' | 'hidden';
-export const MCP_TYPES: readonly McpType[] = ['stdio', 'http'];
-export const MCP_EXPOSURES: readonly McpExposure[] = ['codemode', 'deferred', 'direct', 'hidden'];
-
-/** Текстовые строки формы (редактируются вводом). */
-export const TEXT_ROWS = ['name', 'command', 'args', 'env', 'cwd', 'description', 'url'] as const;
-type TextField = (typeof TEXT_ROWS)[number];
-
-/** Чистая форма добавления MCP. */
-export function freshMcpForm(): McpFormAdd {
-  return {
-    name: '', type: 'stdio', command: '', args: '', url: '', env: '', cwd: '', description: '', exposure: 'codemode',
-    cursor: 0, caret: 0, error: null, select: null,
-  };
-}
-
-/** Пустое состояние вкладки «MCP» с переопределением полей. */
-export function freshMcpTab(partial: Partial<McpTab>): McpTab {
-  return { view: 'add', form: null, removing: null, ...partial };
-}
-
-/**
- * Шаг формы добавления MCP. null — клавиша не относится к форме
- * (управляющие — обрабатываются общей машиной).
- */
-export function mcpFormStep(form: McpFormAdd, action: Action, language: string): McpFormStep | null {
-  const rows = mcpFormRows(form.type);
-  const row = rows[form.cursor];
-  const textRow = TEXT_ROWS.includes(row as TextField);
-  if (action === 'up' || action === 'down') {
-    if (form.select === 'type') {
-      const delta = action === 'up' ? -1 : 1;
-      return { kind: 'form', form: { ...form, cursor: (form.cursor + delta + MCP_TYPES.length) % MCP_TYPES.length } };
-    }
-    if (form.select === 'exposure') {
-      const delta = action === 'up' ? -1 : 1;
-      return { kind: 'form', form: { ...form, cursor: (form.cursor + delta + MCP_EXPOSURES.length) % MCP_EXPOSURES.length } };
-    }
-    const delta = action === 'up' ? -1 : 1;
-    return { kind: 'form', form: { ...form, cursor: Math.min(rows.length - 1, Math.max(0, form.cursor + delta)) } };
-  }
-  if (action === 'left' || action === 'right') {
-    if (form.select !== null) {
-      const n = form.select === 'type' ? MCP_TYPES.length : MCP_EXPOSURES.length;
-      const delta = action === 'left' ? -1 : 1;
-      return { kind: 'form', form: { ...form, cursor: (form.cursor + delta + n) % n } };
-    }
-    if (!textRow) return { kind: 'form', form };
-    const v = form[row as TextField];
-    const caret = Math.min(v.length, Math.max(0, form.caret + (action === 'left' ? -1 : 1)));
-    return { kind: 'form', form: { ...form, caret } };
-  }
-  if (action === 'enter') {
-    if (form.select === 'type') return { kind: 'form', form: { ...form, type: MCP_TYPES[form.cursor], select: null, cursor: rows.indexOf('type') } };
-    if (form.select === 'exposure') return { kind: 'form', form: { ...form, exposure: MCP_EXPOSURES[form.cursor], select: null, cursor: rows.indexOf('exposure') } };
-    if (row === 'type') return { kind: 'form', form: { ...form, select: 'type', cursor: form.type === 'http' ? 1 : 0 } };
-    if (row === 'exposure') {
-      const i = MCP_EXPOSURES.indexOf((form.exposure ?? '') as McpExposure);
-      return { kind: 'form', form: { ...form, select: 'exposure', cursor: i === -1 ? 0 : i } };
-    }
-    if (row === 'action') {
-      const error = validateMcpForm(form, language);
-      if (error !== null) return { kind: 'form', form: { ...form, error } };
-      return { kind: 'submit' };
-    }
-    return { kind: 'form', form };
-  }
-  if (action === 'backspace') {
-    if (!textRow) return { kind: 'form', form };
-    const v = form[row as TextField];
-    return { kind: 'form', form: { ...form, [row]: v.slice(0, -1), caret: Math.max(0, form.caret - 1) } as McpFormAdd };
-  }
-  if (action === 'esc') {
-    if (form.select !== null) return { kind: 'form', form: { ...form, select: null } };
-    return { kind: 'close' };
-  }
-  if (isPrintable(action)) {
-    if (!textRow) return { kind: 'form', form };
-    const v = form[row as TextField];
-    const caret = Math.min(v.length, form.caret);
-    return { kind: 'form', form: { ...form, [row]: v.slice(0, caret) + action + v.slice(caret), caret: caret + 1 } as McpFormAdd };
-  }
-  return null;
 }
