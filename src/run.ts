@@ -12,6 +12,7 @@ import { readMcpServers, mcpAddCliArgs, copyMcpEntry, removeMcpEntry, type McpSe
 import { AppState, initialState, Key, reducer, type Action, type McpFormAdd } from './state.js';
 import { createTerm, Term } from './terminal.js';
 import { defaultLang, localeCodes, t } from './i18n.js';
+import { runCmd, piEnv, PI_TIMEOUT_MS, NPM_TIMEOUT_MS, type CmdResult } from './cmd.js';
 
 function defaultAgentDir(): string {
   return process.env.PI_CODING_AGENT_DIR ?? join(homedir(), '.pi', 'agent');
@@ -59,41 +60,6 @@ export function runPassthrough(envPath: string, args: string[], lang: string): v
   child.on('exit', (code) => process.exit(code ?? 1));
 }
 
-/** Таймауты дочерних процессов, мс. */
-const PI_TIMEOUT_MS = 5 * 60_000;
-const NPM_TIMEOUT_MS = 10_000;
-
-/** Окружение для pi-команд: каталог агента и вывод без цвета. */
-function piEnv(dir: string): NodeJS.ProcessEnv {
-  return { ...process.env, PI_CODING_AGENT_DIR: dir, NO_COLOR: '1' };
-}
-
-/** Запускает команду, собирает stdout/stderr; таймаут — убийство процесса. */
-function runCmd(
-  cmd: string,
-  args: string[],
-  timeoutMs: number,
-  opts: { cwd?: string; env?: NodeJS.ProcessEnv } = {},
-): Promise<{ ok: boolean; stdout: string; stderr: string }> {
-  return new Promise((resolve) => {
-    let done = false;
-    let stdout = '';
-    let stderr = '';
-    let timer: NodeJS.Timeout | undefined;
-    const finish = (ok: boolean) => {
-      if (done) return;
-      done = true;
-      if (timer) clearTimeout(timer);
-      resolve({ ok, stdout, stderr });
-    };
-    const child = spawn(cmd, args, { cwd: opts.cwd, env: opts.env });
-    child.on('error', () => finish(false));
-    child.stdout.on('data', (d: Buffer) => { stdout += d.toString(); });
-    child.stderr.on('data', (d: Buffer) => { stderr += d.toString(); });
-    child.on('exit', (code) => finish(code === 0));
-    timer = setTimeout(() => { child.kill(); finish(false); }, timeoutMs);
-  });
-}
 
 /**
  * Цикл приложения: чтение клавиши → reducer → отрисовка.
