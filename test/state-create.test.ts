@@ -1,7 +1,10 @@
 import { test } from 'node:test';
 import assert from 'node:assert';
-import { initialState, reducer, freshCreate, freshEdit, type AppState, type Catalog } from '../src/state.js';
+import { initialState, reducer, freshCreate, freshEdit, type AppState, type ReducerCtx, type Catalog } from '../src/state.js';
 import type { CatalogPkg } from '../src/catalog.js';
+
+/** Контекст reducer: имена окружений + раскладка. */
+const rc = (names: string[], two = true): ReducerCtx => ({ envNames: names, twoColumns: two });
 
 const catalog: Catalog = {
   providers: [
@@ -23,69 +26,69 @@ function withCreate() {
 
 test('ввод имени: печатные символы, backspace, caret', () => {
   let s = withCreate();
-  for (const ch of 'prod') s = reducer(s, ch, [], true);
+  for (const ch of 'prod') s = reducer(s, ch, rc([]));
   assert.equal(s.create!.name, 'prod');
   assert.equal(s.create!.caret, 4);
-  s = reducer(s, 'backspace', [], true);
+  s = reducer(s, 'backspace', rc([]));
   assert.equal(s.create!.name, 'pro');
-  s = reducer(s, 'left', [], true);
-  s = reducer(s, 'left', [], true);
-  s = reducer(s, 'X', [], true);
+  s = reducer(s, 'left', rc([]));
+  s = reducer(s, 'left', rc([]));
+  s = reducer(s, 'X', rc([]));
   assert.equal(s.create!.name, 'pXro');
   assert.equal(s.create!.caret, 2);
 });
 
 test('caret не выходит за границы имени', () => {
   let s = withCreate();
-  s = reducer(s, 'a', [], true);
-  s = reducer(s, 'left', [], true);
-  s = reducer(s, 'left', [], true);
+  s = reducer(s, 'a', rc([]));
+  s = reducer(s, 'left', rc([]));
+  s = reducer(s, 'left', rc([]));
   assert.equal(s.create!.caret, 0);
-  s = reducer(s, 'right', [], true);
-  s = reducer(s, 'right', [], true);
-  s = reducer(s, 'right', [], true);
+  s = reducer(s, 'right', rc([]));
+  s = reducer(s, 'right', rc([]));
+  s = reducer(s, 'right', rc([]));
   assert.equal(s.create!.caret, 1);
 });
 
 test('длина имени ограничена 40', () => {
   let s = withCreate();
-  for (const ch of 'a'.repeat(45)) s = reducer(s, ch, [], true);
+  for (const ch of 'a'.repeat(45)) s = reducer(s, ch, rc([]));
   assert.equal(s.create!.name.length, 40);
 });
 
 test('навигация по форме и переход в списки', () => {
   let s = withCreate();
-  s = reducer(s, 'down', [], true);
+  s = reducer(s, 'down', rc([]));
   assert.equal(s.create!.cursor, 1);
-  s = reducer(s, 'enter', [], true);
+  s = reducer(s, 'enter', rc([]));
   assert.equal(s.create!.view, 'providers');
-  s = reducer(s, 'esc', [], true);
+  s = reducer(s, 'esc', rc([]));
   assert.equal(s.create!.view, 'form');
   assert.equal(s.create!.cursor, 1);
-  s = reducer(s, 'down', [], true); // tools
-  s = reducer(s, 'enter', [], true);
+  s = reducer(s, 'down', rc([])); // tools
+  s = reducer(s, 'enter', rc([]));
   assert.equal(s.create!.view, 'tools');
-  s = reducer(s, 'esc', [], true);
-  s = reducer(s, 'down', [], true); // packages
-  s = reducer(s, 'enter', [], true);
+  s = reducer(s, 'esc', rc([]));
+  s = reducer(s, 'down', rc([])); // packages
+  s = reducer(s, 'enter', rc([]));
   assert.equal(s.create!.view, 'packages');
-  s = reducer(s, 'esc', [], true);
-  s = reducer(s, 'down', [], true); // skills
-  s = reducer(s, 'enter', [], true);
+  s = reducer(s, 'esc', rc([]));
+  s = reducer(s, 'down', rc([])); // skills
+  s = reducer(s, 'enter', rc([]));
   assert.equal(s.create!.view, 'skills');
 });
 
 test('провайдер → модель в два шага', () => {
   let s = withCreate();
-  s = reducer(s, 'down', [], true);
-  s = reducer(s, 'enter', [], true); // providers
+  s = reducer(s, 'down', rc([]));
+  s = reducer(s, 'enter', rc([])); // providers
   assert.equal(s.create!.view, 'providers');
-  s = reducer(s, 'enter', [], true); // cpp
+  s = reducer(s, 'enter', rc([])); // cpp
   assert.equal(s.create!.provider, 'cpp');
   assert.equal(s.create!.view, 'models');
   assert.equal(s.create!.cursor, 0);
-  s = reducer(s, 'down', [], true); // Zed-1
-  s = reducer(s, 'enter', [], true);
+  s = reducer(s, 'down', rc([])); // Zed-1
+  s = reducer(s, 'enter', rc([]));
   assert.equal(s.create!.model, 'Zed-1');
   assert.equal(s.create!.view, 'form');
   assert.equal(s.create!.cursor, 1);
@@ -93,13 +96,13 @@ test('провайдер → модель в два шага', () => {
 
 test('повторный выбор провайдера сбрасывает модель', () => {
   let s = withCreate();
-  s = reducer(s, 'down', [], true);
-  s = reducer(s, 'enter', [], true);
-  s = reducer(s, 'enter', [], true); // cpp
-  s = reducer(s, 'esc', [], true); // providers
-  s = reducer(s, 'esc', [], true); // form
-  s = reducer(s, 'enter', [], true); // providers again
-  s = reducer(s, 'enter', [], true); // cpp again
+  s = reducer(s, 'down', rc([]));
+  s = reducer(s, 'enter', rc([]));
+  s = reducer(s, 'enter', rc([])); // cpp
+  s = reducer(s, 'esc', rc([])); // providers
+  s = reducer(s, 'esc', rc([])); // form
+  s = reducer(s, 'enter', rc([])); // providers again
+  s = reducer(s, 'enter', rc([])); // cpp again
   assert.equal(s.create!.provider, null);
   assert.equal(s.create!.model, null);
   assert.equal(s.create!.view, 'form');
@@ -107,177 +110,177 @@ test('повторный выбор провайдера сбрасывает м
 
 test('toggle инструментов/пакетов/скиллов по Space и Enter', () => {
   let s = withCreate();
-  s = reducer(s, 'down', [], true);
-  s = reducer(s, 'down', [], true);
-  s = reducer(s, 'enter', [], true); // tools
-  s = reducer(s, 'space', [], true);
+  s = reducer(s, 'down', rc([]));
+  s = reducer(s, 'down', rc([]));
+  s = reducer(s, 'enter', rc([])); // tools
+  s = reducer(s, 'space', rc([]));
   assert.deepEqual(s.create!.tools, ['searxng-search.ts']);
-  s = reducer(s, 'space', [], true);
+  s = reducer(s, 'space', rc([]));
   assert.deepEqual(s.create!.tools, []);
-  s = reducer(s, 'enter', [], true);
+  s = reducer(s, 'enter', rc([]));
   assert.deepEqual(s.create!.tools, ['searxng-search.ts']);
-  s = reducer(s, 'esc', [], true);
-  s = reducer(s, 'down', [], true); // packages
-  s = reducer(s, 'enter', [], true);
-  s = reducer(s, 'down', [], true); // pkg-b
-  s = reducer(s, 'enter', [], true);
+  s = reducer(s, 'esc', rc([]));
+  s = reducer(s, 'down', rc([])); // packages
+  s = reducer(s, 'enter', rc([]));
+  s = reducer(s, 'down', rc([])); // pkg-b
+  s = reducer(s, 'enter', rc([]));
   assert.deepEqual(s.create!.packages, ['npm:pkg-b']);
-  s = reducer(s, 'esc', [], true);
-  s = reducer(s, 'down', [], true); // skills
-  s = reducer(s, 'enter', [], true);
-  s = reducer(s, 'space', [], true);
+  s = reducer(s, 'esc', rc([]));
+  s = reducer(s, 'down', rc([])); // skills
+  s = reducer(s, 'enter', rc([]));
+  s = reducer(s, 'space', rc([]));
   assert.deepEqual(s.create!.skills, ['own-skill']);
 });
 
 test('списки пустые — Enter/Space ничего не делают', () => {
   const s = { ...initialState({ ...catalog, tools: [] }), sub: 'create' as const, create: freshCreate() };
-  let t = reducer(s, 'down', [], true);
-  t = reducer(t, 'down', [], true);
-  t = reducer(t, 'enter', [], true); // tools (пусто)
+  let t = reducer(s, 'down', rc([]));
+  t = reducer(t, 'down', rc([]));
+  t = reducer(t, 'enter', rc([])); // tools (пусто)
   assert.equal(t.create!.view, 'tools');
-  t = reducer(t, 'enter', [], true);
+  t = reducer(t, 'enter', rc([]));
   assert.deepEqual(t.create!.tools, []);
-  t = reducer(t, 'esc', [], true);
+  t = reducer(t, 'esc', rc([]));
   assert.equal(t.create!.view, 'form');
 });
 
 test('списки: курсор зациклен', () => {
   let s = withCreate();
-  s = reducer(s, 'down', [], true);
-  s = reducer(s, 'down', [], true);
-  s = reducer(s, 'down', [], true); // packages (строка 3)
-  s = reducer(s, 'enter', [], true);
-  s = reducer(s, 'up', [], true);
+  s = reducer(s, 'down', rc([]));
+  s = reducer(s, 'down', rc([]));
+  s = reducer(s, 'down', rc([])); // packages (строка 3)
+  s = reducer(s, 'enter', rc([]));
+  s = reducer(s, 'up', rc([]));
   assert.equal(s.create!.cursor, 2); // заходит на строку «Обновить все»
-  s = reducer(s, 'down', [], true);
+  s = reducer(s, 'down', rc([]));
   assert.equal(s.create!.cursor, 0);
 });
 
 test('отправка: валидное имя → submitting', () => {
   let s = withCreate();
-  for (const ch of 'prod') s = reducer(s, ch, [], true);
-  s = reducer(s, 'up', [], true); // row 5 (зациклен)
-  s = reducer(s, 'enter', [], true);
+  for (const ch of 'prod') s = reducer(s, ch, rc([]));
+  s = reducer(s, 'up', rc([])); // row 5 (зациклен)
+  s = reducer(s, 'enter', rc([]));
   assert.equal(s.create!.view, 'submitting');
 });
 
 test('отправка: пустое имя → ошибка', () => {
   let s = withCreate();
-  for (const ch of [6, 5, 4, 3, 2, 1]) s = reducer(s, 'down', [], true);
-  s = reducer(s, 'enter', [], true);
+  for (const ch of [6, 5, 4, 3, 2, 1]) s = reducer(s, 'down', rc([]));
+  s = reducer(s, 'enter', rc([]));
   assert.equal(s.create!.view, 'form');
   assert.match(s.create!.error!, /имя/i);
 });
 
 test('отправка: имя совпадает с существующим → ошибка', () => {
   let s = withCreate();
-  for (const ch of 'env0') s = reducer(s, ch, [], true);
-  s = reducer(s, 'up', [], true); // row 5
-  s = reducer(s, 'enter', ['env0'], true);
+  for (const ch of 'env0') s = reducer(s, ch, rc([]));
+  s = reducer(s, 'up', rc([])); // row 5
+  s = reducer(s, 'enter', rc(['env0']));
   assert.match(s.create!.error!, /уже есть/i);
 });
 
 test('create-result: успех → done, ошибка → error', () => {
   let s = withCreate();
-  for (const ch of 'prod') s = reducer(s, ch, [], true);
-  s = reducer(s, 'up', [], true); // row 5
-  s = reducer(s, 'enter', [], true);
-  s = reducer(s, { type: 'create-result', ok: false, message: 'Батя' }, [], true);
+  for (const ch of 'prod') s = reducer(s, ch, rc([]));
+  s = reducer(s, 'up', rc([])); // row 5
+  s = reducer(s, 'enter', rc([]));
+  s = reducer(s, { type: 'create-result', ok: false, message: 'Батя' }, rc([]));
   assert.equal(s.create!.view, 'form');
   assert.equal(s.create!.error, 'Батя');
-  s = reducer(s, 'enter', [], true); // ещё раз
-  s = reducer(s, { type: 'create-result', ok: true, message: '/root/prod' }, [], true);
+  s = reducer(s, 'enter', rc([])); // ещё раз
+  s = reducer(s, { type: 'create-result', ok: true, message: '/root/prod' }, rc([]));
   assert.equal(s.create!.done, '/root/prod');
   assert.equal(s.create!.error, null);
   // «Готово» — Enter закрывает
-  s = reducer(s, 'enter', [], true);
+  s = reducer(s, 'enter', rc([]));
   assert.equal(s.sub, null);
   assert.equal(s.create, null);
 });
 
 test('ESC из формы создания закрывает суб-экран', () => {
   const s = withCreate();
-  const next = reducer(s, 'esc', [], true);
+  const next = reducer(s, 'esc', rc([]));
   assert.equal(next.sub, null);
   assert.equal(next.create, null);
 });
 
 test('ESC из submitting отменяет отправление', () => {
   let s = withCreate();
-  for (const ch of 'prod') s = reducer(s, ch, [], true);
-  s = reducer(s, 'up', [], true); // row 5
-  s = reducer(s, 'enter', [], true);
+  for (const ch of 'prod') s = reducer(s, ch, rc([]));
+  s = reducer(s, 'up', rc([])); // row 5
+  s = reducer(s, 'enter', rc([]));
   assert.equal(s.create!.view, 'submitting');
-  s = reducer(s, 'esc', [], true);
+  s = reducer(s, 'esc', rc([]));
   assert.equal(s.create!.view, 'form');
 });
 
 test('ввод имени не влияет при курсоре вне строки имени', () => {
   let s = withCreate();
-  s = reducer(s, 'down', [], true); // row 1
-  s = reducer(s, 'a', [], true);
+  s = reducer(s, 'down', rc([])); // row 1
+  s = reducer(s, 'a', rc([]));
   assert.equal(s.create!.name, '');
 });
 
 function openPackages(s: AppState): AppState {
   let t = s;
-  t = reducer(t, 'down', [], true);
-  t = reducer(t, 'down', [], true);
-  t = reducer(t, 'down', [], true);
-  t = reducer(t, 'enter', [], true);
+  t = reducer(t, 'down', rc([]));
+  t = reducer(t, 'down', rc([]));
+  t = reducer(t, 'down', rc([]));
+  t = reducer(t, 'enter', rc([]));
   assert.equal(t.create!.view, 'packages');
   return t;
 }
 
 test('packages: кнопка «Обновить все» в конце списка, Enter → updating, Esc назад', () => {
   let s = openPackages(withCreate());
-  s = reducer(s, 'down', [], true); // pkg-b
-  s = reducer(s, 'down', [], true); // кнопка
+  s = reducer(s, 'down', rc([])); // pkg-b
+  s = reducer(s, 'down', rc([])); // кнопка
   assert.equal(s.create!.cursor, 2);
-  s = reducer(s, 'enter', [], true);
+  s = reducer(s, 'enter', rc([]));
   assert.equal(s.create!.view, 'updating');
-  s = reducer(s, 'esc', [], true);
+  s = reducer(s, 'esc', rc([]));
   assert.equal(s.create!.view, 'packages');
   assert.equal(s.create!.cursor, 0);
 });
 
 test('packages: X → confirm-remove → removing; Esc отменяет', () => {
   let s = openPackages(withCreate());
-  s = reducer(s, 'x', [], true);
+  s = reducer(s, 'x', rc([]));
   assert.equal(s.create!.view, 'confirm-remove');
   assert.equal(s.create!.removing, 'pkg-a');
-  s = reducer(s, 'esc', [], true);
+  s = reducer(s, 'esc', rc([]));
   assert.equal(s.create!.view, 'packages');
   assert.equal(s.create!.removing, null);
-  s = reducer(s, 'X', [], true); // верхний регистр тоже
-  s = reducer(s, 'enter', [], true);
+  s = reducer(s, 'X', rc([])); // верхний регистр тоже
+  s = reducer(s, 'enter', rc([]));
   assert.equal(s.create!.view, 'removing');
-  s = reducer(s, 'esc', [], true);
+  s = reducer(s, 'esc', rc([]));
   assert.equal(s.create!.view, 'packages');
   assert.equal(s.create!.removing, 'pkg-a'); // процесс идёт — имя храним до результата
 });
 
 test('packages: X на строке кнопки ничего не делает', () => {
   let s = openPackages(withCreate());
-  s = reducer(s, 'down', [], true);
-  s = reducer(s, 'down', [], true); // строка кнопки
-  s = reducer(s, 'x', [], true);
+  s = reducer(s, 'down', rc([]));
+  s = reducer(s, 'down', rc([])); // строка кнопки
+  s = reducer(s, 'x', rc([]));
   assert.equal(s.create!.view, 'packages');
 });
 
 test('remove-result: ошибка → error, успех → пакет снят с отметок', () => {
   let s = openPackages(withCreate());
-  s = reducer(s, 'enter', [], true); // отметить pkg-a
-  s = reducer(s, 'x', [], true);
-  s = reducer(s, 'enter', [], true);
-  s = reducer(s, { type: 'remove-result', ok: false, message: 'нет сети' }, [], true);
+  s = reducer(s, 'enter', rc([])); // отметить pkg-a
+  s = reducer(s, 'x', rc([]));
+  s = reducer(s, 'enter', rc([]));
+  s = reducer(s, { type: 'remove-result', ok: false, message: 'нет сети' }, rc([]));
   assert.equal(s.create!.view, 'packages');
   assert.equal(s.create!.removing, null);
   assert.deepEqual(s.create!.packages, ['npm:pkg-a']);
   assert.equal(s.create!.error, 'нет сети');
-  s = reducer(s, 'x', [], true);
-  s = reducer(s, 'enter', [], true);
-  s = reducer(s, { type: 'remove-result', ok: true, message: 'pkg-a' }, [], true);
+  s = reducer(s, 'x', rc([]));
+  s = reducer(s, 'enter', rc([]));
+  s = reducer(s, { type: 'remove-result', ok: true, message: 'pkg-a' }, rc([]));
   assert.equal(s.create!.view, 'packages');
   assert.equal(s.create!.cursor, 0);
   assert.equal(s.create!.removing, null);
@@ -287,25 +290,25 @@ test('remove-result: ошибка → error, успех → пакет снят 
 
 test('поздний remove-result после Esc применяется безопасно', () => {
   let s = openPackages(withCreate());
-  s = reducer(s, 'enter', [], true); // pkg-a
-  s = reducer(s, 'down', [], true);
-  s = reducer(s, 'enter', [], true); // pkg-b
-  s = reducer(s, 'up', [], true);
-  s = reducer(s, 'x', [], true);
-  s = reducer(s, 'enter', [], true);
-  s = reducer(s, 'esc', [], true); // ушли, процесс ещё идёт
-  s = reducer(s, { type: 'remove-result', ok: true, message: 'pkg-a' }, [], true);
+  s = reducer(s, 'enter', rc([])); // pkg-a
+  s = reducer(s, 'down', rc([]));
+  s = reducer(s, 'enter', rc([])); // pkg-b
+  s = reducer(s, 'up', rc([]));
+  s = reducer(s, 'x', rc([]));
+  s = reducer(s, 'enter', rc([]));
+  s = reducer(s, 'esc', rc([])); // ушли, процесс ещё идёт
+  s = reducer(s, { type: 'remove-result', ok: true, message: 'pkg-a' }, rc([]));
   assert.equal(s.create!.view, 'packages');
   assert.deepEqual(s.create!.packages, ['npm:pkg-b']);
 });
 
 test('update-result: успех → к списку, ошибка → error', () => {
   let s = openPackages(withCreate());
-  s = reducer(s, 'down', [], true);
-  s = reducer(s, 'down', [], true);
-  s = reducer(s, 'enter', [], true);
+  s = reducer(s, 'down', rc([]));
+  s = reducer(s, 'down', rc([]));
+  s = reducer(s, 'enter', rc([]));
   assert.equal(s.create!.view, 'updating');
-  s = reducer(s, { type: 'update-result', ok: false, message: 'нет сети' }, [], true);
+  s = reducer(s, { type: 'update-result', ok: false, message: 'нет сети' }, rc([]));
   assert.equal(s.create!.view, 'packages');
   assert.equal(s.create!.error, 'нет сети');
 });
@@ -313,17 +316,17 @@ test('update-result: успех → к списку, ошибка → error', ()
 test('updates-result scope=main: карта latest и статус проверки', () => {
   let s = withCreate();
   assert.equal(s.pkgCheck, 'idle');
-  s = reducer(s, { type: 'updates-result', ok: true, latest: { 'pkg-a': '2.0.0' }, scope: 'main' }, [], true);
+  s = reducer(s, { type: 'updates-result', ok: true, latest: { 'pkg-a': '2.0.0' }, scope: 'main' }, rc([]));
   assert.equal(s.pkgCheck, 'done');
   assert.deepEqual(s.pkgLatest, { 'pkg-a': '2.0.0' });
-  s = reducer(s, { type: 'updates-result', ok: false, latest: {}, scope: 'main' }, [], true);
+  s = reducer(s, { type: 'updates-result', ok: false, latest: {}, scope: 'main' }, rc([]));
   assert.equal(s.pkgCheck, 'error');
   assert.deepEqual(s.pkgLatest, { 'pkg-a': '2.0.0' });
 });
 
 test('updates-result scope=create: карта latest и статус — в состояние формы', () => {
   let s = withCreate();
-  s = reducer(s, { type: 'updates-result', ok: true, latest: { 'env-pkg': '2.0.0' }, scope: 'create' }, [], true);
+  s = reducer(s, { type: 'updates-result', ok: true, latest: { 'env-pkg': '2.0.0' }, scope: 'create' }, rc([]));
   assert.equal(s.create!.check, 'done');
   assert.deepEqual(s.create!.latest, { 'env-pkg': '2.0.0' });
   // верхний уровень не тронут
@@ -333,7 +336,7 @@ test('updates-result scope=create: карта latest и статус — в со
 
 test('updates-result scope=create: без открытой формы — результат игнорируется', () => {
   const s = initialState(catalog);
-  const next = reducer(s, { type: 'updates-result', ok: true, latest: { 'x': '1' }, scope: 'create' }, [], true);
+  const next = reducer(s, { type: 'updates-result', ok: true, latest: { 'x': '1' }, scope: 'create' }, rc([]));
   assert.equal(next.create, null);
   assert.equal(next.pkgCheck, 'idle');
   assert.deepEqual(next.pkgLatest, {});
@@ -358,23 +361,23 @@ test('edit packages: строки env-only и кнопка «Установит�
   let s = { ...initialState(catalog), sub: 'create' as const, create: freshEdit('dev', { packages: ['npm:env-only'] }, catalog) };
   s = openPackages(s);
   // строки: pkg-a(0), pkg-b(1), env-only(2), Обновить все(3), Установить(4)
-  s = reducer(s, 'down', [], true);
-  s = reducer(s, 'down', [], true);
-  s = reducer(s, 'down', [], true);
+  s = reducer(s, 'down', rc([]));
+  s = reducer(s, 'down', rc([]));
+  s = reducer(s, 'down', rc([]));
   assert.equal(s.create!.cursor, 3);
-  s = reducer(s, 'down', [], true);
+  s = reducer(s, 'down', rc([]));
   assert.equal(s.create!.cursor, 4);
-  s = reducer(s, 'enter', [], true);
+  s = reducer(s, 'enter', rc([]));
   assert.equal(s.create!.view, 'install');
   assert.equal(s.create!.installStatus, 'loading');
 });
 
 test('create packages: строки «Установить» нет', () => {
   let s = openPackages(withCreate());
-  s = reducer(s, 'down', [], true); // pkg-b
-  s = reducer(s, 'down', [], true); // «Обновить все»
+  s = reducer(s, 'down', rc([])); // pkg-b
+  s = reducer(s, 'down', rc([])); // «Обновить все»
   assert.equal(s.create!.cursor, 2);
-  s = reducer(s, 'down', [], true); // цикл — «Установить» нет
+  s = reducer(s, 'down', rc([])); // цикл — «Установить» нет
   assert.equal(s.create!.cursor, 0);
 });
 
@@ -388,12 +391,12 @@ test('install: навигация, Enter → installing, результат ok �
     sub: 'create' as const,
     create: { ...freshEdit('dev', {}, catalog), view: 'install' as const, installCatalog: items, installStatus: 'ready' as const },
   };
-  s = reducer(s, 'down', [], true);
+  s = reducer(s, 'down', rc([]));
   assert.equal(s.create!.cursor, 1);
-  s = reducer(s, 'enter', [], true);
+  s = reducer(s, 'enter', rc([]));
   assert.equal(s.create!.view, 'installing');
   assert.equal(s.create!.installing, 'pi-b');
-  s = reducer(s, { type: 'install-result', ok: true, message: 'npm:pi-b', sources: ['npm:env-only', 'npm:pi-b'] }, [], true);
+  s = reducer(s, { type: 'install-result', ok: true, message: 'npm:pi-b', sources: ['npm:env-only', 'npm:pi-b'] }, rc([]));
   assert.equal(s.create!.view, 'packages');
   assert.deepEqual(s.create!.packages, ['npm:env-only', 'npm:pi-b']);
   assert.equal(s.create!.cursor, 0);
@@ -406,7 +409,7 @@ test('install-result: ошибка → в install с сообщением', () =
     sub: 'create' as const,
     create: { ...freshEdit('dev', {}, catalog), view: 'installing' as const, installing: 'pi-a' },
   };
-  const t = reducer(s, { type: 'install-result', ok: false, message: 'нет сети' }, [], true);
+  const t = reducer(s, { type: 'install-result', ok: false, message: 'нет сети' }, rc([]));
   assert.equal(t.create!.view, 'install');
   assert.equal(t.create!.error, 'нет сети');
   assert.equal(t.create!.installing, null);
@@ -423,14 +426,14 @@ test('install: поиск фильтрует каталог, Backspace стир�
     sub: 'create',
     create: { ...freshEdit('dev', {}, catalog), view: 'install' as const, installCatalog: items, installStatus: 'ready' as const },
   };
-  s = reducer(s, 'o', [], true);
+  s = reducer(s, 'o', rc([]));
   assert.equal(s.create!.query, 'o');
-  s = reducer(s, 'backspace', [], true);
+  s = reducer(s, 'backspace', rc([]));
   assert.equal(s.create!.query, '');
-  s = reducer(s, 'p', [], true); // 'p' → [pi-a, pi-b]
-  s = reducer(s, 'i', [], true);
-  s = reducer(s, 'down', [], true); // курсор 1
-  s = reducer(s, 'enter', [], true);
+  s = reducer(s, 'p', rc([])); // 'p' → [pi-a, pi-b]
+  s = reducer(s, 'i', rc([]));
+  s = reducer(s, 'down', rc([])); // курсор 1
+  s = reducer(s, 'enter', rc([]));
   assert.equal(s.create!.view, 'installing');
   assert.equal(s.create!.installing, 'pi-b');
 });

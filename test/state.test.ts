@@ -1,6 +1,9 @@
 import { test } from 'node:test';
 import assert from 'node:assert';
-import { initialState, reducer, listLength, emptyCatalog, freshCreate, type AppState, type Catalog, type CatalogPkg, type ExtState } from '../src/state.js';
+import { initialState, reducer, listLength, emptyCatalog, freshCreate, type AppState, type ReducerCtx, type Catalog, type CatalogPkg, type ExtState } from '../src/state.js';
+
+/** Контекст reducer: имена окружений + раскладка. */
+const rc = (names: string[], two = true): ReducerCtx => ({ envNames: names, twoColumns: two });
 
 const envs = (n: number) => Array.from({ length: n }, (_, i) => `env${i}`);
 
@@ -21,75 +24,75 @@ test('listLength', () => {
 
 test('TAB циклически переключает вкладки и сбрасывает состояние', () => {
   let s = { ...initialState(), selected: 2, sub: 'create' };
-  s = reducer(s, 'tab', envs(3), true);
+  s = reducer(s, 'tab', rc(envs(3)));
   assert.equal(s.tab, 'extensions');
   assert.equal(s.selected, 0);
   assert.equal(s.sub, null);
-  s = reducer(s, 'tab', envs(3), true);
+  s = reducer(s, 'tab', rc(envs(3)));
   assert.equal(s.tab, 'mcp');
-  s = reducer(s, 'tab', envs(3), true);
+  s = reducer(s, 'tab', rc(envs(3)));
   assert.equal(s.tab, 'settings');
-  s = reducer(s, 'tab', envs(3), true);
+  s = reducer(s, 'tab', rc(envs(3)));
   assert.equal(s.tab, 'about');
-  s = reducer(s, 'tab', envs(3), true);
+  s = reducer(s, 'tab', rc(envs(3)));
   assert.equal(s.tab, 'envs');
 });
 
 test('↑↓ клампируются на границах списка', () => {
   let s = initialState();
-  s = reducer(s, 'up', envs(2), true);
+  s = reducer(s, 'up', rc(envs(2)));
   assert.equal(s.selected, 0);
-  s = reducer(s, 'down', envs(2), true);
+  s = reducer(s, 'down', rc(envs(2)));
   assert.equal(s.selected, 1);
-  s = reducer(s, 'down', envs(2), true);
+  s = reducer(s, 'down', rc(envs(2)));
   assert.equal(s.selected, 2);
-  s = reducer(s, 'down', envs(2), true);
+  s = reducer(s, 'down', rc(envs(2)));
   assert.equal(s.selected, 2);
-  s = reducer(s, 'up', envs(2), true);
+  s = reducer(s, 'up', rc(envs(2)));
   assert.equal(s.selected, 1);
 });
 
 test('Enter: окружение → run, последний пункт → create', () => {
-  assert.equal(reducer(initialState(), 'enter', envs(2), true).sub, 'run');
-  const s = reducer({ ...initialState(), selected: 2 }, 'enter', envs(2), true);
+  assert.equal(reducer(initialState(), 'enter', rc(envs(2))).sub, 'run');
+  const s = reducer({ ...initialState(), selected: 2 }, 'enter', rc(envs(2)));
   assert.equal(s.sub, 'create');
   assert.ok(s.create !== null && s.create.view === 'form');
 });
 
 test('Enter внутри run-суб-экрана игнорируется', () => {
   const s = { ...initialState(), sub: 'run' as const };
-  assert.deepEqual(reducer(s, 'enter', envs(2), true), s);
+  assert.deepEqual(reducer(s, 'enter', rc(envs(2))), s);
 });
 
 test('ESC: назад из суб-экрана, выход на верхнем уровне', () => {
-  assert.equal(reducer({ ...initialState(), sub: 'run' }, 'esc', envs(2), true).sub, null);
-  assert.equal(reducer(initialState(), 'esc', envs(2), true).quit, true);
+  assert.equal(reducer({ ...initialState(), sub: 'run' }, 'esc', rc(envs(2))).sub, null);
+  assert.equal(reducer(initialState(), 'esc', rc(envs(2))).quit, true);
 });
 
 test('Space: toggle на пунктах 1 и 2 вкладки settings', () => {
   let s = { ...initialState(), tab: 'settings' as const, selected: 1 };
-  s = reducer(s, 'space', envs(0), true);
+  s = reducer(s, 'space', rc(envs(0)));
   assert.equal(s.colorToggle, false);
-  s = reducer(s, 'space', envs(0), true);
+  s = reducer(s, 'space', rc(envs(0)));
   assert.equal(s.colorToggle, true);
   const s2 = { ...initialState(), tab: 'settings' as const, selected: 2 };
-  assert.equal(reducer(s2, 'space', envs(0), true).recheckUpdates, true);
+  assert.equal(reducer(s2, 'space', rc(envs(0))).recheckUpdates, true);
   const s0 = { ...initialState(), tab: 'settings' as const, selected: 0 };
-  assert.deepEqual(reducer(s0, 'space', envs(0), true), s0);
+  assert.deepEqual(reducer(s0, 'space', rc(envs(0))), s0);
 });
 
 test('←→: смена фокуса только envs + широкий режим + без суб-экрана', () => {
-  let s = reducer(initialState(), 'right', envs(2), true);
+  let s = reducer(initialState(), 'right', rc(envs(2)));
   assert.equal(s.focus, 'right');
-  s = reducer(s, 'left', envs(2), true);
+  s = reducer(s, 'left', rc(envs(2)));
   assert.equal(s.focus, 'left');
-  assert.deepEqual(reducer(initialState(), 'right', envs(2), false), initialState());
+  assert.deepEqual(reducer(initialState(), 'right', rc(envs(2), false)), initialState());
   const settings = { ...initialState(), tab: 'settings' as const };
-  assert.deepEqual(reducer(settings, 'right', envs(2), true), settings);
+  assert.deepEqual(reducer(settings, 'right', rc(envs(2))), settings);
 });
 
 test('Ctrl+C — выход', () => {
-  assert.equal(reducer(initialState(), 'ctrlc', envs(2), true).quit, true);
+  assert.equal(reducer(initialState(), 'ctrlc', rc(envs(2))).quit, true);
 });
 
 const catalog2 = {
@@ -116,7 +119,7 @@ test('edit-start: форма предзаполняется из settings', () =
       skills: ['skills/own-skill'],
     },
     mcp: [],
-  }, envs(1), true);
+  }, rc(envs(1)));
   assert.equal(next.sub, 'create');
   const c = next.create!;
   assert.equal(c.mode, 'edit');
@@ -138,74 +141,74 @@ test('edit-start: collision-суффикс скилла не отмечаетс�
     name: 'dev',
     settings: { skills: ['skills/own-skill-2'] },
     mcp: [],
-  }, envs(1), true);
+  }, rc(envs(1)));
   assert.deepEqual(next.create!.skills, []);
 });
 
 test('edit-start: игнорируется при открытом суб-экране', () => {
   const s = { ...initialState(catalog2), sub: 'create' as const, create: freshCreate() };
-  const next = reducer(s, { type: 'edit-start', name: 'dev', settings: {}, mcp: [] }, envs(1), true);
+  const next = reducer(s, { type: 'edit-start', name: 'dev', settings: {}, mcp: [] }, rc(envs(1)));
   assert.deepEqual(next, s);
 });
 
 function editState(name = 'env0', cursor = 5): AppState {
   let s = { ...initialState(catalog2), selected: 0 };
-  s = reducer(s, { type: 'edit-start', name, settings: {}, mcp: [] }, envs(2), true);
-  for (let i = 0; i < cursor; i++) s = reducer(s, 'down', envs(2), true);
+  s = reducer(s, { type: 'edit-start', name, settings: {}, mcp: [] }, rc(envs(2)));
+  for (let i = 0; i < cursor; i++) s = reducer(s, 'down', rc(envs(2)));
   return s;
 }
 
 test('edit: сохранение с неизменённым именем — без коллизии с собой', () => {
   const s = editState('env0', 6);
-  const next = reducer(s, 'enter', envs(2), true);
+  const next = reducer(s, 'enter', rc(envs(2)));
   assert.equal(next.create!.view, 'submitting');
 });
 
 test('edit: переименование в занятое имя — ошибка', () => {
   const s = editState('env0', 0);
-  const b = reducer(s, 'backspace', envs(2), true); // env
-  const t = reducer(b, '1', envs(2), true); // env1
+  const b = reducer(s, 'backspace', rc(envs(2))); // env
+  const t = reducer(b, '1', rc(envs(2))); // env1
   assert.equal(t.create!.name, 'env1');
   let s2 = t;
-  for (let i = 0; i < 6; i++) s2 = reducer(s2, 'down', envs(2), true);
-  s2 = reducer(s2, 'enter', envs(2), true);
+  for (let i = 0; i < 6; i++) s2 = reducer(s2, 'down', rc(envs(2)));
+  s2 = reducer(s2, 'enter', rc(envs(2)));
   assert.equal(s2.create!.error, 'Окружение с таким именем уже есть');
 });
 
 test('edit: курсор 7 — Удалить → confirm-delete, Esc — в форму, Enter → deleting', () => {
   let s = editState('env0', 7);
-  s = reducer(s, 'enter', envs(2), true);
+  s = reducer(s, 'enter', rc(envs(2)));
   assert.equal(s.create!.view, 'confirm-delete');
-  s = reducer(s, 'esc', envs(2), true);
+  s = reducer(s, 'esc', rc(envs(2)));
   assert.equal(s.create!.view, 'form');
   assert.equal(s.create!.cursor, 7);
-  s = reducer(s, 'enter', envs(2), true);
+  s = reducer(s, 'enter', rc(envs(2)));
   assert.equal(s.create!.view, 'confirm-delete');
-  s = reducer(s, 'enter', envs(2), true);
+  s = reducer(s, 'enter', rc(envs(2)));
   assert.equal(s.create!.view, 'deleting');
 });
 
 test('delete-result: ok — форма закрывается, ошибка — в форму', () => {
   const s = editState('env0', 7);
-  const del = reducer(reducer(s, 'enter', envs(2), true), 'enter', envs(2), true);
+  const del = reducer(reducer(s, 'enter', rc(envs(2))), 'enter', rc(envs(2)));
   assert.equal(del.create!.view, 'deleting');
-  const ok = reducer(del, { type: 'delete-result', ok: true, message: 'env0' }, envs(2), true);
+  const ok = reducer(del, { type: 'delete-result', ok: true, message: 'env0' }, rc(envs(2)));
   assert.equal(ok.sub, null);
   assert.equal(ok.create, null);
-  const fail = reducer(del, { type: 'delete-result', ok: false, message: 'Не удалось удалить окружение env0' }, envs(2), true);
+  const fail = reducer(del, { type: 'delete-result', ok: false, message: 'Не удалось удалить окружение env0' }, rc(envs(2)));
   assert.equal(fail.create!.view, 'form');
   assert.equal(fail.create!.error, 'Не удалось удалить окружение env0');
 });
 
 test('run-result: sub сбрасывается в null', () => {
   const s = { ...initialState(), sub: 'run' as const };
-  assert.equal(reducer(s, { type: 'run-result', ok: true }, envs(2), true).sub, null);
+  assert.equal(reducer(s, { type: 'run-result', ok: true }, rc(envs(2))).sub, null);
 });
 
 test('edit: курсор цикла на 8 строках', () => {
   const s = editState('env0', 7);
-  assert.equal(reducer(s, 'down', envs(2), true).create!.cursor, 0);
-  assert.equal(reducer(s, 'up', envs(2), true).create!.cursor, 6);
+  assert.equal(reducer(s, 'down', rc(envs(2))).create!.cursor, 0);
+  assert.equal(reducer(s, 'up', rc(envs(2))).create!.cursor, 6);
 });
 
 function extCatalog(n: number): Catalog {
@@ -236,46 +239,46 @@ function extOver(partial: Partial<ExtState>): ExtState {
 
 test('вкладка extensions: ↑↓ по пакетам и двум кнопкам с клампом', () => {
   let s = extTabState(2);
-  s = reducer(s, 'down', envs(0), true);
+  s = reducer(s, 'down', rc(envs(0)));
   assert.equal(s.selected, 1);
-  s = reducer(s, 'down', envs(0), true);
+  s = reducer(s, 'down', rc(envs(0)));
   assert.equal(s.selected, 2); // «Обновить все»
-  s = reducer(s, 'down', envs(0), true);
+  s = reducer(s, 'down', rc(envs(0)));
   assert.equal(s.selected, 3); // «Установить»
-  s = reducer(s, 'down', envs(0), true);
+  s = reducer(s, 'down', rc(envs(0)));
   assert.equal(s.selected, 3);
-  s = reducer(s, 'up', envs(0), true);
+  s = reducer(s, 'up', rc(envs(0)));
   assert.equal(s.selected, 2);
 });
 
 test('вкладка extensions: Enter — пакет → updating(имя), кнопка → updating(null), каталог', () => {
   let s = extTabState(2);
-  s = reducer(s, 'enter', envs(0), true);
+  s = reducer(s, 'enter', rc(envs(0)));
   assert.equal(s.ext!.view, 'updating');
   assert.equal(s.ext!.updating, 'pkg-0');
-  s = reducer({ ...extTabState(2), selected: 2 }, 'enter', envs(0), true);
+  s = reducer({ ...extTabState(2), selected: 2 }, 'enter', rc(envs(0)));
   assert.equal(s.ext!.view, 'updating');
   assert.equal(s.ext!.updating, null);
-  s = reducer({ ...extTabState(2), selected: 3 }, 'enter', envs(0), true);
+  s = reducer({ ...extTabState(2), selected: 3 }, 'enter', rc(envs(0)));
   assert.equal(s.ext!.view, 'catalog');
   assert.equal(s.ext!.catalogStatus, 'loading');
 });
 
 test('вкладка extensions: X по пакету → confirm-remove, Esc отмена, Enter → removing', () => {
-  let s = reducer({ ...extTabState(2), selected: 1 }, 'x', envs(0), true);
+  let s = reducer({ ...extTabState(2), selected: 1 }, 'x', rc(envs(0)));
   assert.equal(s.ext!.view, 'confirm-remove');
   assert.equal(s.ext!.removing, 'pkg-1');
-  s = reducer(s, 'esc', envs(0), true);
+  s = reducer(s, 'esc', rc(envs(0)));
   assert.equal(s.ext, null);
-  s = reducer({ ...extTabState(2), selected: 1 }, 'X', envs(0), true);
-  s = reducer(s, 'enter', envs(0), true);
+  s = reducer({ ...extTabState(2), selected: 1 }, 'X', rc(envs(0)));
+  s = reducer(s, 'enter', rc(envs(0)));
   assert.equal(s.ext!.view, 'removing');
   assert.equal(s.ext!.removing, 'pkg-1');
 });
 
 test('вкладка extensions: X на строках кнопок ничего не делает', () => {
-  assert.equal(reducer({ ...extTabState(2), selected: 3 }, 'x', envs(0), true).ext, null);
-  assert.equal(reducer({ ...extTabState(2), selected: 2 }, 'X', envs(0), true).ext, null);
+  assert.equal(reducer({ ...extTabState(2), selected: 3 }, 'x', rc(envs(0))).ext, null);
+  assert.equal(reducer({ ...extTabState(2), selected: 2 }, 'X', rc(envs(0))).ext, null);
 });
 
 test('вкладка extensions: каталог — навигация по кругу, Enter → installing, Esc назад', () => {
@@ -284,44 +287,44 @@ test('вкладка extensions: каталог — навигация по кр
     { name: 'pi-b', types: [], downloads: 0, description: null, author: null },
   ];
   let s = extTabState(0, { ext: extOver({ view: 'catalog', catalogStatus: 'ready', catalog: items }) });
-  s = reducer(s, 'down', envs(0), true);
+  s = reducer(s, 'down', rc(envs(0)));
   assert.equal(s.ext!.cursor, 1);
-  s = reducer(s, 'down', envs(0), true);
+  s = reducer(s, 'down', rc(envs(0)));
   assert.equal(s.ext!.cursor, 0); // зациклен
-  s = reducer(s, 'enter', envs(0), true);
+  s = reducer(s, 'enter', rc(envs(0)));
   assert.equal(s.ext!.view, 'installing');
   assert.equal(s.ext!.installing, 'pi-a');
-  s = reducer(s, 'esc', envs(0), true);
+  s = reducer(s, 'esc', rc(envs(0)));
   assert.equal(s.ext!.view, 'installing'); // Esc процесс не отменяет
 });
 
 test('вкладка extensions: Esc из каталога — в список', () => {
   const s = extTabState(2, { ext: extOver({ view: 'catalog', catalogStatus: 'ready' }) });
-  assert.equal(reducer(s, 'esc', envs(0), true).ext, null);
+  assert.equal(reducer(s, 'esc', rc(envs(0))).ext, null);
 });
 
 test('вкладка extensions: результаты действий сбрасывают ext', () => {
   let s = extTabState(2, { ext: extOver({ view: 'updating', updating: 'pkg-0' }) });
-  s = reducer(s, { type: 'update-result', ok: true, message: 'npm:pkg-0' }, envs(0), true);
+  s = reducer(s, { type: 'update-result', ok: true, message: 'npm:pkg-0' }, rc(envs(0)));
   assert.equal(s.ext, null);
   s = extTabState(2, { ext: extOver({ view: 'removing', removing: 'pkg-1' }) });
-  s = reducer(s, { type: 'remove-result', ok: true, message: 'npm:pkg-1' }, envs(0), true);
+  s = reducer(s, { type: 'remove-result', ok: true, message: 'npm:pkg-1' }, rc(envs(0)));
   assert.equal(s.ext, null);
   s = extTabState(2, { ext: extOver({ view: 'installing', installing: 'pi-a' }) });
-  s = reducer(s, { type: 'install-result', ok: true, message: 'npm:pi-a' }, envs(0), true);
+  s = reducer(s, { type: 'install-result', ok: true, message: 'npm:pi-a' }, rc(envs(0)));
   assert.equal(s.ext, null);
 });
 
 test('вкладка extensions: Esc во время процесса ничего не меняет', () => {
   for (const view of ['updating', 'installing', 'removing'] as const) {
     const s = extTabState(2, { ext: extOver({ view }) });
-    assert.deepEqual(reducer(s, 'esc', envs(0), true), s);
+    assert.deepEqual(reducer(s, 'esc', rc(envs(0))), s);
   }
 });
 
 test('вкладка extensions: TAB из подэкрана сбрасывает ext', () => {
   const s = extTabState(2, { ext: extOver({ view: 'catalog', catalogStatus: 'ready' }) });
-  const t = reducer(s, 'tab', envs(0), true);
+  const t = reducer(s, 'tab', rc(envs(0)));
   assert.equal(t.ext, null);
   assert.equal(t.tab, 'mcp');
 });
@@ -333,19 +336,19 @@ test('каталог: ввод фильтрует список, Backspace сти
     { name: 'pi-b', types: [], downloads: 0, description: null, author: null },
   ];
   let s = extTabState(0, { ext: extOver({ view: 'catalog', catalogStatus: 'ready', catalog: items }) });
-  s = reducer(s, 'down', envs(0), true);
-  s = reducer(s, 'down', envs(0), true); // курсор 2 (pi-b)
-  s = reducer(s, 'p', envs(0), true); // 'p' → [pi-a, pi-b]
+  s = reducer(s, 'down', rc(envs(0)));
+  s = reducer(s, 'down', rc(envs(0))); // курсор 2 (pi-b)
+  s = reducer(s, 'p', rc(envs(0))); // 'p' → [pi-a, pi-b]
   assert.equal(s.ext!.query, 'p');
   assert.equal(s.ext!.cursor, 1); // кламп с 2 до 1
-  s = reducer(s, 'backspace', envs(0), true);
+  s = reducer(s, 'backspace', rc(envs(0)));
   assert.equal(s.ext!.query, '');
   assert.equal(s.ext!.cursor, 1); // кламп не двигает курсор вверх
-  s = reducer(s, 'backspace', envs(0), true); // пустой поиск — ничего не делает
+  s = reducer(s, 'backspace', rc(envs(0))); // пустой поиск — ничего не делает
   assert.equal(s.ext!.query, '');
-  s = reducer(s, 'o', envs(0), true); // 'o' → [obsidian]
-  s = reducer(s, 'b', envs(0), true);
-  s = reducer(s, 'enter', envs(0), true);
+  s = reducer(s, 'o', rc(envs(0))); // 'o' → [obsidian]
+  s = reducer(s, 'b', rc(envs(0)));
+  s = reducer(s, 'enter', rc(envs(0)));
   assert.equal(s.ext!.view, 'installing');
   assert.equal(s.ext!.installing, 'obsidian');
 });
@@ -353,29 +356,29 @@ test('каталог: ввод фильтрует список, Backspace сти
 test('каталог: Enter при пустом результате фильтра — ничего не делает', () => {
   const items: CatalogPkg[] = [{ name: 'pi-a', types: [], downloads: 0, description: null, author: null }];
   let s = extTabState(0, { ext: extOver({ view: 'catalog', catalogStatus: 'ready', catalog: items }) });
-  s = reducer(s, 'z', envs(0), true);
+  s = reducer(s, 'z', rc(envs(0)));
   assert.equal(s.ext!.view, 'catalog');
-  s = reducer(s, 'enter', envs(0), true);
+  s = reducer(s, 'enter', rc(envs(0)));
   assert.equal(s.ext!.view, 'catalog');
   assert.equal(s.ext!.installing, null);
 });
 
 test('←/→: на строке «Язык» цикл по языкам с wrap', () => {
   let s = { ...initialState(), tab: 'settings' as const, selected: 3, language: 'ru' };
-  s = reducer(s, 'right', envs(1), true);
+  s = reducer(s, 'right', rc(envs(1)));
   assert.equal(s.language, 'en');
-  s = reducer(s, 'right', envs(1), true); // en → ru (wrap, 2 языка)
+  s = reducer(s, 'right', rc(envs(1))); // en → ru (wrap, 2 языка)
   assert.equal(s.language, 'ru');
-  s = reducer(s, 'left', envs(1), true); // ru → en
+  s = reducer(s, 'left', rc(envs(1))); // ru → en
   assert.equal(s.language, 'en');
 });
 
 test('←/→: не на строке «Язык» — без действия', () => {
   const s = { ...initialState(), tab: 'settings' as const, selected: 1, language: 'ru' };
-  assert.deepEqual(reducer(s, 'right', envs(1), true), s);
+  assert.deepEqual(reducer(s, 'right', rc(envs(1))), s);
 });
 
 test('←/→: язык без файла — right к первому известному', () => {
   const s = { ...initialState(), tab: 'settings' as const, selected: 3, language: 'de' };
-  assert.equal(reducer(s, 'right', envs(1), true).language, 'en');
+  assert.equal(reducer(s, 'right', rc(envs(1))).language, 'en');
 });

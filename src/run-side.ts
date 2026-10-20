@@ -7,7 +7,7 @@ import { buildCreateRequest } from './pi-actions.js';
 import { launchPi } from './pirun.js';
 import type { Catalog } from './catalog.js';
 import type { Environment } from './environments.js';
-import type { AppState, CreateView, ExtState, McpFormAdd, McpTab, Tab } from './state.js';
+import type { AppState, CreateView, ExtState, McpFormAdd, McpTab, Tab, ReducerCtx } from './state.js';
 import type { Term } from './terminal.js';
 
 /** Снимок суб-экранов и вкладки до обработки клавиши. */
@@ -38,6 +38,11 @@ export interface Loop {
   doUpdateOne(source: string): void;
   doInstall(installDir: string, source: string, envName: string | null): void;
   doMcpAdd(dir: string, form: McpFormAdd, scope: 'main' | 'create'): void;
+}
+
+/** Контекст reducer для side-effect-хуков. */
+function rctx(loop: Loop, envNames: string[]): ReducerCtx {
+  return { envNames, twoColumns: loop.twoColumns() };
 }
 
 /** Хуки переходов после reducer — 1-в-1 с телом прежнего dispatch. */
@@ -95,7 +100,7 @@ function mcpOpSync(loop: Loop, op: { name: string; kind: 'copy' | 'remove' }, na
   const errMsg = op.kind === 'copy' ? t(loop.state().language, 'status.mcp-copy-error') : t(loop.state().language, 'status.mcp-remove-error');
   const message = r.ok ? okMsg : (r.error !== undefined ? errMsg + ': ' + r.error : errMsg);
   loop.status(message);
-  loop.setState(reducer(loop.state(), { type: 'mcp-result', ok: r.ok, message, scope: 'create', list }, names, loop.twoColumns()));
+  loop.setState(reducer(loop.state(), { type: 'mcp-result', ok: r.ok, message, scope: 'create', list }, rctx(loop, names)));
   loop.repaint();
 }
 
@@ -129,7 +134,7 @@ function hooksMcp(loop: Loop, prevMcp: McpTab | null, names: string[]): void {
     const msg = r.ok ? t(loop.state().language, 'status.mcp-removed', { name: m.removing }) : t(loop.state().language, 'status.mcp-remove-error');
     loop.status(msg);
     if (r.ok) loop.reloadCatalog();
-    loop.setState(reducer(loop.state(), { type: 'mcp-result', ok: r.ok, message: msg, scope: 'main' }, names, loop.twoColumns()));
+    loop.setState(reducer(loop.state(), { type: 'mcp-result', ok: r.ok, message: msg, scope: 'main' }, rctx(loop, names)));
     loop.repaint();
   }
 }
@@ -142,7 +147,7 @@ function doSubmit(loop: Loop, names: string[]): void {
     ? updateEnvironment(loop.root, cr.origName ?? cr.name, req, { allTools: loop.catalog().tools, allSkills: loop.catalog().skills, agentDir: loop.agentDir }, loop.state().language)
     : createEnvironment(loop.root, req, loop.agentDir, loop.state().language);
   const message = res.ok ? res.path : res.error;
-  loop.setState(reducer(loop.state(), { type: 'create-result', ok: res.ok, message }, names, loop.twoColumns()));
+  loop.setState(reducer(loop.state(), { type: 'create-result', ok: res.ok, message }, rctx(loop, names)));
 }
 
 function doDelete(loop: Loop, names: string[]): void {
@@ -150,7 +155,7 @@ function doDelete(loop: Loop, names: string[]): void {
   if (cr === null || cr.view !== 'deleting') return;
   const name = cr.name;
   const res = deleteEnvironment(loop.root, name, loop.state().language);
-  loop.setState(reducer(loop.state(), { type: 'delete-result', ok: res.ok, message: res.ok ? name : res.error }, names, loop.twoColumns()));
+  loop.setState(reducer(loop.state(), { type: 'delete-result', ok: res.ok, message: res.ok ? name : res.error }, rctx(loop, names)));
   if (res.ok) {
     const n = loop.envs().length;
     const st = loop.state();
@@ -162,6 +167,6 @@ async function doRun(loop: Loop, envs: Environment[]): Promise<void> {
   const st = loop.state();
   if (!(st.sub === 'run' && st.tab === 'envs' && st.selected < envs.length)) return;
   const res = await launchPi(loop.term, envs[st.selected]);
-  loop.setState(reducer(loop.state(), { type: 'run-result', ok: res.ok }, envs.map((e) => e.name), loop.twoColumns()));
+  loop.setState(reducer(loop.state(), { type: 'run-result', ok: res.ok }, rctx(loop, envs.map((e) => e.name))));
   if (!res.ok) loop.status(t(loop.state().language, 'status.pi-launch', { err: res.message }));
 }

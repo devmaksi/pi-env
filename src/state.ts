@@ -86,18 +86,24 @@ export function listLength(tab: Tab, envCount: number, pkgCount = 0, mcpCount = 
   return 0;
 }
 
-function clampSelected(state: AppState, envNames: string[]): number {
-  const len = listLength(state.tab, envNames.length, state.catalog.packages.length, state.catalog.mcp.length);
+function clampSelected(state: AppState, ctx: ReducerCtx): number {
+  const len = listLength(state.tab, ctx.envNames.length, state.catalog.packages.length, state.catalog.mcp.length);
   return Math.max(0, Math.min(state.selected, len - 1));
 }
 
+/** Контекст reducer: имена окружений + вариант раскладки. */
+export interface ReducerCtx {
+  envNames: string[];
+  twoColumns: boolean;
+}
+
 /** Переход состояния по действию. Чистая функция. Порядок веток 1-в-1 с прежним reducer. */
-export function reducer(state: AppState, action: Action, envNames: string[], twoColumns: boolean): AppState {
+export function reducer(state: AppState, action: Action, ctx: ReducerCtx): AppState {
   if (action === 'ctrlc') return { ...state, quit: true };
-  const applied = applyResults(state, action, envNames);
+  const applied = applyResults(state, action, ctx);
   if (applied !== null) return applied;
   if (state.sub === 'create' && state.create !== null) {
-    const next = createReducer(state.create, action, state.catalog, envNames, state.language);
+    const next = createReducer(state.create, action, state.catalog, ctx.envNames, state.language);
     if (next === null) return { ...state, sub: null, create: null };
     return { ...state, create: next };
   }
@@ -109,11 +115,11 @@ export function reducer(state: AppState, action: Action, envNames: string[], two
     const next = mcpMachine(state, action);
     if (next !== null) return next;
   }
-  return reducerMain(state, action, envNames, twoColumns);
+  return reducerMain(state, action, ctx);
 }
 
 /** Результаты сервисных действий; null — действие не обработано (продолжаем машинами). */
-function applyResults(state: AppState, action: Action, envNames: string[]): AppState | null {
+function applyResults(state: AppState, action: Action, ctx: ReducerCtx): AppState | null {
   if (typeof action !== 'object') return null;
   if (action.type === 'edit-start') {
     if (state.sub !== null || state.tab !== 'envs') return state;
@@ -123,7 +129,7 @@ function applyResults(state: AppState, action: Action, envNames: string[]): AppS
   if (action.type === 'updates-result') return applyUpdatesResult(state, action);
   if (action.type === 'mcp-result' && action.scope === 'main') return applyMcpResultMain(state, action);
   // scope 'create' — проходит в createReducer
-  if (state.sub === null && state.ext !== null) return applyExtResult(state, action, envNames);
+  if (state.sub === null && state.ext !== null) return applyExtResult(state, action, ctx);
   return null;
 }
 
@@ -155,23 +161,23 @@ function applyMcpResultMain(
   return { ...state, catalog: { ...state.catalog, mcp: servers }, mcp: null, selected: Math.max(0, Math.min(state.selected, len - 1)) };
 }
 
-function applyExtResult(state: AppState, action: Action, envNames: string[]): AppState | null {
+function applyExtResult(state: AppState, action: Action, ctx: ReducerCtx): AppState | null {
   if (typeof action !== 'object') return null;
   const extView = state.ext!.view;
   const matches =
     (action.type === 'update-result' && extView === 'updating') ||
     (action.type === 'remove-result' && extView === 'removing') ||
     (action.type === 'install-result' && extView === 'installing');
-  return matches ? { ...state, ext: null, selected: clampSelected(state, envNames) } : null;
+  return matches ? { ...state, ext: null, selected: clampSelected(state, ctx) } : null;
 }
 
 /** Общие клавиши tab-машин и суб-экранов (после делегирований). */
-function reducerMain(state: AppState, action: Action, envNames: string[], twoColumns: boolean): AppState {
+function reducerMain(state: AppState, action: Action, ctx: ReducerCtx): AppState {
   if (action === 'esc') return onEsc(state);
   if (action === 'tab') return onTab(state);
-  if (action === 'up' || action === 'down') return onUpDown(state, action === 'up' ? -1 : 1, envNames);
-  if (action === 'left' || action === 'right') return onLeftRight(state, action === 'left' ? -1 : 1, twoColumns);
-  if (action === 'enter') return onEnter(state, envNames);
+  if (action === 'up' || action === 'down') return onUpDown(state, action === 'up' ? -1 : 1, ctx);
+  if (action === 'left' || action === 'right') return onLeftRight(state, action === 'left' ? -1 : 1, ctx);
+  if (action === 'enter') return onEnter(state, ctx);
   if (action === 'space') return onSpace(state);
   if ((action === 'x' || action === 'X') && state.sub === null && state.ext === null && state.mcp === null &&
       (state.tab === 'extensions' || state.tab === 'mcp')) return onX(state);
@@ -189,17 +195,17 @@ function onTab(state: AppState): AppState {
   return { ...state, tab: next, focus: 'left', selected: 0, sub: null, ext: null, mcp: null };
 }
 
-function onUpDown(state: AppState, delta: number, envNames: string[]): AppState {
+function onUpDown(state: AppState, delta: number, ctx: ReducerCtx): AppState {
   if (state.sub !== null) return state;
-  const len = listLength(state.tab, envNames.length, state.catalog.packages.length, state.catalog.mcp.length);
+  const len = listLength(state.tab, ctx.envNames.length, state.catalog.packages.length, state.catalog.mcp.length);
   if (len === 0) return state;
   const selected = Math.min(len - 1, Math.max(0, state.selected + delta));
   return { ...state, selected };
 }
 
-function onLeftRight(state: AppState, delta: number, twoColumns: boolean): AppState {
+function onLeftRight(state: AppState, delta: number, ctx: ReducerCtx): AppState {
   if (state.tab === 'settings' && state.sub === null && state.selected === LANGUAGE_ROW) return cycleLanguage(state, delta);
-  if (state.tab !== 'envs' || state.sub !== null || !twoColumns) return state;
+  if (state.tab !== 'envs' || state.sub !== null || !ctx.twoColumns) return state;
   return { ...state, focus: state.focus === 'left' ? 'right' : 'left' };
 }
 
@@ -213,9 +219,9 @@ function cycleLanguage(state: AppState, delta: number): AppState {
   return { ...state, language: next };
 }
 
-function onEnter(state: AppState, envNames: string[]): AppState {
+function onEnter(state: AppState, ctx: ReducerCtx): AppState {
   if (state.sub !== null) return state;
-  if (state.tab === 'envs') return enterEnvs(state, envNames);
+  if (state.tab === 'envs') return enterEnvs(state, ctx.envNames);
   if (state.tab === 'extensions' && state.ext === null) return enterExtensions(state);
   if (state.tab === 'mcp' && state.mcp === null) return enterMcp(state);
   return state;

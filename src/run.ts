@@ -8,7 +8,7 @@ import { computeLayout } from './layout.js';
 import { render } from './render.js';
 import { readSettings } from './create.js';
 import { readMcpServers, mcpAddCliArgs } from './mcp.js';
-import { AppState, initialState, Key, reducer, type Action, type McpFormAdd } from './state.js';
+import { AppState, initialState, Key, reducer, type Action, type McpFormAdd, type ReducerCtx } from './state.js';
 import { createTerm, Term } from './terminal.js';
 import { defaultLang, localeCodes, t } from './i18n.js';
 import { runCmd, piEnv, PI_TIMEOUT_MS } from './cmd.js';
@@ -50,6 +50,11 @@ export async function run(root: string): Promise<void> {
     return load().envs.map((e) => e.name);
   }
 
+  /** Контекст reducer: свежие имена окружений + раскладка. */
+  function rctx(names?: string[]): ReducerCtx {
+    return { envNames: names ?? envNames(), twoColumns: twoColumns() };
+  }
+
   /** Перечитывает каталог main-агента; ошибка — остаётся старый. */
   function reloadCatalog(): void {
     try {
@@ -60,7 +65,7 @@ export async function run(root: string): Promise<void> {
 
   /** Общий финал pi-команды: результат в reducer, перечитка каталога, отрисовка. */
   function afterPiCommand(r: { ok: boolean }, action: Action, targetDir: string, scope: 'main' | 'create'): void {
-    state = reducer(state, action, envNames(), twoColumns());
+    state = reducer(state, action, rctx());
     if (r.ok) {
       reloadCatalog();
       void checkUpdates(targetDir, scope);
@@ -83,7 +88,7 @@ export async function run(root: string): Promise<void> {
       }
     };
     const finish = (ok: boolean, latest: Record<string, string>): void => {
-      state = reducer(state, { type: 'updates-result', ok, latest, scope }, envNames(), twoColumns());
+      state = reducer(state, { type: 'updates-result', ok, latest, scope }, rctx());
       repaint();
     };
     if (!existsSync(npmDir)) {
@@ -126,7 +131,7 @@ export async function run(root: string): Promise<void> {
         void checkUpdates(agentDir, 'main');
       }
     }
-    state = reducer(state, { type: 'install-result', ok: r.ok, message: r.ok ? source : r.stderr || t(state.language, 'status.install-error'), sources }, envNames(), twoColumns());
+    state = reducer(state, { type: 'install-result', ok: r.ok, message: r.ok ? source : r.stderr || t(state.language, 'status.install-error'), sources }, rctx());
     repaint();
   }
 
@@ -134,7 +139,7 @@ export async function run(root: string): Promise<void> {
     const r = await runCmd('pi', mcpAddCliArgs(form), PI_TIMEOUT_MS, { cwd: process.cwd(), env: piEnv(dir) });
     const msg = r.ok ? t(state.language, 'status.mcp-added', { name: form.name }) : (r.stderr.trim() || t(state.language, 'status.mcp-add-error'));
     statusMsg = msg;
-    state = reducer(state, { type: 'mcp-result', ok: r.ok, message: msg, scope, list: scope === 'create' ? readMcpServers(dir) : undefined }, envNames(), twoColumns());
+    state = reducer(state, { type: 'mcp-result', ok: r.ok, message: msg, scope, list: scope === 'create' ? readMcpServers(dir) : undefined }, rctx());
     if (r.ok && scope === 'main') reloadCatalog();
     repaint();
   }
@@ -197,9 +202,9 @@ export async function run(root: string): Promise<void> {
     const prev: PrevSnap = { view: state.create?.view ?? null, ext: state.ext, mcp: state.mcp, tab: state.tab };
     if (key === 'e' && state.tab === 'envs' && state.sub === null && state.selected < envs.length) {
       const settings = readSettings(envs[state.selected].path) ?? {};
-      state = reducer(state, { type: 'edit-start', name: envs[state.selected].name, settings, mcp: readMcpServers(envs[state.selected].path) }, names, twoColumns());
+      state = reducer(state, { type: 'edit-start', name: envs[state.selected].name, settings, mcp: readMcpServers(envs[state.selected].path) }, rctx(names));
     } else {
-      state = reducer(state, key, names, twoColumns());
+      state = reducer(state, key, rctx(names));
     }
     if (state.colorToggle !== prevColor || state.recheckUpdates !== prevRecheck || state.language !== prevLang) {
       saveAppSettings(root, { color: state.colorToggle, recheckUpdates: state.recheckUpdates, language: state.language });
