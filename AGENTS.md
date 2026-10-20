@@ -150,14 +150,22 @@
   `deleteEnvironment` (+ запись `mcp.json` из `req.mcp` при создании),
   `envSkillDirName` (идентичность скилла: имя из каталога main-агента, `/` → `-`
   — одно имя используется в create, update и `freshEdit`)
-- `src/state.ts` — `AppState` (+ `pkgCheck`, `pkgLatest`, `ext`, `mcp`), `reducer`
-  (`updates-result` с scope `main`/`create`, `mcp-result` с scope
-  `main`/`create`), машина создания `CreateState` (views `install`/`installing`,
-  пакеты — по источникам `npm:name`, `check`/`latest` — проверка обновлений
-  окружения, `mcp`/`mcp-op`/`mcp-submitting`/`mcp-confirm-remove` — MCP в форме),
-  `ExtState` вкладки «Расширения» (каталог, установка, обновление, удаление;
-  `query` — поиск), `McpTab` вкладки «MCP» (`McpFormAdd` — форма добавления,
-  `mcpFormStep`/`mcpFormRows`, `mcpListNames`) (чистые)
+- `src/state.ts` — ядро состояния: `AppState` (+ `pkgCheck`, `pkgLatest`, `ext`,
+  `mcp`), `Action`, `ReducerCtx` (`envNames` + `twoColumns`), `reducer` —
+  диспетчер (`applyResults` → `createReducer` → `extMachine` → `mcpMachine` →
+  `reducerMain`: esc/tab/↑↓/←→/Enter/Space/X); ре-экспортирует всё из
+  `state-*.ts` (внешние импорты `./state.js` не менялись) (чистые)
+- `src/state-form.ts` — `CreateState`/`freshCreate`/`freshEdit`, строки формы
+  (`ROW_*`, `FORM_LAST`), `formReducer`, `listViewReducer`, проходы списков
+  (чистые)
+- `src/state-create.ts` — create-машина: `createResultReducer` (результаты
+  updates/install/create/delete/mcp), таблица `CREATE_VIEWS` view → handler
+  (views `install`/`installing`, `check`/`latest`, `mcp`/`mcp-op`/
+  `mcp-submitting`/`mcp-confirm-remove`) (чистые)
+- `src/state-ext.ts` — `ExtState`/`freshExt` вкладки «Расширения» (каталог,
+  установка, обновление, удаление; `query` — поиск) + `extMachine` (чистые)
+- `src/state-mcp.ts` — `McpTab`/`freshMcpForm` вкладки «MCP», `McpFormAdd`,
+  `mcpFormStep`/`mcpFormRows`, `mcpListNames` + `mcpMachine` (чистые)
 - `src/render.ts` — `render(args)` → строки ANSI, `pkgMarker` (вкладка) и
   `formPkgMarker` (форма, по карте outdated окружения), `scrollTop` (окно списка),
   `visibleWidth`/`truncateVisible`/`wideCount`, `mcpInfoLines` (инфо-панель
@@ -167,14 +175,23 @@
   окружения, список окружений + инфо-панель детализации (чистые)
 - `src/appsettings.ts` — `loadAppSettings`/`saveAppSettings`
   (настройки приложения в `<root>/.pi-env.json`)
-- `src/run.ts` — цикл приложения, `runCmd`, `checkUpdates(targetDir, scope)`
-  (`npm outdated` по каталогу main-агента или окружения),
-  `doUpdateAll(targetDir, scope)`/`doUpdateOne`/`doRemove`
-  (`pi update`/`pi remove`), `doMcpAdd(dir, form, scope)` (`pi mcp add` в
-  main-агента или окружение), sync-копирование/удаление MCP
-  (`copyMcpEntry`/`removeMcpEntry`), `doInstall` (`pi install` в main-агента или
-  окружение), `loadPackageCatalog`, `runPassthrough(envPath, args, lang)` —
-  неинтерактивный проброс (spawn `pi` с `PI_CODING_AGENT_DIR`, код выхода пробрасывается)
+- `src/run.ts` — цикл приложения: `applyKey` (reducer + снимок `PrevSnap`,
+  сохранение настроек), обёртки команд (`checkUpdates`, `doUpdateAll`,
+  `doUpdateOne`, `doRemove`, `doInstall`, `doMcpAdd`, `loadPackageCatalog`)
+  поверх `pi-actions.ts`/`cmd.ts`, объект `Loop` для побочных эффектов
+- `src/cmd.ts` — `runCmd` (spawn с таймаутами `PI_TIMEOUT_MS`/`NPM_TIMEOUT_MS`),
+  `piEnv(dir)` — окружение процесса с `PI_CODING_AGENT_DIR` (чистая сборка аргументов)
+- `src/pi-actions.ts` — `piUpdateAll`/`piUpdateOne`/`piRemove`/`piInstall`,
+  `npmOutdated` (разбор `npm outdated --json`), `buildCreateRequest` (CreateState
+  → `CreateRequest`) (чистые сборки, тонкие обёртки spawn)
+- `src/run-side.ts` — `runSideEffects(loop, envs, prev)`: хуки переходов
+  (`hooksCreate`/`hooksExt`/`hooksMcp`, recheck вкладки «Расширения»),
+  sync-копирование/удаление MCP (`copyMcpEntry`/`removeMcpEntry`),
+  `doSubmit`/`doDelete` (create.js), `doRun` (launchPi); интерфейс `Loop` —
+  окно в цикл (state/setState/status/обёртки команд)
+- `src/pirun.ts` — `launchPi` (дочерний `pi` с передачей терминала, возврат в
+  TUI по exit) и `runPassthrough(envPath, args, lang)` — неинтерактивный проброс
+  (код выхода пробрасывается)
 - `test/*.test.ts` — тесты чистого ядра (включая `mcp.test.ts`,
   `state-mcp.test.ts`, `state-create-mcp.test.ts`, `render-mcp.test.ts`)
 

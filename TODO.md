@@ -66,15 +66,18 @@
   `renderCreate(cr, ctx)`, `renderExtTab(ext, ctx)`,
   `renderEnvList(envs, state, ctx)`, `renderSettings/renderAbout/renderFooter`;
   `render()` — только диспетчер (таб-бар + вызов секции + сборка колонок/футера).
-- [ ] `state.ts` (749): `reducer` → `reducerMain` (вкладки/суб-экраны) +
-  делегирование; `createReducer` (135 строк) — таблица
-  view → обработчик (по одному < 20 строк).
-- [ ] `run.ts` (421): `dispatch` (≈110 строк) → `applyKey` (reducer +
-  имена) + `runSideEffects` (хуки переходов: removing/updating/
-  installing/submitting/deleting/run).
-- [ ] F1: `reducer(state, action, envNames, twoColumns)` — 4 аргумента;
-  при разбивке (пункт выше) упаковать `(envNames, twoColumns)` в
-  `Ctx` и пересмотреть все вызовы + тесты. Отдельным пунктом не делать.
+- [x] `state.ts` (было 749, стало 271): `reducer` — диспетчер (`applyResults` →
+  `createReducer` → `extMachine` → `mcpMachine` → `reducerMain`); вынесены
+  `state-mcp.ts` (154), `state-form.ts` (173), `state-create.ts` (217),
+  `state-ext.ts` (62); `createReducer` — таблица `CREATE_VIEWS` view → handler.
+- [x] `run.ts` (было 421, стало 243): `dispatch` → `applyKey` (reducer +
+  снимок `PrevSnap`) + `runSideEffects` в `run-side.ts` (172) через интерфейс
+  `Loop`; pi/npm-обёртки — `pi-actions.ts` (50) и `cmd.ts` (44);
+  `launchPi`/`runPassthrough` — `pirun.ts` (46).
+- [x] F1: `reducer(state, action, ctx: ReducerCtx)` — `ReducerCtx`
+  (`envNames` + `twoColumns`) вместо 4-х аргументов; вызовы и тесты обновлены.
+  (исходная формулировка: упаковать `(envNames, twoColumns)` в контекст
+  и пересмотреть все вызовы + тесты.)
 
 ## 6. Фичи (этап 3)
 
