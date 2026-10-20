@@ -2,7 +2,8 @@
 import { homedir } from 'node:os';
 import { statSync } from 'node:fs';
 import { join } from 'node:path';
-import { run, runPassthrough } from './run.js';
+import { run } from './run.js';
+import { runPassthrough } from './pirun.js';
 import { parsePiEnvArgs } from './cli.js';
 import { loadAppSettings } from './appsettings.js';
 import { t, defaultLang, localeCodes } from './i18n.js';
