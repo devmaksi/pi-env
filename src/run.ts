@@ -4,15 +4,16 @@ import { join } from 'node:path';
 import { spawn } from 'node:child_process';
 import { scan, Environment } from './environments.js';
 import { loadAppSettings, saveAppSettings } from './appsettings.js';
-import { loadCatalog, interpretOutdated, fetchPackageCatalog, normalizePkgSource, ToolItem, SkillItem, type CatalogPkg } from './catalog.js';
+import { loadCatalog, fetchPackageCatalog, normalizePkgSource, type CatalogPkg } from './catalog.js';
 import { computeLayout } from './layout.js';
 import { render } from './render.js';
-import { createEnvironment, readSettings, updateEnvironment, deleteEnvironment, type CreateRequest } from './create.js';
+import { createEnvironment, readSettings, updateEnvironment, deleteEnvironment } from './create.js';
 import { readMcpServers, mcpAddCliArgs, copyMcpEntry, removeMcpEntry, type McpServer } from './mcp.js';
 import { AppState, initialState, Key, reducer, type Action, type McpFormAdd } from './state.js';
 import { createTerm, Term } from './terminal.js';
 import { defaultLang, localeCodes, t } from './i18n.js';
-import { runCmd, piEnv, PI_TIMEOUT_MS, NPM_TIMEOUT_MS, type CmdResult } from './cmd.js';
+import { runCmd, piEnv, PI_TIMEOUT_MS } from './cmd.js';
+import { piUpdateAll, piUpdateOne, piRemove, piInstall, npmOutdated, buildCreateRequest } from './pi-actions.js';
 
 function defaultAgentDir(): string {
   return process.env.PI_CODING_AGENT_DIR ?? join(homedir(), '.pi', 'agent');
@@ -99,10 +100,6 @@ export async function run(root: string): Promise<void> {
     } catch { /* каталог не перечитан — остаётся старый */ }
   }
 
-  /** pi <args> в main-агенте. */
-  async function runPi(args: string[]): Promise<{ ok: boolean; stdout: string; stderr: string }> {
-    return runCmd('pi', args, PI_TIMEOUT_MS, { cwd: process.cwd(), env: piEnv(agentDir) });
-  }
 
   /** Каталог агента для формы: окружение (edit) или main-агент (create, окружение ещё не существует). */
   function formTargetDir(): string {
@@ -143,35 +140,34 @@ export async function run(root: string): Promise<void> {
       return;
     }
     setChecking();
-    const raw = await runCmd('npm', ['outdated', '--json', '--prefix', npmDir], NPM_TIMEOUT_MS);
-    const r = interpretOutdated(raw.stdout);
+    const r = await npmOutdated(npmDir);
     finish(r.ok, r.latest);
   }
 
   /** pi update --extensions: обновление всех установленных пакетов в папке агента targetDir. */
   async function doUpdateAll(targetDir: string, scope: 'main' | 'create'): Promise<void> {
-    const r = await runCmd('pi', ['update', '--extensions'], PI_TIMEOUT_MS, { cwd: process.cwd(), env: piEnv(targetDir) });
+    const r = await piUpdateAll(targetDir);
     if (r.ok) statusMsg = t(state.language, 'status.ext-updated');
     afterPiCommand(r, { type: 'update-result', ok: r.ok, message: r.ok ? t(state.language, 'status.ext-updated') : r.stderr || t(state.language, 'status.update-error') }, targetDir, scope);
   }
 
   /** pi remove <source>: полное удаление пакета из main-агента. */
   async function doRemove(source: string): Promise<void> {
-    const r = await runPi(['remove', source]);
+    const r = await piRemove(agentDir, source);
     if (r.ok) statusMsg = t(state.language, 'status.ext-removed', { name: source });
     afterPiCommand(r, { type: 'remove-result', ok: r.ok, message: r.ok ? source : r.stderr || t(state.language, 'status.remove-error') }, agentDir, 'main');
   }
 
   /** pi update <source>: обновление одного пакета main-агента. */
   async function doUpdateOne(source: string): Promise<void> {
-    const r = await runPi(['update', source]);
+    const r = await piUpdateOne(agentDir, source);
     if (r.ok) statusMsg = t(state.language, 'status.updated', { name: source });
     afterPiCommand(r, { type: 'update-result', ok: r.ok, message: r.ok ? source : r.stderr || t(state.language, 'status.update-error') }, agentDir, 'main');
   }
 
   /** pi install <source>: установка пакета в указанный каталог агента (main или окружение). */
   async function doInstall(installDir: string, source: string, envName: string | null): Promise<void> {
-    const r = await runCmd('pi', ['install', source], PI_TIMEOUT_MS, { cwd: process.cwd(), env: piEnv(installDir) });
+    const r = await piInstall(installDir, source);
     if (r.ok) statusMsg = t(state.language, 'status.installed', { name: source });
     let sources: string[] | undefined;
     if (r.ok) {
@@ -313,21 +309,7 @@ export async function run(root: string): Promise<void> {
 
     if (state.create && state.create.view === 'submitting') {
       const cr = state.create;
-      const req: CreateRequest = {
-        name: cr.name,
-        defaultProvider: cr.provider ?? undefined,
-        defaultModel: cr.model ?? undefined,
-        tools: cr.tools
-          .map((n) => catalog.tools.find((t) => t.name === n))
-          .filter((t): t is ToolItem => t !== undefined),
-        skills: cr.skills
-          .map((n) => catalog.skills.find((s) => s.name === n))
-          .filter((s): s is SkillItem => s !== undefined),
-        packages: cr.packages,
-        mcp: cr.mcp
-          .map((n) => catalog.mcp.find((s) => s.name === n))
-          .filter((s): s is McpServer => s !== undefined),
-      };
+      const req = buildCreateRequest(catalog, cr);
       const res = cr.mode === 'edit'
         ? updateEnvironment(root, cr.origName ?? cr.name, req, { allTools: catalog.tools, allSkills: catalog.skills, agentDir }, state.language)
         : createEnvironment(root, req, agentDir, state.language);
