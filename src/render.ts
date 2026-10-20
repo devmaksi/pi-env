@@ -3,8 +3,8 @@ import { computeLayout, NARROW_MIN, LOW_MIN, type Layout } from './layout.js';
 import { type AppState, type PkgCheck } from './state.js';
 import { renderCreate, renderExtTab, renderEnvList, renderMcpTab, type Ctx, type Section } from './sections.js';
 import type { PkgItem, CatalogPkg } from './catalog.js';
-import type { McpServer } from './mcp.js';
-import { t, nativeName } from './i18n.js';
+import type { McpLiveStatus, McpServer } from './mcp.js';
+import { t, nativeName, type StrKey } from './i18n.js';
 import { createRequire } from 'node:module';
 
 export const ANSI = {
@@ -193,6 +193,7 @@ function renderSettings(state: AppState, ctx: Ctx): Section {
     t(ctx.lang, 'settings.root', { root: ctx.root }),
     t(ctx.lang, 'settings.color', { m: state.colorToggle ? 'x' : ' ' }),
     t(ctx.lang, 'settings.recheck', { m: state.recheckUpdates ? 'x' : ' ' }),
+    t(ctx.lang, 'settings.recheck-mcp', { m: state.recheckMcp ? 'x' : ' ' }),
     t(ctx.lang, 'settings.language', { name: nativeName(state.language) }),
   ];
   items.forEach((item, i) => {
@@ -205,6 +206,7 @@ function renderSettings(state: AppState, ctx: Ctx): Section {
   });
   right.push(c(ANSI.dim, ctx.useColor) + t(ctx.lang, 'settings.hint.space') + c(ANSI.reset, ctx.useColor));
   right.push(c(ANSI.dim, ctx.useColor) + t(ctx.lang, 'settings.hint.recheck') + c(ANSI.reset, ctx.useColor));
+  right.push(c(ANSI.dim, ctx.useColor) + t(ctx.lang, 'settings.hint.recheck-mcp') + c(ANSI.reset, ctx.useColor));
   right.push(c(ANSI.dim, ctx.useColor) + t(ctx.lang, 'settings.hint.language') + c(ANSI.reset, ctx.useColor));
   return { left, right, cursorRow: state.selected };
 }
@@ -258,22 +260,35 @@ export function listRow(i: number, cursor: number, text: string, w: number, useC
 
 /** Инфо-панель пакета для правой колонки. */
 /** Инфо-панель MCP-сервера для правой колонки. */
-export function mcpInfoLines(s: McpServer, L: Layout, useColor: boolean, lang: string = 'ru'): string[] {
-  const lines = [
-    c(ANSI.bold, useColor) + s.name + c(ANSI.reset, useColor),
-    t(lang, 'mcp.info.type', { v: s.type }),
-  ];
-  if (s.type === 'stdio') {
-    const cmd = [s.command ?? '', ...s.args].filter((x) => x !== '').join(' ');
-    if (cmd !== '') lines.push(t(lang, 'mcp.info.command', { v: cmd }));
-    for (const [k, v] of Object.entries(s.env)) lines.push(t(lang, 'mcp.info.env', { v: k + '=' + v }));
-    if (s.cwd !== undefined) lines.push(t(lang, 'mcp.info.cwd', { v: s.cwd }));
-  } else if (s.url !== undefined) {
-    lines.push(t(lang, 'mcp.info.url', { v: s.url }));
+export function mcpInfoLines(
+  s: McpServer | null,
+  L: Layout,
+  useColor: boolean,
+  lang: string = 'ru',
+  live: McpLiveStatus | null = null,
+): string[] {
+  const lines = [c(ANSI.bold, useColor) + (s?.name ?? live?.name ?? '') + c(ANSI.reset, useColor)];
+  if (s !== null) {
+    lines.push(t(lang, 'mcp.info.type', { v: s.type }));
+    if (s.type === 'stdio') {
+      const cmd = [s.command ?? '', ...s.args].filter((x) => x !== '').join(' ');
+      if (cmd !== '') lines.push(t(lang, 'mcp.info.command', { v: cmd }));
+      for (const [k, v] of Object.entries(s.env)) lines.push(t(lang, 'mcp.info.env', { v: k + '=' + v }));
+      if (s.cwd !== undefined) lines.push(t(lang, 'mcp.info.cwd', { v: s.cwd }));
+    } else if (s.url !== undefined) {
+      lines.push(t(lang, 'mcp.info.url', { v: s.url }));
+    }
+    if (s.exposure !== undefined) lines.push(t(lang, 'mcp.info.exposure', { v: s.exposure }));
+    if (s.enabled !== undefined) lines.push(t(lang, 'mcp.info.enabled', { m: s.enabled ? '✓' : '—' }));
+    if (s.description !== undefined) lines.push(truncateVisible(s.description, L.rightWidth - 1));
   }
-  if (s.exposure !== undefined) lines.push(t(lang, 'mcp.info.exposure', { v: s.exposure }));
-  if (s.enabled !== undefined) lines.push(t(lang, 'mcp.info.enabled', { m: s.enabled ? '✓' : '—' }));
-  if (s.description !== undefined) lines.push(truncateVisible(s.description, L.rightWidth - 1));
+  if (live !== null) {
+    const state = t(lang, ('mcp.state.' + live.state) as StrKey, { n: live.tools.length });
+    lines.push(t(lang, 'mcp.info.state', { v: state }));
+    if (s === null && live.transport !== '') lines.push(t(lang, 'mcp.info.transport', { v: live.transport }));
+    if (live.error !== undefined) lines.push(t(lang, 'mcp.info.error', { v: live.error }));
+    if (live.override !== undefined) lines.push(t(lang, 'mcp.info.override', { v: live.override }));
+  }
   return lines;
 }
 

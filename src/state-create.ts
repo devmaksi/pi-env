@@ -55,6 +55,11 @@ function createResultReducer(c: CreateState, action: Action, catalog: Catalog): 
       error: action.ok ? null : action.message,
     };
   }
+  // Живой статус: успех — по содержимому stdout (pi mcp list выходит 1 при неподключённых).
+  if (action.type === 'mcp-live-result') {
+    if (action.report === null) return { ...c, mcpCheck: 'error' };
+    return { ...c, mcpCheck: 'done', mcpLive: action.report };
+  }
   return c;
 }
 
@@ -133,6 +138,7 @@ function mcpEditPick(c: CreateState, name: string | undefined, catalog: Catalog,
 }
 
 function viewMcp(c: CreateState, action: Action, catalog: Catalog): CreateState {
+  if (action === 'R') return c.mcpCheck === 'checking' ? c : { ...c, mcpCheck: 'checking' };
   const names = c.mode === 'edit' ? mcpListNames(c.envMcp, catalog.mcp) : catalog.mcp.map((s) => s.name);
   const inEnv = (n: string) => c.envMcp.some((s) => s.name === n);
   const total = c.mode === 'edit' ? names.length + 1 : names.length;

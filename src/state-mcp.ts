@@ -1,4 +1,4 @@
-import { validateMcpForm, type McpFormFields, type McpServer, type McpType } from './mcp.js';
+import { validateMcpForm, type McpFormFields, type McpLiveReport, type McpServer, type McpType } from './mcp.js';
 import type { AppState, Action } from './state.js';
 
 /** Печатаемый символ (не управляющий): 0x21..0x7e. */
@@ -151,4 +151,22 @@ export function mcpMachine(state: AppState, action: Action): AppState | null {
   }
   // submitting/removing — клавиши процесс не отменяют
   return state;
+}
+
+/**
+ * Результат проверки живого статуса (вкладка «MCP»): отчёт — по содержимому stdout
+ * (pi mcp list выходит 1 при неподключённых серверах); null — ошибка проверки,
+ * прежний отчёт остаётся видимым.
+ */
+export function applyMcpLiveMain(
+  state: AppState,
+  action: { report: McpLiveReport | null },
+): AppState {
+  if (action.report === null) return { ...state, mcpCheck: 'error' };
+  return { ...state, mcpCheck: 'done', mcpLive: action.report };
+}
+/** R — перезапуск проверки живого статуса: только когда виден список вкладки «MCP». */
+export function onRefreshMcp(state: AppState): AppState {
+  if (state.tab !== 'mcp' || state.sub !== null || state.ext !== null || state.mcp !== null) return state;
+  return state.mcpCheck === 'checking' ? state : { ...state, mcpCheck: 'checking' };
 }

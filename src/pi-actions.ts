@@ -1,4 +1,4 @@
-import { runCmd, piEnv, PI_TIMEOUT_MS, NPM_TIMEOUT_MS, type CmdResult } from './cmd.js';
+import { runCmd, piEnv, PI_TIMEOUT_MS, NPM_TIMEOUT_MS, MCP_TIMEOUT_MS, type CmdResult } from './cmd.js';
 import { interpretOutdated, type Catalog, type ToolItem, type SkillItem } from './catalog.js';
 import type { CreateRequest } from './create.js';
 import type { CreateState, McpFormAdd } from './state.js';
@@ -19,9 +19,17 @@ export function piRemove(dir: string, source: string): Promise<CmdResult> {
   return runCmd('pi', ['remove', source], PI_TIMEOUT_MS, { cwd: process.cwd(), env: piEnv(dir) });
 }
 
-/** pi install <source>: установка пакета в указанный каталог агента (main или окружение). */
+/** pi mcp add <server> ...: добавление сервера в mcp.json каталога dir. */
 export function piMcpAdd(dir: string, form: McpFormAdd): Promise<CmdResult> {
   return runCmd('pi', mcpAddCliArgs(form), PI_TIMEOUT_MS, { cwd: process.cwd(), env: piEnv(dir) });
+}
+
+/**
+ * pi mcp list --json: живой статус серверов каталога dir.
+ * Код выхода 1 при неподключённых серверах — норма, успех смотрим по stdout.
+ */
+export function piMcpList(dir: string): Promise<CmdResult> {
+  return runCmd('pi', ['mcp', 'list', '--json'], MCP_TIMEOUT_MS, { cwd: process.cwd(), env: piEnv(dir) });
 }
 
 export function piInstall(dir: string, source: string): Promise<CmdResult> {

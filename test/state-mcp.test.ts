@@ -158,3 +158,40 @@ test('freshMcpForm: значения по умолчанию', () => {
   assert.equal(f.select, null);
   assert.equal(f.error, null);
 });
+
+// --- живой статус MCP на вкладке ---
+
+test('initialState: mcpCheck idle, mcpLive null', () => {
+  assert.equal(initialState(catalog).mcpCheck, 'idle');
+  assert.equal(initialState(catalog).mcpLive, null);
+});
+
+test('R на вкладке «MCP» (список) — запуск проверки', () => {
+  const next = reducer(tabState(), 'R', rc(envs(0)));
+  assert.equal(next.mcpCheck, 'checking');
+});
+
+test('R во время проверки — состояние не меняется (второй запуск не запускается)', () => {
+  const s = tabState({ mcpCheck: 'checking' });
+  const next = reducer(s, 'R', rc(envs(0)));
+  assert.equal(next.mcpCheck, 'checking');
+});
+
+test('R на другой вкладке — игнор', () => {
+  const next = reducer({ ...initialState(catalog), tab: 'envs' }, 'R', rc(envs(1)));
+  assert.equal(next.mcpCheck, 'idle');
+});
+
+test('mcp-live-result (main) — отчёт готов, статус done', () => {
+  const report = { servers: [{ name: 'fs', scope: 'global', source: '/a', enabled: true, exposure: 'codemode', transport: 'npx', state: 'connected' as const, tools: ['read'] }], errors: [] };
+  const next = reducer(tabState({ mcpCheck: 'checking' }), { type: 'mcp-live-result', ok: true, message: '', scope: 'main', report }, rc(envs(0)));
+  assert.equal(next.mcpCheck, 'done');
+  assert.deepEqual(next.mcpLive, report);
+});
+
+test('mcp-live-result (main) с null — статус error, прежний отчёт остаётся', () => {
+  const prev = { servers: [], errors: [] };
+  const next = reducer(tabState({ mcpCheck: 'checking', mcpLive: prev }), { type: 'mcp-live-result', ok: false, message: 'boom', scope: 'main', report: null }, rc(envs(0)));
+  assert.equal(next.mcpCheck, 'error');
+  assert.deepEqual(next.mcpLive, prev);
+});

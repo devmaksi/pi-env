@@ -1,7 +1,7 @@
 import { validateName, envSkillDirName, type EnvSettings } from './create.js';
 import { normalizePkgSource, type Catalog, type CatalogPkg } from './catalog.js';
 import { isPrintable, type McpFormAdd } from './state-mcp.js';
-import type { McpServer } from './mcp.js';
+import type { McpLiveReport, McpServer } from './mcp.js';
 import type { Action, PkgCheck } from './state.js';
 
 export type CreateView = 'form' | 'providers' | 'models' | 'tools' | 'packages' | 'skills' | 'submitting' | 'updating' | 'confirm-delete' | 'deleting' | 'confirm-remove' | 'removing' | 'install' | 'installing' | 'mcp' | 'mcp-op' | 'mcp-submitting' | 'mcp-confirm-remove';
@@ -39,6 +39,9 @@ export interface CreateState {
   mcp: string[];
   mcpOp: { name: string; kind: 'copy' | 'remove' } | null;
   removingMcp: string | null;
+  /** Проверка живого статуса MCP в списке формы и её результат. */
+  mcpCheck: PkgCheck;
+  mcpLive: McpLiveReport | null;
 }
 
 /** Индексы строк формы. */
@@ -66,7 +69,7 @@ export function freshCreate(): CreateState {
     tools: [], packages: [], skills: [], view: 'form', error: null, done: null,
     removing: null, installCatalog: [], installStatus: 'idle', installing: null, query: '',
     check: 'idle', latest: {},
-    mcpAdd: null, envMcp: [], mcp: [], mcpOp: null, removingMcp: null,
+    mcpAdd: null, envMcp: [], mcp: [], mcpOp: null, removingMcp: null, mcpCheck: 'idle', mcpLive: null,
   };
 }
 
@@ -90,7 +93,7 @@ export function freshEdit(name: string, settings: EnvSettings, catalog: Catalog,
     done: null,
     removing: null, installCatalog: [], installStatus: 'idle', installing: null, query: '',
     check: 'idle', latest: {},
-    mcpAdd: null, envMcp, mcp: [], mcpOp: null, removingMcp: null,
+    mcpAdd: null, envMcp, mcp: [], mcpOp: null, removingMcp: null, mcpCheck: 'idle', mcpLive: null,
   };
 }
 
