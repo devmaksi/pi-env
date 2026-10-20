@@ -1,8 +1,8 @@
 import { runCmd, piEnv, PI_TIMEOUT_MS, NPM_TIMEOUT_MS, type CmdResult } from './cmd.js';
 import { interpretOutdated, type Catalog, type ToolItem, type SkillItem } from './catalog.js';
 import type { CreateRequest } from './create.js';
-import type { CreateState } from './state-form.js';
-import type { McpServer } from './mcp.js';
+import type { CreateState, McpFormAdd } from './state.js';
+import { mcpAddCliArgs, type McpServer } from './mcp.js';
 
 /** pi update --extensions: обновление всех установленных пакетов в папке агента dir. */
 export function piUpdateAll(dir: string): Promise<CmdResult> {
@@ -20,6 +20,10 @@ export function piRemove(dir: string, source: string): Promise<CmdResult> {
 }
 
 /** pi install <source>: установка пакета в указанный каталог агента (main или окружение). */
+export function piMcpAdd(dir: string, form: McpFormAdd): Promise<CmdResult> {
+  return runCmd('pi', mcpAddCliArgs(form), PI_TIMEOUT_MS, { cwd: process.cwd(), env: piEnv(dir) });
+}
+
 export function piInstall(dir: string, source: string): Promise<CmdResult> {
   return runCmd('pi', ['install', source], PI_TIMEOUT_MS, { cwd: process.cwd(), env: piEnv(dir) });
 }

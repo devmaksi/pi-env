@@ -1,6 +1,6 @@
 import { validateName, envSkillDirName, type EnvSettings } from './create.js';
 import { normalizePkgSource, type Catalog, type CatalogPkg } from './catalog.js';
-import { isPrintable } from './state-mcp.js';
+import { isPrintable, type McpFormAdd } from './state-mcp.js';
 import type { McpServer } from './mcp.js';
 import type { Action, PkgCheck } from './state.js';
 
@@ -33,7 +33,7 @@ export interface CreateState {
   removing: string | null;
   check: PkgCheck;
   latest: Record<string, string>;
-  mcpAdd: import('./state-mcp.js').McpFormAdd | null;
+  mcpAdd: McpFormAdd | null;
   envMcp: McpServer[];
   /** Имена MCP, отмеченные для окружения в режиме создания. */
   mcp: string[];

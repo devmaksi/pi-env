@@ -6,7 +6,7 @@ import {
   ROW_NAME, ROW_MODEL, ROW_TOOLS, ROW_PACKAGES, ROW_SKILLS, ROW_MCP,
   type CreateState, type CreateView,
 } from './state-form.js';
-import type { Action } from './state.js';
+import { isResultAction, type Action } from './state.js';
 
 type ViewHandler = (c: CreateState, action: Action, catalog: Catalog, envNames: string[], language: string) => CreateState | null;
 
@@ -211,7 +211,6 @@ export function createReducer(
   envNames: string[],
   language: string,
 ): CreateState | null {
-  const resolved = createResultReducer(c, action, catalog);
-  if (resolved !== c) return resolved;
+  if (isResultAction(action)) return createResultReducer(c, action, catalog);
   return CREATE_VIEWS[c.view](c, action, catalog, envNames, language);
 }

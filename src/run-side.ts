@@ -2,7 +2,7 @@ import { join } from 'node:path';
 import { createEnvironment, updateEnvironment, deleteEnvironment } from './create.js';
 import { copyMcpEntry, removeMcpEntry, readMcpServers } from './mcp.js';
 import { t } from './i18n.js';
-import { reducer } from './state.js';
+import { reducer, makeCtx } from './state.js';
 import { buildCreateRequest } from './pi-actions.js';
 import { launchPi } from './pirun.js';
 import type { Catalog } from './catalog.js';
@@ -42,7 +42,7 @@ export interface Loop {
 
 /** Контекст reducer для side-effect-хуков. */
 function rctx(loop: Loop, envNames: string[]): ReducerCtx {
-  return { envNames, twoColumns: loop.twoColumns() };
+  return makeCtx(envNames, loop.twoColumns());
 }
 
 /** Хуки переходов после reducer — 1-в-1 с телом прежнего dispatch. */
@@ -142,9 +142,10 @@ function hooksMcp(loop: Loop, prevMcp: McpTab | null, names: string[]): void {
 function doSubmit(loop: Loop, names: string[]): void {
   const cr = loop.state().create;
   if (cr === null || cr.view !== 'submitting') return;
-  const req = buildCreateRequest(loop.catalog(), cr);
+  const cat = loop.catalog();
+  const req = buildCreateRequest(cat, cr);
   const res = cr.mode === 'edit'
-    ? updateEnvironment(loop.root, cr.origName ?? cr.name, req, { allTools: loop.catalog().tools, allSkills: loop.catalog().skills, agentDir: loop.agentDir }, loop.state().language)
+    ? updateEnvironment(loop.root, cr.origName ?? cr.name, req, { allTools: cat.tools, allSkills: cat.skills, agentDir: loop.agentDir }, loop.state().language)
     : createEnvironment(loop.root, req, loop.agentDir, loop.state().language);
   const message = res.ok ? res.path : res.error;
   loop.setState(reducer(loop.state(), { type: 'create-result', ok: res.ok, message }, rctx(loop, names)));

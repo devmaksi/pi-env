@@ -97,6 +97,16 @@ export interface ReducerCtx {
   twoColumns: boolean;
 }
 
+/** Общий конструктор контекста для run.ts и run-side.ts. */
+export function makeCtx(envNames: string[], twoColumns: boolean): ReducerCtx {
+  return { envNames, twoColumns };
+}
+
+/** Действие — результат сервисной команды (не клавиша): явная проверка для createReducer. */
+export function isResultAction(action: Action): action is Extract<Action, { type: `${string}-result` }> {
+  return typeof action !== 'string' && action.type.endsWith('-result');
+}
+
 /** Переход состояния по действию. Чистая функция. Порядок веток 1-в-1 с прежним reducer. */
 export function reducer(state: AppState, action: Action, ctx: ReducerCtx): AppState {
   if (action === 'ctrlc') return { ...state, quit: true };

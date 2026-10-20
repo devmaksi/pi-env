@@ -156,8 +156,8 @@
   `reducerMain`: esc/tab/↑↓/←→/Enter/Space/X); ре-экспортирует всё из
   `state-*.ts` (внешние импорты `./state.js` не менялись) (чистые)
 - `src/state-form.ts` — `CreateState`/`freshCreate`/`freshEdit`, строки формы
-  (`ROW_*`, `FORM_LAST`), `formReducer`, `listViewReducer`, проходы списков
-  (чистые)
+  (`ROW_*`, `formRows`), `formReducer`, `listViewReducer`, `packageListSources`,
+  `clampToLen` (чистые)
 - `src/state-create.ts` — create-машина: `createResultReducer` (результаты
   updates/install/create/delete/mcp), таблица `CREATE_VIEWS` view → handler
   (views `install`/`installing`, `check`/`latest`, `mcp`/`mcp-op`/
@@ -181,9 +181,10 @@
   поверх `pi-actions.ts`/`cmd.ts`, объект `Loop` для побочных эффектов
 - `src/cmd.ts` — `runCmd` (spawn с таймаутами `PI_TIMEOUT_MS`/`NPM_TIMEOUT_MS`),
   `piEnv(dir)` — окружение процесса с `PI_CODING_AGENT_DIR` (чистая сборка аргументов)
-- `src/pi-actions.ts` — `piUpdateAll`/`piUpdateOne`/`piRemove`/`piInstall`,
-  `npmOutdated` (разбор `npm outdated --json`), `buildCreateRequest` (CreateState
-  → `CreateRequest`) (чистые сборки, тонкие обёртки spawn)
+- `src/pi-actions.ts` — `piUpdateAll`/`piUpdateOne`/`piRemove`/`piInstall`/
+  `piMcpAdd(dir, form)`, `npmOutdated` (разбор `npm outdated --json`),
+  `buildCreateRequest` (CreateState → `CreateRequest`) (чистые сборки, тонкие
+  обёртки spawn)
 - `src/run-side.ts` — `runSideEffects(loop, envs, prev)`: хуки переходов
   (`hooksCreate`/`hooksExt`/`hooksMcp`, recheck вкладки «Расширения»),
   sync-копирование/удаление MCP (`copyMcpEntry`/`removeMcpEntry`),

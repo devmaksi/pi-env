@@ -7,13 +7,11 @@ import { loadCatalog, fetchPackageCatalog, normalizePkgSource, type CatalogPkg }
 import { computeLayout } from './layout.js';
 import { render } from './render.js';
 import { readSettings } from './create.js';
-import { readMcpServers, mcpAddCliArgs } from './mcp.js';
-import { AppState, initialState, Key, reducer, type Action, type McpFormAdd, type ReducerCtx } from './state.js';
+import { readMcpServers } from './mcp.js';
+import { AppState, initialState, Key, reducer, type Action, type McpFormAdd, makeCtx, type ReducerCtx } from './state.js';
 import { createTerm, Term } from './terminal.js';
 import { defaultLang, localeCodes, t } from './i18n.js';
-import { runCmd, piEnv, PI_TIMEOUT_MS } from './cmd.js';
-import { piUpdateAll, piUpdateOne, piRemove, piInstall, npmOutdated } from './pi-actions.js';
-import { launchPi } from './pirun.js';
+import { piUpdateAll, piUpdateOne, piRemove, piInstall, piMcpAdd, npmOutdated } from './pi-actions.js';
 import { runSideEffects, type Loop, type PrevSnap } from './run-side.js';
 
 function defaultAgentDir(): string {
@@ -52,7 +50,7 @@ export async function run(root: string): Promise<void> {
 
   /** Контекст reducer: свежие имена окружений + раскладка. */
   function rctx(names?: string[]): ReducerCtx {
-    return { envNames: names ?? envNames(), twoColumns: twoColumns() };
+    return makeCtx(names ?? envNames(), twoColumns());
   }
 
   /** Перечитывает каталог main-агента; ошибка — остаётся старый. */
@@ -136,7 +134,7 @@ export async function run(root: string): Promise<void> {
   }
 
   async function doMcpAdd(dir: string, form: McpFormAdd, scope: 'main' | 'create'): Promise<void> {
-    const r = await runCmd('pi', mcpAddCliArgs(form), PI_TIMEOUT_MS, { cwd: process.cwd(), env: piEnv(dir) });
+    const r = await piMcpAdd(dir, form);
     const msg = r.ok ? t(state.language, 'status.mcp-added', { name: form.name }) : (r.stderr.trim() || t(state.language, 'status.mcp-add-error'));
     statusMsg = msg;
     state = reducer(state, { type: 'mcp-result', ok: r.ok, message: msg, scope, list: scope === 'create' ? readMcpServers(dir) : undefined }, rctx());
