@@ -1,6 +1,7 @@
 import { existsSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
+import { withShutdown } from './shutdown.js';
 import { scan, Environment } from './environments.js';
 import { loadAppSettings, saveAppSettings } from './appsettings.js';
 import { loadCatalog, fetchPackageCatalog, normalizePkgSource, type CatalogPkg } from './catalog.js';
@@ -16,6 +17,12 @@ import { runSideEffects, type Loop, type PrevSnap } from './run-side.js';
 
 function defaultAgentDir(): string {
   return process.env.PI_CODING_AGENT_DIR ?? join(homedir(), '.pi', 'agent');
+}
+
+/** Сбой TUI: локализованная строка + stack — в stderr (терминал восстанавливает withShutdown). */
+function reportCrash(err: unknown, lang: string): void {
+  const detail = err instanceof Error ? (err.stack ?? err.message) : String(err);
+  process.stderr.write(t(lang, 'crash.terminal') + '\n' + detail + '\n');
 }
 
 /**
@@ -239,16 +246,25 @@ export async function run(root: string): Promise<void> {
     }));
   }
 
-  term.onResize(repaint);
-  term.start();
-  repaint();
-
-  for (;;) {
-    const key = await term.key();
-    const { envs, prev } = applyKey(key as Key);
-    await runSideEffects(loop, envs, prev);
-    if (state.quit) break;
-    repaint();
-  }
-  term.stop();
+  await withShutdown(
+    {
+      stop: () => term.stop(),
+      report: (err) => reportCrash(err, state.language),
+      exit: (code) => process.exit(code),
+      on: (event, handler) => process.on(event, handler),
+      off: (event, handler) => process.off(event, handler),
+    },
+    async () => {
+      term.onResize(repaint);
+      term.start();
+      repaint();
+      for (;;) {
+        const key = await term.key();
+        const { envs, prev } = applyKey(key as Key);
+        await runSideEffects(loop, envs, prev);
+        if (state.quit) break;
+        repaint();
+      }
+    },
+  );
 }
