@@ -52,6 +52,11 @@ test('loadLocales: нет каталога — пустая карта, без �
   assert.deepEqual(loadLocales('/nonexistent-dir-i18n'), {});
 });
 
+test('t: crash.terminal — сообщение о сбое в обоих словарях', () => {
+  assert.equal(t('ru', 'crash.terminal'), 'pi-env: сбой программы — терминал восстановлен');
+  assert.equal(t('en', 'crash.terminal'), 'pi-env: crash — terminal restored');
+});
+
 test('parity: en.json содержит все ключи ru.json', () => {
   const read = (p: string): Record<string, string> =>
     JSON.parse(readFileSync(new URL(`../src/locales/${p}`, import.meta.url), 'utf8'));
