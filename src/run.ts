@@ -1,4 +1,4 @@
-import { existsSync } from 'node:fs';
+import { existsSync, writeSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { withShutdown } from './shutdown.js';
@@ -19,10 +19,20 @@ function defaultAgentDir(): string {
   return process.env.PI_CODING_AGENT_DIR ?? join(homedir(), '.pi', 'agent');
 }
 
-/** Сбой TUI: локализованная строка + stack — в stderr (терминал восстанавливает withShutdown). */
-function reportCrash(err: unknown, lang: string): void {
+/**
+ * Сбой TUI: локализованная строка + stack — в stderr (терминал восстанавливает withShutdown).
+ * Запись — через fd 2 синхронно: `process.stderr.write` асинхронен для пайпа, а
+ * `withShutdown` выходит сразу, и сообщение об ошибке могло бы потеряться.
+ */
+export function reportCrash(
+  err: unknown,
+  lang: string,
+  write: (s: string) => void = (s) => { writeSync(2, s); },
+): void {
   const detail = err instanceof Error ? (err.stack ?? err.message) : String(err);
-  process.stderr.write(t(lang, 'crash.terminal') + '\n' + detail + '\n');
+  try {
+    write(t(lang, 'crash.terminal') + '\n' + detail + '\n');
+  } catch { /* сток недоступен — терминал уже восстановлен, дальше молча */ }
 }
 
 /**
