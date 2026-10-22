@@ -85,6 +85,8 @@ export function createTerm(): Term {
   const queue: string[] = [];
   let waiter: ((k: string) => void) | null = null;
   let prev: PrevState = { esc: 0, utf8: [] };
+  /** Терминал сейчас в raw/alt-screen: повторный start()/stop() не действуют. */
+  let running = false;
   const resizes: Array<() => void> = [];
 
   function emit(): void {
@@ -109,6 +111,8 @@ export function createTerm(): Term {
   return {
     noColor,
     start() {
+      if (running) return;
+      running = true;
       out.write('\x1b[?1049h\x1b[?25l'); // alternate screen, скрыть курсор
       input.setRawMode(true);
       input.resume();
@@ -116,6 +120,8 @@ export function createTerm(): Term {
       process.on('SIGWINCH', onWinch);
     },
     stop() {
+      if (!running) return;
+      running = false;
       input.setRawMode(false);
       input.pause();
       input.removeListener('data', onData);
