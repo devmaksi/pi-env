@@ -57,6 +57,7 @@
   в список и по клавише `R`; далее при каждом входе — только с настройкой
   «Перепроверять MCP» (по умолчанию выкл). Во время проверки список доступен
   для навигации; индикатор «Проверка MCP…».
+- Гарантия терминала: весь терминальный участок запуска (`start → repaint → цикл клавиш`) обёрнут в `withShutdown` (`src/shutdown.ts`) — `term.stop()` вызывается ровно один раз: при нормальном выходе, исключении из цикла (в т.ч. из `doSubmit`/`updateEnvironment`), rejection из необранной pi-команды (`void checkUpdates/...`) и по `SIGINT`/`SIGTERM`/`SIGHUP`. Исключение — строка `crash.terminal` + stack в stderr и код 1; сигналы восстанавливают терминал молча. `start()/stop()` идемпотентны (флаг `running` в `terminal.ts`), поэтому cleanup не пишет escape-коды в экран, когда терминалом владеет дочерний `pi`.
 - Детализация окружения: инфо-панель выбранного (settings.json, модель,
   инструменты — файлы extensions/, скиллы — подкаталоги skills/,
   расширения — пакеты, MCP — mcp.json; списки обрезаются по 4 позиции,
@@ -144,6 +145,7 @@
   `native-name` — название языка; `{p}` — плейсхолдеры)
 - `src/terminal.ts` — raw-режим, `parseKeys` (чистая; стрелки, Esc, TAB,
   Enter, Space, Backspace, Ctrl+C, печатные символы), фабрика `Term`
+  идемпотентные `start()`/`stop()` (флаг `running`)
 - `src/environments.ts` — `scan(root)` с детализацией окружения
   (settings.json, extensions/, skills/, mcp.json) (чистая)
 - `src/layout.ts` — `computeLayout` (чистая), константы порогов
@@ -209,13 +211,18 @@
 - `src/pirun.ts` — `launchPi` (дочерний `pi` с передачей терминала, возврат в
   TUI по exit) и `runPassthrough(envPath, args, lang)` — неинтерактивный проброс
   (код выхода пробрасывается)
+- `src/shutdown.ts` — `withShutdown(deps, body)` (чистая, deps инжектятся):
+  одноразовый `close()` → `deps.stop()`, обработчики `uncaughtException`/
+  `unhandledRejection`/`SIGINT`/`SIGTERM`/`SIGHUP`, `report`+`exit(1)` при
+  исключении (сигналы — cleanup без текста в stderr); никогда не reject'ит
 - `test/*.test.ts` — тесты чистого ядра (включая `mcp.test.ts`,
-  `state-mcp.test.ts`, `state-create-mcp.test.ts`, `render-mcp.test.ts`)
+  `state-mcp.test.ts`, `state-create-mcp.test.ts`, `render-mcp.test.ts`, `shutdown.test.ts`, `terminal.test.ts` — гарантия терминала)
 
 ## Конвенции
 
 - Вся логика, не требующая TTY, — чистые функции, тестируемые `node:test`.
 - Терминальный слой тонкий; UI-логику в `terminal.ts` не переносить.
+- Вывод терминала наружу — только через `withShutdown` (`src/shutdown.ts`): `term.stop()` вне него не вызывать (исключение — `launchPi`, который сознательно отдаёт терминал дочернему `pi`).
 - UI-тексты и сообщения — через `t(lang, key)` (`src/i18n.ts`), словари —
   `src/locales/*.json` (ru — базовый, en — полный; новая локаль = новый файл,
   код не меняется); прямые литеральные строки в UI — не добавлять.
