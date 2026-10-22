@@ -1,14 +1,21 @@
 {
   "name": "@devmaksi/pi-env",
-  "version": "0.2.0",
-  "description": "Интерактивная TUI-утилита для управления окружениями ИИ-агента pi",
+  "version": "0.2.1",
+  "description": "Profiles for the Pi coding agent: create, edit and launch isolated agent environments (settings, extensions, skills, MCP) from a terminal TUI",
   "type": "module",
   "bin": {
     "pi-env": "dist/index.js"
   },
   "files": [
-    "dist"
+    "dist",
+    "pi"
   ],
+  "pi": {
+    "skills": [
+      "./pi/skills"
+    ],
+    "image": "https://github.com/devmaksi/pi-env/raw/refs/heads/master/docs/screenshot.png"
+  },
   "engines": {
     "node": ">=20"
   },
@@ -19,12 +26,19 @@
   },
   "homepage": "https://github.com/devmaksi/pi-env#readme",
   "keywords": [
+    "pi-package",
     "pi",
+    "pi-env",
     "pi-coding-agent",
+    "coding-agent",
+    "agent",
+    "agent-harness",
+    "environments",
+    "profiles",
     "cli",
     "tui",
-    "environments",
-    "agent"
+    "terminal",
+    "developer-tools"
   ],
   "scripts": {
     "build": "tsc && rm -rf dist/locales && cp -r src/locales dist/locales",
