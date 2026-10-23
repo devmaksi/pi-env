@@ -1,6 +1,6 @@
 # pi-env
 
-[English](README.en.md) | [Русский](README.md)
+[English](README.md) | [Русский](README.ru.md)
 
 [![npm version](https://img.shields.io/npm/v/@devmaksi/pi-env?logo=npm)](https://www.npmjs.com/package/@devmaksi/pi-env)
 [![npm downloads](https://img.shields.io/npm/dm/@devmaksi/pi-env)](https://www.npmjs.com/package/@devmaksi/pi-env)
@@ -8,105 +8,110 @@
 [![license](https://img.shields.io/npm/l/@devmaksi/pi-env)](LICENSE)
 [![node](https://img.shields.io/node/v/@devmaksi/pi-env)](package.json)
 
-**Профили для агента `pi`: своя конфигурация под каждый проект и модель — создание и запуск из одного TUI.**
+**Profiles for the `pi` agent: a separate configuration per project and model, created and launched from one TUI.**
 
-Агент `pi` читает конфигурацию из каталога, заданного `PI_CODING_AGENT_DIR`:
-`settings.json`, `extensions/`, `skills/`, `agents/`, `themes/`, `mcp.json`.
-Разные модели, скиллы и MCP под разные задачи — это разные каталоги. `pi-env`
-делает их управляемыми: список окружений, создание формой, запуск по Enter,
-обновление расширений и MCP на месте — не покидая терминал.
+`pi` reads its configuration from the directory pointed to by
+`PI_CODING_AGENT_DIR`: `settings.json`, `extensions/`, `skills/`, `agents/`,
+`themes/`, `mcp.json`. Different models, skills and MCP servers per task mean
+different directories. `pi-env` makes them manageable: a list of environments,
+a creation form, launch on Enter, extension and MCP updates in place — without
+leaving the terminal.
+
+![Launch an environment in pi-env, then run it: pi prints the skills, tools and
+packages loaded by that environment](docs/demo.gif)
 
 ![pi-env](docs/screenshot.png)
 
-## Быстрый старт
+## Quick start
 
-**Требования:** Node.js ≥ 22.19 и установленный CLI `pi`
+**Requirements:** Node.js ≥ 22.19 and the `pi` CLI installed
 (`npm install -g @earendil-works/pi-coding-agent`).
-(граница по Node — как у самого `pi`: pi 1.3/1.4 требует Node.js 22.19 или новее)
+(the Node floor matches `pi` itself: pi 1.3/1.4 requires Node.js 22.19 or newer)
 
 ```bash
-npm install -g @devmaksi/pi-env                  # либо одноразово: npx @devmaksi/pi-env
-pi-env                                           # TUI, корень окружений — ~/.pi-env
-pi-env myenv --mode json "Review this repository"  # запустить pi в окружении (аргументы — как есть)
+npm install -g @devmaksi/pi-env                  # or one-off: npx @devmaksi/pi-env
+pi-env                                           # TUI, environments root — ~/.pi-env
+pi-env myenv --mode json "Review this repository"  # run pi in the environment (args passed as-is)
 ```
 
-## Зачем, если есть `PI_CODING_AGENT_DIR`
+## Why not just `PI_CODING_AGENT_DIR`
 
-- Переменную всё равно надо помнить, экспортировать и держать в голове путь —
-  `pi-env` превращает это в список с именами и запуском по Enter.
-- Новое окружение — это не `mkdir`: нужно скопировать инструменты, скиллы,
-  пакеты, каталог моделей и `auth.json`. Форма создания делает это сама.
-- Расширения и MCP живут в разных файлах у каждого окружения; `pi-env`
-  показывает обновления и правит `mcp.json` за тебя.
-- Запуск остаётся запуском `pi`: дочерний процесс получает
-  `PI_CODING_AGENT_DIR=<окружение>`, аргументы пробрасываются как есть — годно
-  для скриптов и `--mode json`.
+- You still have to remember the variable, export it, and keep paths in your
+  head — `pi-env` turns that into a list of names and Enter to launch.
+- A new environment is not a `mkdir`: it needs tools, skills, packages, the
+  model catalog and `auth.json` copied over. The creation form does it for you.
+- Extensions and MCP servers live in separate files per environment; `pi-env`
+  shows available updates and edits `mcp.json` for you.
+- Launch remains a plain `pi` run: the child process gets
+  `PI_CODING_AGENT_DIR=<environment>`, arguments pass through untouched — so it
+  is scriptable, `--mode json` included.
 
-## Не путать с `@earendil-works/pi-env`
+## Not to be confused with `@earendil-works/pi-env`
 
-Это независимый проект, не связанный с earendil-works. Официальный
-`@earendil-works/pi-env` — про удалённое исполнение (`ssh`, `remote`,
-durable-агенты) и к управлению локальными конфигурациями отношения не имеет.
-Похожее имя, разный смысл.
+This is an independent project, not affiliated with earendil-works. The official
+`@earendil-works/pi-env` is about remote execution (`ssh`, `remote`, durable
+agents) and has nothing to do with managing local configurations. Similar name,
+different purpose.
 
-## Возможности
+## Features
 
-- список окружений (корневой каталог `~/.pi-env`, переопределяется флагом
-  `--root <путь>` или переменной `PI_ENV_ROOT`);
-- вкладки: **Окружения | Расширения | MCP | Настройки | О программе**;
-- создание окружения через форму: имя, модель, инструменты, расширения-пакеты,
-  скиллы (каталог берётся из main-агента `pi`), MCP-серверы;
-- запуск окружения: дочерний процесс `pi` с
-  `PI_CODING_AGENT_DIR=<путь окружения>`, возврат в TUI по выходе;
-- редактирование окружения: смена модели, инструментов, пакетов, скиллов,
-  MCP, переименование, удаление с подтверждением;
-- управление расширениями: просмотр обновлений (маркеры «↑ latest»),
-  обновление одного/всех пакетов (`pi update`), удаление (`pi remove`);
-- установка расширений из каталога `https://pi.dev/packages`: глобально (вкладка
-  «Расширения») и в конкретное окружение (кнопка «Установить» в форме);
-- MCP: вкладка со списком серверов, добавление формой (`pi mcp add`),
-  удаление, живой статус подключения (`pi mcp list --json`);
-- детализация окружения: инфо-панель выбранного (модель, инструменты, скиллы,
-  расширения-пакеты, MCP);
-- настройки приложения: «Цветной вывод», «Перепроверка обновлений»
-  (`npm outdated` при каждом входе во вкладку «Расширения»); сохраняются в
-  `<root>/.pi-env.json` и переживают перезапуск.
+- list of environments (root directory `~/.pi-env`, overridable via the
+  `--root <path>` flag or the `PI_ENV_ROOT` environment variable);
+- tabs: **Environments | Extensions | MCP | Settings | About**;
+- environment creation via a form: name, model, tools, extension packages,
+  skills (catalog is taken from the main `pi` agent), MCP servers;
+- launching an environment: a child `pi` process with
+  `PI_CODING_AGENT_DIR=<environment path>`, back to the TUI on exit;
+- environment editing: change model, tools, packages, skills, MCP, rename,
+  delete with confirmation;
+- extension management: update checks («↑ latest» markers), updating
+  one/all packages (`pi update`), removal (`pi remove`);
+- installing extensions from the `https://pi.dev/packages` catalog: globally
+  (the “Extensions” tab) and into a specific environment (“Install” button
+  in the form);
+- MCP: a tab with the server list, form-based addition (`pi mcp add`), removal,
+  and live connection status (`pi mcp list --json`);
+- environment details: info panel of the selected one (model, tools, skills,
+  extension packages, MCP);
+- application settings: “Colored output”, “Recheck updates”
+  (`npm outdated` on every visit to the “Extensions” tab); stored in
+  `<root>/.pi-env.json` and survive restarts.
 
-## Управление (основные клавиши)
+## Controls (main keys)
 
-| Клавиши                      | Действие                                                              |
+| Key                      | Action                                                              |
 | ---------------------------- | --------------------------------------------------------------------- |
-| ↑/↓                          | перемещение в списке                                                  |
-| ←/→                          | фокус колонок (широкий режим, вкладка «Окружения»)                    |
-| TAB                          | переключение вкладок                                                  |
-| Enter                        | подтвердить (запуск окружения, действие по выбранному пункту)         |
-| Space                        | отметка в списках создания / toggle в настройках (цвет, перепроверка) |
-| E                            | редактировать выбранное окружение                                     |
-| X                            | удалить выбранное расширение (с подтверждением)                       |
-| печатные символы / Backspace | ввод имени (форма создания)                                           |
-| ESC                          | назад из суб-экрана / выход                                           |
-| Ctrl+C                       | аварийный выход                                                       |
+| ↑/↓                          | move through the list                                                  |
+| ←/→                          | column focus (wide mode, “Environments” tab)                    |
+| TAB                          | switch tabs                                                  |
+| Enter                        | confirm (launch environment, action on the selected item)         |
+| Space                        | mark in creation lists / toggle in settings (color, recheck) |
+| E                            | edit the selected environment                                     |
+| X                            | remove the selected extension (with confirmation)                       |
+| printable characters / Backspace | entering a name (creation form)                                           |
+| ESC                          | back from a sub-screen / exit                                           |
+| Ctrl+C                       | emergency exit                                                       |
 
-## Установка
+## Installation
 
 ```bash
-npm install -g @devmaksi/pi-env   # либо одноразово: npx @devmaksi/pi-env
+npm install -g @devmaksi/pi-env   # or one-off: npx @devmaksi/pi-env
 ```
 
-Все способы установки (включая установку Node.js), удаление и примечания
-(TTY, Windows) — в [docs/installation.md](docs/installation.md).
+All installation methods (including Node.js setup), removal, and notes
+(TTY, Windows) — in [docs/installation.md](docs/installation.md).
 
-## Документация
+## Documentation
 
-- [Установка](docs/installation.md) — Node.js, установка/удаление pi-env
-- [Разработка](docs/development.md) — стек, быстрый старт, структура проекта,
-  конвенции
-- [CHANGELOG.md](CHANGELOG.md) — история версий
-- [AGENTS.md](AGENTS.md) — модель окружений, текущий статус, дорожная карта
+- [Installation](docs/installation.md) — Node.js, pi-env install/remove
+- [Development](docs/development.md) — stack, quick start, project structure,
+  conventions
+- [CHANGELOG.md](CHANGELOG.md) — release history
+- [AGENTS.md](AGENTS.md) — environments model, current status, roadmap
 
-## Для агента pi
+## For the pi agent
 
-Пакет несёт скилл `pi-env`: если поставить его как pi-пакет
-(`pi install npm:@devmaksi/pi-env`), агент сможет сам создавать окружения,
-запускать их и объяснять, что лежит в `settings.json`. Ручная настройка —
-в [SKILL.md](pi/skills/pi-env/SKILL.md).
+The package ships a `pi-env` skill: install it as a Pi package
+(`pi install npm:@devmaksi/pi-env`) and the agent can create environments,
+launch them, and explain what lives in `settings.json`. Manual reference is in
+[SKILL.md](pi/skills/pi-env/SKILL.md).

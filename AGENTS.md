@@ -87,11 +87,19 @@
   переопределяется выбором). Строки-переключатели: 1, 2, 3; «Язык» — строка 4
   (`LANGUAGE_ROW`). Загружаются при старте, сохраняются при переключении:
   `<root>/.pi-env.json`.
+- Демо-GIF витрины: `docs/demo.gif` (английский интерфейс) и `docs/demo.ru.gif`
+  (русский). Сценарий дубля: shell → `pi-env` → выбор `dev-supo` → запуск pi
+  (видно `[Context]`/`[Skills]`/`[Prompts]`/`[Extensions]` и модель) → `/quit` →
+  выбор `Test` → запуск pi (другой набор скиллов, ноль пакетов, другая модель) →
+  `/quit` → Esc. Кадр 90×32, ~17 с, ~0.6 МБ. Съёмка — `npm run demo` (`demo/`).
 
 ## Стек
 
 - Node.js ≥ 22.19 (столько же требует pi 1.3/1.4), TypeScript (ESM, `NodeNext`), ноль runtime-зависимостей.
 - Dev-зависимости: `typescript`, `tsx`. Тесты: `node:test`.
+- Съёмка демо-GIF (`demo/`): Python 3 (только stdlib) + бинарный `agg`
+  (`demo/bin/agg`, скачивается скриптом, в git не попадает). Рантайм-зависимостей
+  это не добавляет: `demo/` не входит в `files` package.json.
 
 ## Команды
 
@@ -100,6 +108,12 @@
 - `npm run bench` — замер байт на репок (`bench/paint-bench.ts`: полный кадр против построчного диффа; в `dist` не попадает)
 - `npm run start` — запуск CLI (`node dist/index.js`)
 - `npx tsx src/index.ts` — запуск без сборки
+- `npm run demo` — пересъёмка `docs/demo.gif` и `docs/demo.ru.gif`
+  (`python3 -m demo.capture --langs en,ru`; `--root`, `--cols/--rows`,
+  `--font-*`, `--keep-cast`; `demo/bin/agg` и `demo/out/` в `.gitignore`)
+- `python3 -m unittest demo.test_ptycast demo.test_capture` — тесты Python-стенда
+  съёмки (cast, alt-screen-самопроверка, маркеры, закреплённые настройки)
+- `python3 -m demo.capture --selftest` — проверка стенда на alt-screen без pi-env
 
 
 ## Публикация новой версии
@@ -241,6 +255,17 @@
   исключении (сигналы — cleanup без текста в stderr); никогда не reject'ит
 - `test/*.test.ts` — тесты чистого ядра (включая `mcp.test.ts`,
   `state-mcp.test.ts`, `state-create-mcp.test.ts`, `render-mcp.test.ts`, `shutdown.test.ts`, `terminal.test.ts` — гарантия терминала, `paint.test.ts` — `paint`/`screenKnown`, `diff.test.ts` — построчный дифф, `throttle.test.ts` — схлопывание прогресс-репоков, `app-paint.test.ts` — реальный цикл `run()` на фейковом терминале (сколько байт ушло на репок), `ci.test.ts` — согласие `engines`/матрицы CI/документов и гейт `needs: test` перед публикацией)
+- `demo/ptycast.py` — PTY-стенд съёмки: `openpty` + reader-поток, запись asciinema
+  cast v2, `alt_fix` (первый кадр после `\x1b[?1049h`), `Step` (клавиши, маркер,
+  пауза до клавиш), рендер через `agg` (чистые функции, тесты `demo/test_ptycast.py`)
+- `demo/script.py` — сценарий дубля: маркеры по языкам (`Environments`/`Окружения`),
+  навигация «↑ с упором, затем счётчик ↓», `DEMO_ENVS = ("dev-supo", "Test")`
+- `demo/capture.py` — CLI съёмки: `--langs/--root/--cols/--rows/--font-*/--keep-cast`,
+  закрепление языка и `lastChangelogVersion` с восстановлением байт в байт,
+  проверка «нет открытого pi-env», постмортем-каст сорванного дубля
+  (`demo/test_capture.py`)
+- `demo/selftest.py` — самопроверка alt-screen-хука стенда; `demo/README.md` — как
+  пользоваться; `demo/bin/agg`, `demo/out/` — в `.gitignore`
 
 ## Конвенции
 
@@ -251,6 +276,15 @@
 - UI-тексты и сообщения — через `t(lang, key)` (`src/i18n.ts`), словари —
   `src/locales/*.json` (ru — базовый, en — полный; новая локаль = новый файл,
   код не меняется); прямые литеральные строки в UI — не добавлять.
+- Документация: файл без суффикса — английский (`README.md`, `docs/installation.md`,
+  `docs/development.md`, `docs/demo.gif`), русский текст — файл с суффиксом `.ru`
+  (`README.ru.md`, `docs/installation.ru.md`, `docs/development.ru.md`,
+  `docs/demo.ru.gif`). Суффикса `.en.md` в репозитории нет; раскладку и ссылки
+  страхует `test/docs.test.ts`, а список доков в `test/ci.test.ts` (`DOCS`) держит
+  согласованность упоминаний порода Node.
+- Съёмка демо-GIF — только `demo/` (Python 3, stdlib + бинарный `agg`): в `files`
+  package.json `demo/` не входит и в npm-тарбелл не попадает. Пересъёмка меняет
+  `docs/demo*.gif` — это артефакты, их коммитят.
 - Не добавлять runtime-зависимости без необходимости.
 - Изменять раскладку/поведение клавиш — только вместе с обновлением тестов
   `render`/`state` и этого файла.

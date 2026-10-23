@@ -15,8 +15,8 @@ const enginesMajor = (): number => {
   return Number(m[1]);
 };
 
-const DOCS = ['README.md', 'README.en.md', 'docs/installation.md', 'docs/installation.en.md',
-  'docs/development.md', 'docs/development.en.md', 'AGENTS.md'];
+const DOCS = ['README.md', 'README.ru.md', 'docs/installation.md', 'docs/installation.ru.md',
+  'docs/development.md', 'docs/development.ru.md', 'AGENTS.md'];
 
 // «Node.js ≥ 20», «Node LTS 20», «Node >= 20.6.0», «node -v (must be ≥ 20)» —
 // любая форма, где документ обещает Node-линию 20

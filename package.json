@@ -44,6 +44,7 @@
     "build": "tsc && rm -rf dist/locales && cp -r src/locales dist/locales",
     "test": "tsx --test test/*.test.ts",
     "bench": "tsx bench/paint-bench.ts",
+    "demo": "python3 -m demo.capture --langs en,ru",
     "start": "node dist/index.js"
   },
   "devDependencies": {
