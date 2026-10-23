@@ -18,7 +18,7 @@ PTY и пишет поток как asciinema cast v2, который ренде
 ## Проверка стенда
 
 ```bash
-python3 -m unittest demo.test_ptycast demo.test_capture   # 35 тестов
+python3 -m unittest demo.test_ptycast demo.test_capture   # 36 тестов
 python3 -m demo.selftest                        # demo/out/selftest.gif
 python3 -m demo.capture --selftest              # то же, через CLI
 ```
