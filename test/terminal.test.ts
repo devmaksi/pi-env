@@ -65,39 +65,6 @@ test('term: приложение работает в alternate screen', () => {
   }
 });
 
-/** Фейковые stdout/stdin вместо терминала; внутри fn можно вызывать createTerm() без TTY. */
-function withFakeTermStreams<T>(fn: (writes: string[], raw: boolean[]) => T): T {
-  const realOut = process.stdout;
-  const realIn = process.stdin;
-  const writes: string[] = [];
-  const raw: boolean[] = [];
-  Object.defineProperty(process, 'stdout', {
-    value: {
-      write: (s: string) => { writes.push(s); return true; },
-      columns: 80,
-      rows: 24,
-      isTTY: true,
-    },
-    configurable: true,
-  });
-  Object.defineProperty(process, 'stdin', {
-    value: {
-      setRawMode: (mode: boolean) => { raw.push(mode); },
-      resume: () => {},
-      pause: () => {},
-      on: () => {},
-      removeListener: () => {},
-      isTTY: true,
-    },
-    configurable: true,
-  });
-  try {
-    return fn(writes, raw);
-  } finally {
-    Object.defineProperty(process, 'stdout', { value: realOut, configurable: true });
-    Object.defineProperty(process, 'stdin', { value: realIn, configurable: true });
-  }
-}
 
 test('term: повторный stop() не пишет escape-коды повторно', () => {
   withFakeTermStreams((writes, raw) => {
@@ -124,6 +91,7 @@ test('term: повторный start() не включает alternate screen п
 import { test } from 'node:test';
 import assert from 'node:assert';
 import { parseKeys, createTerm, initialPrev } from '../src/terminal.js';
+import { withFakeTermStreams } from './fake-streams.js';
 
 test('parseKeys: печатные ASCII-символы', () => {
   assert.deepEqual(parseKeys(Buffer.from('ab'), initialPrev).keys, ['a', 'b']);

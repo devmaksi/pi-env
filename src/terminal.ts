@@ -1,4 +1,5 @@
 import process from 'node:process';
+import type { FramePatch } from './diff.js';
 
 export interface PrevState {
   esc: number;
@@ -73,6 +74,10 @@ export interface Term {
   height(): number;
   key(): Promise<string>;
   clear(): void;
+  /** Записать кадр: весь (после clear) или только изменённые строки. true — если написали. */
+  paint(patch: FramePatch): boolean;
+  /** Известно ли, что сейчас на экране: false сразу и после каждого start(). */
+  screenKnown(): boolean;
   onResize(cb: () => void): void;
   noColor: boolean;
 }
@@ -87,6 +92,8 @@ export function createTerm(): Term {
   let prev: PrevState = { esc: 0, utf8: [] };
   /** Терминал сейчас в raw/alt-screen: повторный start()/stop() не действуют. */
   let running = false;
+  /** Экран неизвестен: сразу и после каждого start() (свежий alt-буфер) — дозапись строк запрещена. */
+  let screenUnknown = true;
   const resizes: Array<() => void> = [];
 
   function emit(): void {
@@ -113,6 +120,7 @@ export function createTerm(): Term {
     start() {
       if (running) return;
       running = true;
+      screenUnknown = true; // свежий alt-буфер: предыдущего нашего кадра на экране нет
       out.write('\x1b[?1049h\x1b[?25l'); // alternate screen, скрыть курсор
       input.setRawMode(true);
       input.resume();
@@ -140,6 +148,20 @@ export function createTerm(): Term {
     },
     clear() {
       out.write('\x1b[2J\x1b[H');
+    },
+    paint(patch) {
+      if (!running) return false;
+      if (patch.kind === 'rows') {
+        if (screenUnknown) return false; // на свежий alt-экран частичные строки писать нельзя
+        out.write(patch.rows.map((r) => `\x1b[${r.row};1H${r.text}\x1b[K`).join(''));
+        return true;
+      }
+      out.write('\x1b[2J\x1b[H' + patch.lines.join('\n'));
+      screenUnknown = false;
+      return true;
+    },
+    screenKnown() {
+      return !screenUnknown;
     },
     onResize(cb) {
       resizes.push(cb);
