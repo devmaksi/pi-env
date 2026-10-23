@@ -6,6 +6,8 @@ import { scan, Environment } from './environments.js';
 import { loadAppSettings, saveAppSettings } from './appsettings.js';
 import { loadCatalog, fetchPackageCatalog, normalizePkgSource, type CatalogPkg } from './catalog.js';
 import { computeLayout } from './layout.js';
+import { frameKey, paintFrame, type PrevFrame } from './diff.js';
+import { createThrottle, type Throttle, type ThrottleDeps } from './throttle.js';
 import { render } from './render.js';
 import { readSettings } from './create.js';
 import { parseMcpList, readMcpServers } from './mcp.js';
@@ -35,13 +37,27 @@ export function reportCrash(
   } catch { /* сток недоступен — терминал уже восстановлен, дальше молча */ }
 }
 
+/** Окно схлопывания прогресс-репоков (загрузка каталога pi.dev). */
+export const PROGRESS_THROTTLE_MS = 70;
+
+/** Прогресс-репок: `createThrottle` с инжектируемыми часами и таймерами (тестируется без пауз). */
+export function makeProgressPainter(
+  repaint: () => void,
+  ms: number,
+  now: () => number,
+  setTimer: ThrottleDeps['setTimer'],
+): Throttle {
+  return createThrottle(repaint, { ms, now, setTimer });
+}
+
 /**
  * Цикл приложения: чтение клавиши → reducer → побочные эффекты → отрисовка.
  * Побочные эффекты — в run-side.ts (хуки переходов, submit/delete/run),
  * команды pi/npm — в pi-actions.ts; запуск дочернего pi — в pirun.ts.
  */
-export async function run(root: string): Promise<void> {
-  const term: Term = createTerm();
+export async function run(root: string, term: Term = createTerm()): Promise<void> {
+  /** Последний записанный на экран кадр (для построчного диффа); null — писать целиком. */
+  let prevFrame: PrevFrame | null = null;
   const agentDir = defaultAgentDir();
   let catalog = loadCatalog(agentDir);
   const app = loadAppSettings(root);
@@ -179,23 +195,29 @@ export async function run(root: string): Promise<void> {
    */
   async function loadPackageCatalog(): Promise<void> {
     const id = ++catalogLoadId;
+    const paintProgress = makeProgressPainter(repaint, PROGRESS_THROTTLE_MS, () => Date.now(), (ms, cb) => {
+      const h = setTimeout(cb, ms);
+      h.unref(); // прогресс-таймер не держит процесс
+      return () => clearTimeout(h);
+    });
     let pkgs: CatalogPkg[] | null;
     try {
       pkgs = await fetchPackageCatalog(undefined, (loaded, total) => {
         if (id !== catalogLoadId) return;
         state = { ...state, catalogProgress: { loaded, total } };
-        repaint();
+        paintProgress.call();
       });
     } catch {
       pkgs = null;
     }
-    if (id !== catalogLoadId) return;
+    if (id !== catalogLoadId) { paintProgress.cancel(); return; }
     state = { ...state, catalogProgress: null };
     if (state.ext !== null && state.ext.view === 'catalog' && state.ext.catalogStatus === 'loading') {
       state = { ...state, ext: { ...state.ext, catalog: pkgs ?? [], catalogStatus: pkgs === null ? 'error' : 'ready' } };
     } else if (state.create !== null && state.create.view === 'install' && state.create.installStatus === 'loading') {
       state = { ...state, create: { ...state.create, installCatalog: pkgs ?? [], installStatus: pkgs === null ? 'error' : 'ready' } };
     }
+    paintProgress.cancel();
     repaint();
   }
 
@@ -244,8 +266,7 @@ export async function run(root: string): Promise<void> {
     const { envs, status } = load();
     const w = term.width();
     const h = term.height();
-    term.clear();
-    process.stdout.write(render({
+    const lines = render({
       state,
       envs,
       root,
@@ -253,7 +274,10 @@ export async function run(root: string): Promise<void> {
       height: h,
       useColor: state.colorToggle && !term.noColor,
       status: statusMsg ?? status,
-    }));
+    }).split('\n');
+    const key = frameKey(w, h, computeLayout({ width: w, height: h }).twoColumns);
+    // Экран неизвестен (первый кадр, resize, возврат из дочернего pi) → prevFrame не используется.
+    prevFrame = paintFrame(term.screenKnown() ? prevFrame : null, lines, key, term);
   }
 
   await withShutdown(

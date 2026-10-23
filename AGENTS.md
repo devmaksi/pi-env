@@ -57,6 +57,14 @@
   в список и по клавише `R`; далее при каждом входе — только с настройкой
   «Перепроверять MCP» (по умолчанию выкл). Во время проверки список доступен
   для навигации; индикатор «Проверка MCP…».
+- Дифф-отрисовка кадра: `repaint()` пишет только изменённые строки (`src/diff.ts`:
+  `diffFrames`/`paintFrame`, сравнение строк байтовое, вместе с ANSI-кодами). Полный кадр —
+  первый кадр, смена `width`/`height`/`twoColumns`, разная длина кадра и возврат из дочернего
+  `pi` (`Term.screenKnown()` после `start()` снова `false`). Прогресс загрузки каталога
+  pi.dev репакется не чаще одного раза в `PROGRESS_THROTTLE_MS` = 70 мс
+  (`src/throttle.ts` + `makeProgressPainter` в `run.ts`; финальный результат — без задержки).
+  Замер — `npm run bench` (100×40): сдвиг курсора 4743 → 1483 байт/репок, идентичный репок
+  3 репака → 1, прогресс каталога 4163 → 325 байт/репок.
 - Гарантия терминала: весь терминальный участок запуска (`start → repaint → цикл клавиш`) обёрнут в `withShutdown` (`src/shutdown.ts`) — `term.stop()` вызывается ровно один раз: при нормальном выходе, исключении из цикла (в т.ч. из `doSubmit`/`updateEnvironment`), rejection из необранной pi-команды (`void checkUpdates/...`) и по `SIGINT`/`SIGTERM`/`SIGHUP`. Исключение — строка `crash.terminal` + stack в stderr и код 1; сигналы восстанавливают терминал молча. `start()/stop()` идемпотентны (флаг `running` в `terminal.ts`), поэтому cleanup не пишет escape-коды в экран, когда терминалом владеет дочерний `pi`.
 - Детализация окружения: инфо-панель выбранного (settings.json, модель,
   инструменты — файлы extensions/, скиллы — подкаталоги skills/,
@@ -89,6 +97,7 @@
 
 - `npm run build` — компиляция `src/` → `dist/`
 - `npm test` — `tsx --test test/*.test.ts`
+- `npm run bench` — замер байт на репок (`bench/paint-bench.ts`: полный кадр против построчного диффа; в `dist` не попадает)
 - `npm run start` — запуск CLI (`node dist/index.js`)
 - `npx tsx src/index.ts` — запуск без сборки
 
@@ -153,7 +162,13 @@
   `native-name` — название языка; `{p}` — плейсхолдеры)
 - `src/terminal.ts` — raw-режим, `parseKeys` (чистая; стрелки, Esc, TAB,
   Enter, Space, Backspace, Ctrl+C, печатные символы), фабрика `Term`
-  идемпотентные `start()`/`stop()` (флаг `running`)
+  идемпотентные `start()`/`stop()` (флаг `running`), `paint(patch)` (полный кадр с очисткой экрана
+  или только изменённые строки через CUP + `[K`) и `screenKnown()` (`false` сразу и после каждого
+  `start()`); UI-логики и знания о layout в `terminal.ts` нет
+- `src/diff.ts` — построчный дифф кадра: `frameKey`, `diffFrames`, `paintFrame`, типы
+  `FrameKey`/`PrevFrame`/`PaintOp`/`FramePatch`/`FrameSink` (чистые; row = индекс строки + 1)
+- `src/throttle.ts` — `createThrottle` leading-edge со схлопыванием в одно окно, часы и таймеры
+  инжектятся (чистая)
 - `src/environments.ts` — `scan(root)` с детализацией окружения
   (settings.json, extensions/, skills/, mcp.json) (чистая)
 - `src/layout.ts` — `computeLayout` (чистая), константы порогов
@@ -205,6 +220,7 @@
   сохранение настроек), обёртки команд (`checkUpdates`, `doUpdateAll`,
   `doUpdateOne`, `doRemove`, `doInstall`, `doMcpAdd`, `loadPackageCatalog`)
   поверх `pi-actions.ts`/`cmd.ts`, объект `Loop` для побочных эффектов
+  (`prevFrame` + `paintFrame` — дифф-репок; `makeProgressPainter`/`PROGRESS_THROTTLE_MS` — throttle прогресса каталога)
 - `src/cmd.ts` — `runCmd` (spawn с таймаутами `PI_TIMEOUT_MS`/`NPM_TIMEOUT_MS`/`MCP_TIMEOUT_MS`),
   `piEnv(dir)` — окружение процесса с `PI_CODING_AGENT_DIR` (чистая сборка аргументов)
 - `src/pi-actions.ts` — `piUpdateAll`/`piUpdateOne`/`piRemove`/`piInstall`/
@@ -224,13 +240,14 @@
   `unhandledRejection`/`SIGINT`/`SIGTERM`/`SIGHUP`, `report`+`exit(1)` при
   исключении (сигналы — cleanup без текста в stderr); никогда не reject'ит
 - `test/*.test.ts` — тесты чистого ядра (включая `mcp.test.ts`,
-  `state-mcp.test.ts`, `state-create-mcp.test.ts`, `render-mcp.test.ts`, `shutdown.test.ts`, `terminal.test.ts` — гарантия терминала, `ci.test.ts` — согласие `engines`/матрицы CI/документов и гейт `needs: test` перед публикацией)
+  `state-mcp.test.ts`, `state-create-mcp.test.ts`, `render-mcp.test.ts`, `shutdown.test.ts`, `terminal.test.ts` — гарантия терминала, `paint.test.ts` — `paint`/`screenKnown`, `diff.test.ts` — построчный дифф, `throttle.test.ts` — схлопывание прогресс-репоков, `app-paint.test.ts` — реальный цикл `run()` на фейковом терминале (сколько байт ушло на репок), `ci.test.ts` — согласие `engines`/матрицы CI/документов и гейт `needs: test` перед публикацией)
 
 ## Конвенции
 
 - Вся логика, не требующая TTY, — чистые функции, тестируемые `node:test`.
 - Терминальный слой тонкий; UI-логику в `terminal.ts` не переносить.
 - Вывод терминала наружу — только через `withShutdown` (`src/shutdown.ts`): `term.stop()` вне него не вызывать (исключение — `launchPi`, который сознательно отдаёт терминал дочернему `pi`).
+- Отрисовка — только через `term.paint(...)` (полный кадр или `rows`-патч из `src/diff.ts`); отдельного `clear()` в `Term` больше нет (полный кадр пишет очистку экрана сам), а `process.stdout.write` из `run.ts` не добавлять. Кадр обязан оставаться ровно `height` строк фиксированной видимой ширины (иначе построчный дифф инвалидируется); новый кадр с другой раскладкой узнаётся по `frameKey`, а не «на глаз».
 - UI-тексты и сообщения — через `t(lang, key)` (`src/i18n.ts`), словари —
   `src/locales/*.json` (ru — базовый, en — полный; новая локаль = новый файл,
   код не меняется); прямые литеральные строки в UI — не добавлять.
