@@ -142,7 +142,7 @@ class CliArgsTest(unittest.TestCase):
     def test_defaults(self):
         args = parse_args([])
         self.assertEqual(args.langs, ["en", "ru"])
-        self.assertEqual((args.cols, args.rows), (90, 26))
+        self.assertEqual((args.cols, args.rows), (90, 32))
         self.assertEqual(args.font_size, 16)
         self.assertEqual(args.fps_cap, 24)
         self.assertEqual(args.idle_limit, 2.0)
