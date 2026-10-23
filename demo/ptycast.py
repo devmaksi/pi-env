@@ -11,6 +11,7 @@ import fcntl
 import json
 import os
 import pty
+import signal
 import struct
 import subprocess
 import termios
@@ -48,6 +49,42 @@ class Step:
     after: float = 0.0
 
 
+def _terminate_process_group(proc: subprocess.Popen) -> None:
+    """Остановить всю группу процессов: оболочку, pi-env и дочерний pi.
+
+    Оболочка запускается с `start_new_session=True`. Прежний `proc.terminate()`
+    убивал только оболочку, и сорванный дубль оставлял висящий `pi-env` без
+    терминала (проверено на живом примере: он переживал уничтожение оболочки).
+    """
+
+    try:
+        pgid = os.getpgid(proc.pid)
+    except (ProcessLookupError, PermissionError):
+        pgid = None
+
+    if pgid is not None:
+        for sig, limit in ((signal.SIGTERM, 0.4), (signal.SIGKILL, 0.3)):
+            try:
+                os.killpg(pgid, sig)
+            except ProcessLookupError:
+                break
+            deadline = time.monotonic() + limit
+            alive = True
+            while alive and time.monotonic() < deadline:
+                try:
+                    os.killpg(pgid, 0)
+                except ProcessLookupError:
+                    alive = False
+                    break
+                time.sleep(0.05)
+            if not alive:
+                break
+
+    try:
+        proc.wait(timeout=1)
+    except subprocess.TimeoutExpired:
+        pass
+
 def record(
     argv: list[str],
     cwd: Path,
@@ -70,7 +107,7 @@ def record(
     fcntl.ioctl(slave, termios.TIOCSWINSZ, struct.pack("HHHH", rows, cols, 0, 0))
     proc = subprocess.Popen(
         argv, stdin=slave, stdout=slave, stderr=slave,
-        close_fds=True, cwd=str(cwd), env=env,
+        close_fds=True, cwd=str(cwd), env=env, start_new_session=True,
     )
     os.close(slave)
 
@@ -146,13 +183,7 @@ def record(
                 time.sleep(step.after)
         eof.wait(timeout=exit_grace)
     finally:
-        if proc.poll() is None:
-            proc.terminate()
-            try:
-                proc.wait(timeout=2)
-            except subprocess.TimeoutExpired:
-                proc.kill()
-                proc.wait()
+        _terminate_process_group(proc)
         try:
             os.close(master)
         except OSError:

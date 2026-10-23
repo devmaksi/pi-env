@@ -3,6 +3,7 @@
 import json
 import os
 import subprocess
+import time
 import tempfile
 import unittest
 from pathlib import Path
@@ -193,6 +194,26 @@ class MarkerTimeoutTest(unittest.TestCase):
                 ],
                 marker_timeout=1.0,
             )
+
+    def test_timeout_kills_the_whole_process_group(self):
+        marker = "markera-zdes-net"
+        try:
+            record(
+                ["bash", "--norc", "--noprofile", "-c",
+                 "printf ready; sleep 25 & sleep 25"],
+                cwd=REPO, cols=90, rows=26, env=SHELL_ENV,
+                steps=[
+                    Step(keys=(), wait_for="ready", per_key=0.0, after=0.2),
+                    Step(keys=(), wait_for=marker, per_key=0.0, after=0.0),
+                ],
+                marker_timeout=1.0,
+            )
+            self.fail("ожидался TimeoutError")
+        except TimeoutError:
+            pass
+        time.sleep(0.5)
+        left = subprocess.run(["pgrep", "-f", "sleep 25"], capture_output=True, text=True)
+        self.assertEqual(left.stdout.strip(), "", "группа процессов осталась живой после таймаута")
 
 
 
