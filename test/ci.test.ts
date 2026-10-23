@@ -33,8 +33,7 @@ test('доки не обещают Node ниже engines', () => {
   }
 });
 
-// publish.yml попадает в список вместе с его гейтом (Task 3 плана)
-const WORKFLOWS = ['.github/workflows/ci.yml'];
+const WORKFLOWS = ['.github/workflows/ci.yml', '.github/workflows/publish.yml'];
 
 const matrixNodes = (): number[] => {
   const m = /node:\s*\[([\d,\s]+)\]/.exec(repo('.github/workflows/tests.yml'));
@@ -59,7 +58,7 @@ test('матрица tests.yml покрывает engines', () => {
   for (const n of nodes) assert.ok(n >= floor, `tests.yml: Node ${n} младше engines ${floor}`);
 });
 
-test('ci.yml вызывает tests.yml и не дублирует матрицу', () => {
+test('ci.yml и publish.yml вызывают tests.yml и не дублируют матрицу', () => {
   for (const f of WORKFLOWS) {
     const y = repo(f);
     assert.match(y, /uses:\s*\.\/\.github\/workflows\/tests\.yml/);
@@ -71,4 +70,26 @@ test('tests.yml: least privilege — без write и id-token', () => {
   const y = repo('.github/workflows/tests.yml');
   assert.match(y, /permissions:\s*\n\s*contents:\s*read/);
   assert.doesNotMatch(y, /id-token|contents:\s*write/);
+});
+
+test('publish.yml: публикация заперта тестами', () => {
+  const y = repo('.github/workflows/publish.yml');
+  const jobs = y.slice(y.indexOf('\njobs:'));
+  const body = jobs.slice(jobs.indexOf('\n  publish:'));
+  assert.ok(jobs.includes('\n  publish:'), 'publish.yml: нет джоба publish');
+  assert.match(y, /uses:\s*\.\/\.github\/workflows\/tests\.yml/);
+  assert.match(body, /needs:\s*test/);
+  assert.ok(
+    body.indexOf('needs:') < body.indexOf('npm publish'),
+    'publish.yml: needs: test должен стоять до npm publish',
+  );
+});
+
+test('publish.yml: ловушки публикации не потеряны', () => {
+  const y = repo('.github/workflows/publish.yml');
+  assert.match(y, /id-token:\s*write/);
+  assert.match(y, /npm publish --provenance --access public/);
+  assert.match(y, /npm install -g npm@11/);
+  assert.match(y, /runs-on:\s*ubuntu-24\.04/);
+  assert.match(y, /registry-url:\s*https:\/\/registry\.npmjs\.org/);
 });
