@@ -43,6 +43,7 @@
   "scripts": {
     "build": "tsc && rm -rf dist/locales && cp -r src/locales dist/locales",
     "test": "tsx --test test/*.test.ts",
+    "bench": "tsx bench/paint-bench.ts",
     "start": "node dist/index.js"
   },
   "devDependencies": {
