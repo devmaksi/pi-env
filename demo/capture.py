@@ -9,11 +9,9 @@ from __future__ import annotations
 
 import argparse
 import contextlib
-import struct
 import json
 import os
 import re
-import shutil
 import struct
 import subprocess
 import sys
