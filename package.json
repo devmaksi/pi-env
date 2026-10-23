@@ -1,6 +1,6 @@
 {
   "name": "@devmaksi/pi-env",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "description": "Profiles for the Pi coding agent: create, edit and launch isolated agent environments (settings, extensions, skills, MCP) from a terminal TUI",
   "type": "module",
   "bin": {
