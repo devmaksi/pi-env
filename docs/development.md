@@ -1,7 +1,7 @@
 # Разработка
 [English](development.en.md) | [Русский](development.md)
 
-**Стек:** Node.js ≥ 20, TypeScript (ESM, `NodeNext`), ноль runtime-зависимостей.
+**Стек:** Node.js ≥ 22.19 (как у pi 1.3/1.4), TypeScript (ESM, `NodeNext`), ноль runtime-зависимостей.
 Dev-зависимости: `typescript`, `tsx`, `@types/node`. Тесты — `node:test`.
 
 ## Быстрый старт

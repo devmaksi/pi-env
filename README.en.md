@@ -21,8 +21,9 @@ leaving the terminal.
 
 ## Quick start
 
-**Requirements:** Node.js ≥ 20 and the `pi` CLI installed
+**Requirements:** Node.js ≥ 22.19 and the `pi` CLI installed
 (`npm install -g @earendil-works/pi-coding-agent`).
+(the Node floor matches `pi` itself: pi 1.3/1.4 requires Node.js 22.19 or newer)
 
 ```bash
 npm install -g @devmaksi/pi-env                  # or one-off: npx @devmaksi/pi-env

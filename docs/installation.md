@@ -3,7 +3,7 @@
 
 **Требования:**
 
-- Node.js ≥ 20;
+- Node.js ≥ 22.19 — столько же требует сам `pi` (pi 1.3/1.4: Node ≥ 22.19);
 - установленный CLI `pi` (`@earendil-works/pi-coding-agent`) — `pi-env`
   вызывает `pi` для запуска окружений и управления пакетами:
 
@@ -36,7 +36,7 @@ winget install OpenJS.NodeJS.LTS
 
 (или установщик с https://nodejs.org — в PowerShell/CMD после перезапуска)
 
-Проверка: `node -v` (должно быть ≥ 20) и `npm -v`.
+Проверка: `node -v` (должно быть ≥ 22.19) и `npm -v`.
 
 ## Установка pi-env
 

@@ -20,8 +20,9 @@
 
 ## Быстрый старт
 
-**Требования:** Node.js ≥ 20 и установленный CLI `pi`
+**Требования:** Node.js ≥ 22.19 и установленный CLI `pi`
 (`npm install -g @earendil-works/pi-coding-agent`).
+(граница по Node — как у самого `pi`: pi 1.3/1.4 требует Node.js 22.19 или новее)
 
 ```bash
 npm install -g @devmaksi/pi-env                  # либо одноразово: npx @devmaksi/pi-env

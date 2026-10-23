@@ -82,7 +82,7 @@
 
 ## Стек
 
-- Node.js ≥ 20, TypeScript (ESM, `NodeNext`), ноль runtime-зависимостей.
+- Node.js ≥ 22.19 (столько же требует pi 1.3/1.4), TypeScript (ESM, `NodeNext`), ноль runtime-зависимостей.
 - Dev-зависимости: `typescript`, `tsx`. Тесты: `node:test`.
 
 ## Команды

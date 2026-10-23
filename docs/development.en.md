@@ -2,7 +2,7 @@
 
 [English](development.en.md) | [Русский](development.md)
 
-**Stack:** Node.js ≥ 20, TypeScript (ESM, `NodeNext`), zero runtime dependencies.
+**Stack:** Node.js ≥ 22.19 (same as pi 1.3/1.4), TypeScript (ESM, `NodeNext`), zero runtime dependencies.
 Dev dependencies: `typescript`, `tsx`, `@types/node`. Tests — `node:test`.
 
 ## Quick start
