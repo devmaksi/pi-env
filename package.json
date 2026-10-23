@@ -17,7 +17,7 @@
     "image": "https://github.com/devmaksi/pi-env/raw/refs/heads/master/docs/screenshot.png"
   },
   "engines": {
-    "node": ">=20"
+    "node": ">=22.19.0"
   },
   "license": "MIT",
   "repository": {

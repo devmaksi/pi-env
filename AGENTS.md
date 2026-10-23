@@ -82,7 +82,7 @@
 
 ## Стек
 
-- Node.js ≥ 20, TypeScript (ESM, `NodeNext`), ноль runtime-зависимостей.
+- Node.js ≥ 22.19 (столько же требует pi 1.3/1.4), TypeScript (ESM, `NodeNext`), ноль runtime-зависимостей.
 - Dev-зависимости: `typescript`, `tsx`. Тесты: `node:test`.
 
 ## Команды
@@ -100,9 +100,17 @@
 - Релиз: bump `version` в package.json → коммит → `git tag vX.Y.Z` →
   push тега (уходит в оба remote сразу: у origin два pushurl — git.lan
   и github.com).
-- CI `.github/workflows/publish.yml` на тег `v*`: `npm ci` → build →
+- Проверка — `.github/workflows/tests.yml` (`on: workflow_call`): матрица
+  Node **22/24**, `npm ci` → build → `npm test` на `ubuntu-24.04`. Единственное
+  место, где живут шаги проверки и список поддерживаемых Node: `ci.yml` (push в
+  master/main + PR) и `publish.yml` (тег) только вызывают его и свою матрицу
+  не дублируют. Согласие `engines` ↔ матрицы ↔ документов и наличие гейта
+  страхует `test/ci.test.ts`.
+- CI `.github/workflows/publish.yml` на тег `v*`: джоб `test` (тот же
+  реюз-воркфлоу) → джоб `publish` (`needs: test`): `npm ci` → build →
   проверка «тег = версия» → `npm publish --provenance --access public`
   → GitHub Release (идемпотентно: существующий релиз не создаёт заново).
+  Тег без зелёных тестов не публикуется.
   Публикация — через npm Trusted Publishing (OIDC от GitHub): токена
   в репозитории нет, `permissions: id-token: write`, внутри воркфлоу
   npm обновляется до `npm@11` (trusted publishing требует ≥ 11.5.1).
@@ -216,7 +224,7 @@
   `unhandledRejection`/`SIGINT`/`SIGTERM`/`SIGHUP`, `report`+`exit(1)` при
   исключении (сигналы — cleanup без текста в stderr); никогда не reject'ит
 - `test/*.test.ts` — тесты чистого ядра (включая `mcp.test.ts`,
-  `state-mcp.test.ts`, `state-create-mcp.test.ts`, `render-mcp.test.ts`, `shutdown.test.ts`, `terminal.test.ts` — гарантия терминала)
+  `state-mcp.test.ts`, `state-create-mcp.test.ts`, `render-mcp.test.ts`, `shutdown.test.ts`, `terminal.test.ts` — гарантия терминала, `ci.test.ts` — согласие `engines`/матрицы CI/документов и гейт `needs: test` перед публикацией)
 
 ## Конвенции
 

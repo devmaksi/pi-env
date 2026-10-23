@@ -4,7 +4,7 @@
 
 **Requirements:**
 
-- Node.js ≥ 20;
+- Node.js ≥ 22.19 — the same floor `pi` itself requires (pi 1.3/1.4: Node ≥ 22.19);
 - the installed `pi` CLI (`@earendil-works/pi-coding-agent`) — `pi-env`
   invokes `pi` to launch environments and manage packages:
 
@@ -37,7 +37,7 @@ winget install OpenJS.NodeJS.LTS
 
 (or the installer from https://nodejs.org — in PowerShell/CMD after a restart)
 
-Check: `node -v` (must be ≥ 20) and `npm -v`.
+Check: `node -v` (must be ≥ 22.19) and `npm -v`.
 
 ## Installing pi-env
 
