@@ -38,8 +38,10 @@ npm run start          # run the built CLI (node dist/index.js)
 
 - All logic that does not require a TTY — **pure functions**, covered by
   `node:test` tests; the terminal layer (`terminal.ts`, `run.ts`) stays thin.
-- UI texts and messages — **in Russian**.
-- **Do not add** runtime dependencies without necessity.
+- UI texts and messages — through `t(lang, key)` (`src/i18n.ts`), dictionaries in
+  `src/locales/*.json` (ru is the base, en is complete).
+- Documentation: a file without a suffix is English, Russian text lives in `.ru`
+  files; the repository has no `.en.md` files.
 - Layout/key-behavior changes — only together with updating `render`/`state`
   tests and `AGENTS.md`.
 
@@ -51,6 +53,21 @@ npx tsx src/index.ts   # check behavior live
 npm test               # run core tests
 npm run build          # build
 ```
+
+## Demo GIF recording
+
+```bash
+pi-env                # close every running pi-env first — the script refuses otherwise
+npm run demo          # re-shoots docs/demo.gif and docs/demo.ru.gif
+```
+
+`demo/` is a Python 3 stand (stdlib only): `demo/ptycast.py` drives a PTY and writes an
+asciinema cast, `demo/script.py` is the keyboard/marker script, `demo/capture.py` pins the
+pi-env language and renders the GIF through `agg` (`demo/bin/agg`, downloaded on first run,
+gitignored; so is `demo/out/`). The stand self-checks alt-screen handling with
+`python3 -m demo.capture --selftest`, and `python3 -m unittest demo.test_ptycast
+demo.test_capture` covers it. `demo/` is not in `files` in `package.json`, so it never
+reaches the npm tarball.
 
 A detailed description of the environments model, current status, and roadmap — in
 `AGENTS.md`.

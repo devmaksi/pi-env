@@ -24,11 +24,32 @@
 ### Совместимость
 
 - **Минимальная Node — 22.19.0** (`engines` в `package.json` и
-  `package-lock.json`, `README` ru/en, `docs/installation` ru/en,
-  `docs/development` ru/en, `AGENTS.md`). Столько же требует сам pi:
+  `package-lock.json`, `README.md` и `README.ru.md`, `docs/installation.md` и
+  `docs/installation.ru.md`, `docs/development.md` и `docs/development.ru.md`,
+  `AGENTS.md`). Столько же требует сам pi:
   `@earendil-works/pi-coding-agent` 1.3/1.4 — Node `>=22.19.0`; для Node 20 у
   pi отдельная legacy-линия (dist-tag `legacy-node20` → 0.74.2). Матрица CI
   вместо Node 20/22/24 теперь 22 и 24 — активные LTS-линии.
+
+### Витрина и демо
+
+- **Английский по умолчанию.** `README.md`, `docs/installation.md`,
+  `docs/development.md` — английские тексты без суффикса, русские переехали в
+  `README.ru.md`, `docs/installation.ru.md`, `docs/development.ru.md`; файлов с
+  `.en.md` в репозитории больше нет, строка переключения языка есть во всех шести
+  документах. Раскладку витрины, отсутствие русского GIF в английском README и
+  живость всех относительных ссылок страхует новый `test/docs.test.ts`; `DOCS` в
+  `test/ci.test.ts` переведён на новую раскладку.
+- **Демо-GIF рядом со скриншотом.** `docs/demo.gif` и `docs/demo.ru.gif`
+  (883×739, 42 кадра, ~17 с, ~0.6 МБ) — один и тот же дубль на двух языках
+  интерфейса: список окружений → запуск `dev-supo` (16 скиллов superpowers, 5
+  пакетов расширений, `(strata) qwen3.8-flash…`) → `/quit` → запуск `Test` (6 своих
+  скиллов, 0 пакетов, `(llama.cpp) Qwen3.8-27B`) → `/quit` → выход. Пересъёмка —
+  `npm run demo`: Python 3 стенд `demo/` (PTY + asciinema cast + рендер через
+  `agg`), с закреплением языка и `lastChangelogVersion` на время дубля (настройки
+  восстанавливаются байт в байт), проверкой «нет открытого pi-env», постмортем-кастом
+  сорванного дубля и тестами `demo/test_ptycast.py` / `demo/test_capture.py`.
+  `demo/` в `files` package.json нет — в npm-тарбелл не попадает.
 
 ## [0.2.1] — 2026-10-22
 

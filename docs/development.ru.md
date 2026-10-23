@@ -37,7 +37,10 @@ npm run start          # запуск собранного CLI (node dist/index.
 
 - Вся логика, не требующая TTY, — **чистые функции**, покрытые тестами
   `node:test`; терминальный слой (`terminal.ts`, `run.ts`) остаётся тонким.
-- UI-тексты и сообщения — **на русском**.
+- UI-тексты и сообщения — через `t(lang, key)` (`src/i18n.ts`), словари —
+  `src/locales/*.json` (ru — базовый, en — полный).
+- Документация: файл без суффикса — английский, русский текст — в файлах с
+  суффиксом `.ru`; `.en.md` в репозитории нет.
 - **Не добавлять** runtime-зависимости без необходимости.
 - Изменения раскладки/поведения клавиш — только вместе с обновлением тестов
   `render`/`state` и `AGENTS.md`.
@@ -50,6 +53,21 @@ npx tsx src/index.ts   # проверить поведение вживую
 npm test               # прогнать тесты ядра
 npm run build          # собрать
 ```
+
+## Съёмка демо-GIF
+
+```bash
+pi-env                # сначала закрыть все открытые pi-env — скрипт иначе отказывается
+npm run demo          # пересъёмка docs/demo.gif и docs/demo.ru.gif
+```
+
+`demo/` — Python 3 стенд (только stdlib): `demo/ptycast.py` ведёт PTY и пишет asciinema
+cast, `demo/script.py` — сценарий клавиш и маркеров, `demo/capture.py` закрепляет язык
+pi-env и рендерит GIF через `agg` (`demo/bin/agg`, скачивается при первом запуске и в git
+не попадает; `demo/out/` тоже). Стенд сам проверяет работу с alt-screen
+(`python3 -m demo.capture --selftest`), покрытие — `python3 -m unittest demo.test_ptycast
+demo.test_capture`. В `files` package.json `demo/` нет, поэтому в npm-тарбелл он не
+попадает.
 
 Подробное описание модели окружений, текущего статуса и дорожной карты — в
 `AGENTS.md`.
