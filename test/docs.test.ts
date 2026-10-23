@@ -35,6 +35,9 @@ test('доки: суффикс .ru только у русских докумен
 test('демо-GIF: английский в README.md, русский в README.ru.md', () => {
   const main = repo('README.md');
   assert.ok(main.includes('](docs/demo.gif)'), 'README.md: нет английского демо-GIF');
+  assert.ok(!main.includes('docs/screenshot.png'), 'README.md: витрина — демо-GIF, без скриншота');
+  assert.ok(!repo('README.ru.md').includes('docs/screenshot.png'),
+    'README.ru.md: витрина — демо-GIF, без скриншота');
   assert.ok(!main.includes('docs/demo.ru.gif'), 'README.md: не должен показывать русский демо-GIF');
   assert.ok(repo('README.ru.md').includes('](docs/demo.ru.gif)'),
     'README.ru.md: нет русского демо-GIF');

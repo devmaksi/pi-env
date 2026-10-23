@@ -17,10 +17,8 @@ different directories. `pi-env` makes them manageable: a list of environments,
 a creation form, launch on Enter, extension and MCP updates in place — without
 leaving the terminal.
 
-![Launch an environment in pi-env, then run it: pi prints the skills, tools and
-packages loaded by that environment](docs/demo.gif)
-
-![pi-env](docs/screenshot.png)
+![Launch an environment in pi-env, then run it in pi: pi prints the skills, tools and
+packages that this environment loaded — two environments, two different sets](docs/demo.gif)
 
 ## Quick start
 
