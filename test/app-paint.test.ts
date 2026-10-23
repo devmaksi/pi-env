@@ -42,7 +42,6 @@ function fakeTerm(keys: string[]) {
     width: () => 80,
     height: () => 24,
     key: async () => keys[next++] ?? 'ctrlc',
-    clear() {},
     onResize() {},
     paint(patch) {
       if (!running) return false;

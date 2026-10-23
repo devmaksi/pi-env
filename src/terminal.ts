@@ -73,8 +73,7 @@ export interface Term {
   width(): number;
   height(): number;
   key(): Promise<string>;
-  clear(): void;
-  /** Записать кадр: весь (после clear) или только изменённые строки. true — если написали. */
+  /** Записать кадр: весь (с очисткой экрана) или только изменённые строки. true — если написали. */
   paint(patch: FramePatch): boolean;
   /** Известно ли, что сейчас на экране: false сразу и после каждого start(). */
   screenKnown(): boolean;
@@ -145,9 +144,6 @@ export function createTerm(): Term {
     key() {
       if (queue.length > 0) return Promise.resolve(queue.shift()!);
       return new Promise<string>((res) => { waiter = res; });
-    },
-    clear() {
-      out.write('\x1b[2J\x1b[H');
     },
     paint(patch) {
       if (!running) return false;
