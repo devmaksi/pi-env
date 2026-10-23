@@ -1,17 +1,18 @@
-# Установка
-[English](installation.en.md) | [Русский](installation.md)
+# Installation
 
-**Требования:**
+[English](installation.md) | [Русский](installation.ru.md)
 
-- Node.js ≥ 22.19 — столько же требует сам `pi` (pi 1.3/1.4: Node ≥ 22.19);
-- установленный CLI `pi` (`@earendil-works/pi-coding-agent`) — `pi-env`
-  вызывает `pi` для запуска окружений и управления пакетами:
+**Requirements:**
+
+- Node.js ≥ 22.19 — the same floor `pi` itself requires (pi 1.3/1.4: Node ≥ 22.19);
+- the installed `pi` CLI (`@earendil-works/pi-coding-agent`) — `pi-env`
+  invokes `pi` to launch environments and manage packages:
 
   ```bash
   npm install -g @earendil-works/pi-coding-agent
   ```
 
-## Установить Node.js
+## Installing Node.js
 
 **Linux (Debian/Ubuntu):**
 
@@ -20,7 +21,7 @@ curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash -
 sudo apt-get install -y nodejs
 ```
 
-(или пакетный менеджер дистрибутива: `dnf install nodejs`, `pacman -S nodejs-lts`)
+(or your distribution's package manager: `dnf install nodejs`, `pacman -S nodejs-lts`)
 
 **macOS:**
 
@@ -34,52 +35,51 @@ brew install node
 winget install OpenJS.NodeJS.LTS
 ```
 
-(или установщик с https://nodejs.org — в PowerShell/CMD после перезапуска)
+(or the installer from https://nodejs.org — in PowerShell/CMD after a restart)
 
-Проверка: `node -v` (должно быть ≥ 22.19) и `npm -v`.
+Check: `node -v` (must be ≥ 22.19) and `npm -v`.
 
-## Установка pi-env
+## Installing pi-env
 
-**Из npm-реестра (основной способ):**
+**From the npm registry (the standard way):**
 
 ```bash
 npm install -g @devmaksi/pi-env
 ```
 
-Одноразовый запуск без установки:
+One-off run without installation:
 
 ```bash
 npx @devmaksi/pi-env
 ```
 
-**Из исходников (для разработки):** глобальный symlink на проект —
-правки исходников сразу видны в CLI:
+**From sources (for development):** a global symlink to the project —
+source changes are visible in the CLI right away:
 
 ```bash
-cd /путь/к/pi-env
+cd /path/to/pi-env
 npm install
 npm run build
 npm link
 ```
 
-После установки:
+After installation:
 
 ```bash
-pi-env              # запуск TUI (корень окружений — ~/.pi-env)
-pi-env --root /tmp  # другой корень окружений
-pi-env --help       # справка
+pi-env              # launch the TUI (environments root — ~/.pi-env)
+pi-env --root /tmp  # a different environments root
+pi-env --help       # help
 ```
 
-> **Примечание:** утилита требует интерактивный терминал (TTY) — в pipe/CI не
-> запустится и покажет сообщение об ошибке.
+> **Note:** the utility requires an interactive terminal (TTY) — it will not
+> start in pipe/CI and will show an error message.
 >
-> **Windows (PowerShell/CMD):** всё то же самое — `npm install -g @devmaksi/pi-env`;
-> глобальный prefix npm по умолчанию уже в `PATH`. Если команда не находится —
-> перезапустите терминал.
+> **Windows (PowerShell/CMD):** everything is the same — `npm install -g @devmaksi/pi-env`;
+> npm's global prefix is already in `PATH` by default. If the command is not found —
+> restart the terminal.
 
-## Удаление глобальной установки
+## Removing the global installation
 
 ```bash
-npm uninstall -g @devmaksi/pi-env   # либо: npm unlink -g pi-env (для npm link)
+npm uninstall -g @devmaksi/pi-env   # or: npm unlink -g pi-env (for npm link)
 ```
-
