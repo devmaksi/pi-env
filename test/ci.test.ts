@@ -18,6 +18,13 @@ const enginesMajor = (): number => {
 const DOCS = ['README.md', 'README.en.md', 'docs/installation.md', 'docs/installation.en.md',
   'docs/development.md', 'docs/development.en.md', 'AGENTS.md'];
 
+// «Node.js ≥ 20», «Node LTS 20», «Node >= 20.6.0», «node -v (must be ≥ 20)» —
+// любая форма, где документ обещает Node-линию 20
+const STALE_FLOOR = /Node(?:\.js)?[^\n]{0,24}?\b20\b[.\d]*/gi;
+
+const staleFloorClaims = (text: string): string[] =>
+  [...text.matchAll(STALE_FLOOR)].map((m) => m[0].trim());
+
 test('engines: минимальная Node — 22.19.0 (как у pi)', () => {
   assert.match(repo('package.json'), /"node":\s*">=22\.19\.0"/);
 });
@@ -27,10 +34,24 @@ test('доки не обещают Node ниже engines', () => {
   assert.equal(floor, 22);
   for (const f of DOCS) {
     const text = repo(f);
-    assert.doesNotMatch(text, /≥\s*20\b/, `${f}: обещает Node 20`);
-    assert.doesNotMatch(text, /Node(?:\.js)?\s*>=\s*20\b/, `${f}: обещает Node 20`);
+    for (const claim of staleFloorClaims(text)) {
+      assert.fail(`${f}: обещает Node 20 — «${claim}»`);
+    }
     assert.match(text, /22\.19/, `${f}: нет упоминания 22.19`);
   }
+});
+
+test('страховка доков ловит обещание Node 20 в разной форме', () => {
+  const forms = [
+    '**Требования:** Node.js ≥ 20 и установленный CLI',
+    'Check: `node -v` (must be >= 20) and `npm -v`.',
+    '**Stack:** Node LTS 20, TypeScript',
+    'Node.js >= 20.6.0',
+  ];
+  for (const form of forms) {
+    assert.ok(staleFloorClaims(form).length > 0, `не поймано: ${form}`);
+  }
+  assert.deepEqual(staleFloorClaims('Node.js ≥ 22.19 (как у pi 1.3/1.4)'), []);
 });
 
 const WORKFLOWS = ['.github/workflows/ci.yml', '.github/workflows/publish.yml'];
