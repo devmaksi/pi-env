@@ -29,6 +29,7 @@ ESC = "\x1b"
 
 TAIL_LIMIT = 4096
 ERROR_TAIL_LIMIT = 2000
+WAIT_SEARCH_LIMIT = 300_000   # как далеко искать маркер: pi перерисовывает весь кадр
 ALT_SCREEN_ON = "\x1b[?1049h"
 ALT_SCREEN_OFF = "\x1b[?1049l"
 ALT_SCREEN_REPLACEMENT = "\x1b[H\x1b[2J"
@@ -41,8 +42,9 @@ class Step:
     """Один шаг сценария: дождаться маркера, потом набрать клавиши."""
 
     keys: tuple[str, ...]
-    wait_for: str | None = None
+    wait_for: str | tuple[str, ...] | None = None
     per_key: float = 0.08
+    before: float = 0.0   # пауза между найденным маркером и клавишами: время прочитать кадр
     after: float = 0.0
 
 
@@ -99,21 +101,32 @@ def record(
             text = "".join(chunk for _, chunk in chunks)
         return text[-limit:]
 
-    def wait_for(marker: str) -> None:
+    def wait_for(marker: str | tuple[str, ...], start: int) -> None:
+        markers = (marker,) if isinstance(marker, str) else tuple(marker)
         deadline = time.monotonic() + marker_timeout
         while time.monotonic() < deadline:
-            if marker in tail():
+            with lock:
+                window = "".join(text for _, text in chunks[start:])
+            if len(window) > WAIT_SEARCH_LIMIT:
+                window = window[-WAIT_SEARCH_LIMIT:]
+            if any(item in window for item in markers):
                 return
             time.sleep(0.05)
-        raise TimeoutError(
-            f"маркер {marker!r} не появился за {marker_timeout} с; "
+        error = TimeoutError(
+            f"маркер {markers!r} не появился за {marker_timeout} с; "
             f"хвост вывода: {tail(ERROR_TAIL_LIMIT)!r}"
         )
+        error.chunks = list(chunks)
+        raise error
 
+    window_start = 0
     try:
         for step in steps:
             if step.wait_for is not None:
-                wait_for(step.wait_for)
+                wait_for(step.wait_for, window_start)
+            window_start = len(chunks)
+            if step.before > 0:
+                time.sleep(step.before)
             for key in step.keys:
                 if eof.is_set() and proc.poll() is not None:
                     raise RuntimeError(

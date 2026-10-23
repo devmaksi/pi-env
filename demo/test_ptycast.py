@@ -7,7 +7,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from demo.ptycast import Step, record, render_agg, write_cast
+from demo.ptycast import TAIL_LIMIT, Step, record, render_agg, write_cast
 
 SHELL_ENV = {
     "PATH": os.environ.get("PATH", "/usr/bin:/bin"),
@@ -116,6 +116,85 @@ class RenderAggTest(unittest.TestCase):
             frames = subprocess.run(["identify", "-format", "%p", str(gif)],
                                     capture_output=True, text=True, check=True).stdout.strip()
             self.assertGreaterEqual(int(frames), 1)
+
+class MarkerTimeoutTest(unittest.TestCase):
+    def test_timeout_carries_the_recorded_chunks(self):
+        with self.assertRaises(TimeoutError) as caught:
+            record(
+                ["bash", "--norc", "--noprofile", "-c", "printf 'хвост до таймаута\\n'; sleep 4; exit"],
+                cwd=REPO, cols=90, rows=26, env=SHELL_ENV,
+                steps=[Step(keys=(), wait_for="этого нет", per_key=0.0, after=0.0)],
+                marker_timeout=1.0,
+            )
+        chunks = getattr(caught.exception, "chunks", None)
+        self.assertTrue(chunks, "TimeoutError обязан нести записанные куски вывода")
+        self.assertIn("хвост до таймаута", "".join(text for _, text in chunks))
+
+    def test_wait_for_accepts_several_markers(self):
+        chunks = record(
+            ["bash", "--norc", "--noprofile", "-c", "printf 'second\\n'; exit"],
+            cwd=REPO, cols=90, rows=26, env=SHELL_ENV,
+            steps=[Step(keys=(), wait_for=("first", "second"), per_key=0.0, after=0.0)],
+            marker_timeout=10,
+        )
+        self.assertIn("second", "".join(text for _, text in chunks))
+
+    def test_marker_found_even_after_it_left_the_tail_window(self):
+        spam = "; ".join(f"printf '%s' 'frame-spam-{n}-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'"
+                         for n in range(1, 120))
+        chunks = record(
+            ["bash", "--norc", "--noprofile", "-c", f"printf target; {spam}; sleep 1; exit"],
+            cwd=REPO, cols=90, rows=26, env=SHELL_ENV,
+            steps=[Step(keys=(), wait_for="target", per_key=0.0, after=0.0)],
+            marker_timeout=15,
+        )
+        text = "".join(chunk for _, chunk in chunks)
+        self.assertGreater(len(text), 4096)
+        self.assertNotIn("target", text[-TAIL_LIMIT:])
+        self.assertIn("target", text)
+
+    def test_before_pause_happens_between_marker_and_keys(self):
+        chunks = record(
+            ["bash", "--norc", "--noprofile", "-c",
+             "printf ready; read _; printf got-key"],
+            cwd=REPO, cols=90, rows=26, env=SHELL_ENV,
+            steps=[
+                Step(keys=("x", "\r"), wait_for="ready", before=0.6, per_key=0.05, after=0.2),
+            ],
+            marker_timeout=15,
+        )
+        ready_at = next(t for t, text in chunks if "ready" in text)
+        got_at = next(t for t, text in chunks if "got-key" in text)
+        self.assertGreaterEqual(got_at - ready_at, 0.5)
+
+
+    def test_window_covers_the_previous_steps_output(self):
+        # bash печатает «later» только после полученной клавиши — маркер должен
+        # найтись на следующем шаге, хотя окно открывается до клавиш текущего шага.
+        chunks = record(
+            ["bash", "--norc", "--noprofile", "-c", "read _; printf later; exit"],
+            cwd=REPO, cols=90, rows=26, env=SHELL_ENV,
+            steps=[
+                Step(keys=("x", "\r"), wait_for=None, per_key=0.05, after=0.5),
+                Step(keys=(), wait_for="later", per_key=0.0, after=0.0),
+            ],
+            marker_timeout=15,
+        )
+        self.assertIn("later", "".join(text for _, text in chunks))
+
+    def test_marker_search_starts_at_the_wait(self):
+        with self.assertRaises(TimeoutError):
+            record(
+                ["bash", "--norc", "--noprofile", "-c", "printf early; sleep 2; exit"],
+                cwd=REPO, cols=90, rows=26, env=SHELL_ENV,
+                steps=[
+                    Step(keys=(), wait_for="early", per_key=0.0, after=0.2),
+                    Step(keys=(), wait_for="early", per_key=0.0, after=0.0),
+                ],
+                marker_timeout=1.0,
+            )
+
+
 
 
 if __name__ == "__main__":
