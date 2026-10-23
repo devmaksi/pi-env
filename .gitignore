@@ -4,3 +4,7 @@ dist/
 # superpowers-артефакты (планы/спеки) — не коммитим
 docs/superpowers/
 .superpowers/
+# съёмка демо-GIF: скачанный agg, рабочие cast/кадры, кэш Python
+demo/bin/
+demo/out/
+__pycache__/
