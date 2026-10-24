@@ -31,7 +31,9 @@ export function scan(root: string): Environment[] | null {
     return null;
   }
   return entries
-    .filter((e) => e.isDirectory())
+    // Каталоги с `.` — служебные (корзина `.trash`, настройки `.pi-env.json`):
+    // окружение так не назвать (`validateName` допускает только [a-zA-Z0-9_-]).
+    .filter((e) => e.isDirectory() && !e.name.startsWith('.'))
     .map((e) => {
       const p = join(root, e.name);
       return { name: e.name, path: p, details: readDetails(p) };

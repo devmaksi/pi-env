@@ -62,6 +62,9 @@ different purpose.
   `PI_CODING_AGENT_DIR=<environment path>`, back to the TUI on exit;
 - environment editing: change model, tools, packages, skills, MCP, rename,
   delete with confirmation;
+- deleting an environment moves it to the trash (`<root>/.trash/`): the
+  “Trash (N)” entry in the environment list restores it with Enter, delete
+  forever is there too, with confirmation;
 - extension management: update checks («↑ latest» markers), updating
   one/all packages (`pi update`), removal (`pi remove`);
 - installing extensions from the `https://pi.dev/packages` catalog: globally

@@ -199,17 +199,6 @@ export function envSkillDirName(skill: SkillItem): string {
   return skill.name.replace(/\//g, '-');
 }
 
-/** Удаляет каталог окружения <root>/<name> вместе с содержимым. */
-export function deleteEnvironment(root: string, name: string, lang: string = 'ru'): CreateResult {
-  const envDir = join(root, name);
-  if (!existsSync(envDir)) return { ok: false, error: t(lang, 'err.not-found') };
-  try {
-    rmSync(envDir, { recursive: true, force: true });
-  } catch {
-    return { ok: false, error: t(lang, 'err.delete', { name }) };
-  }
-  return { ok: true, path: envDir };
-}
 
 function uniqueStrings(list: string[]): string[] {
   return [...new Set(list)];

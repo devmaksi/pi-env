@@ -1,9 +1,10 @@
 import { Environment } from './environments.js';
 import { computeLayout, NARROW_MIN, LOW_MIN, type Layout } from './layout.js';
 import { type AppState, type PkgCheck } from './state.js';
-import { renderCreate, renderExtTab, renderEnvList, renderMcpTab, type Ctx, type Section } from './sections.js';
+import { renderCreate, renderExtTab, renderEnvList, renderMcpTab, renderTrashTab, type Ctx, type Section } from './sections.js';
 import type { PkgItem, CatalogPkg } from './catalog.js';
 import type { McpLiveStatus, McpServer } from './mcp.js';
+import type { TrashEntry } from './trash.js';
 import { t, nativeName, type StrKey } from './i18n.js';
 import { createRequire } from 'node:module';
 
@@ -89,6 +90,8 @@ export interface RenderArgs {
   height: number;
   useColor: boolean;
   status: string | null;
+  /** Снимок `.trash` корня: число записей в списке окружений и содержимое суб-экрана корзины. */
+  trashEntries?: TrashEntry[];
 }
 
 const TAB_KEYS = { envs: 'tab.envs', extensions: 'tab.extensions', mcp: 'tab.mcp', settings: 'tab.settings', about: 'tab.about' } as const;
@@ -147,7 +150,10 @@ export function render(a: RenderArgs): string {
 
   const section = state.sub === 'create' && state.create
     ? renderCreate(state.create, ctx)
-    : state.tab === 'envs' ? renderEnvList(envs, state, ctx)
+    : state.tab === 'envs'
+      ? state.trash !== null
+        ? renderTrashTab(state.trash, a.trashEntries ?? [], ctx)
+        : renderEnvList(envs, state, ctx, a.trashEntries?.length ?? 0)
     : state.tab === 'extensions' ? renderExtTab(state.ext, ctx)
     : state.tab === 'mcp' ? renderMcpTab(state.mcp, ctx)
     : state.tab === 'settings' ? renderSettings(state, ctx)

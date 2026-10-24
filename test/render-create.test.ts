@@ -115,7 +115,7 @@ test('форма create: строки Удалить/Сохранить нет',
 
 test('confirm-delete: вопрос и подсказки', () => {
   const s = render({ state: editState({ view: 'confirm-delete' }), envs, width: 62, height: 10, root: '/root', useColor: false, status: null });
-  assert.ok(s.includes('Удалить окружение «dev»?'));
+  assert.ok(s.includes('Удалить «dev» в корзину?'));
   assert.ok(s.includes('Enter — подтвердить'));
   assert.ok(s.includes('Esc — отмена'));
 });

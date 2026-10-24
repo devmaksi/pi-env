@@ -1,6 +1,7 @@
 import { join } from 'node:path';
-import { createEnvironment, updateEnvironment, deleteEnvironment } from './create.js';
+import { createEnvironment, updateEnvironment } from './create.js';
 import { copyMcpEntry, removeMcpEntry, readMcpServers } from './mcp.js';
+import { deleteTrashForever, listTrash, moveToTrash, restoreTrash } from './trash.js';
 import { t } from './i18n.js';
 import { reducer, makeCtx } from './state.js';
 import { buildCreateRequest } from './pi-actions.js';
@@ -43,9 +44,9 @@ export interface Loop {
   doMcpCheck(dir: string, scope: 'main' | 'create'): void;
 }
 
-/** Контекст reducer для side-effect-хуков. */
+/** Контекст reducer для side-effect-хуков (имена записей корзины — для суб-экрана «Корзина»). */
 function rctx(loop: Loop, envNames: string[]): ReducerCtx {
-  return makeCtx(envNames, loop.twoColumns());
+  return makeCtx(envNames, loop.twoColumns(), listTrash(loop.root).map((e) => e.dirName));
 }
 
 /** Хуки переходов после reducer — 1-в-1 с телом прежнего dispatch. */
@@ -55,6 +56,7 @@ export async function runSideEffects(loop: Loop, envs: Environment[], prev: Prev
   hooksExt(loop, prev.ext);
   hooksMcp(loop, prev.mcp, names);
   hooksMcpCheck(loop, prev);
+  hooksTrash(loop);
   if (prev.tab !== 'extensions' && loop.state().tab === 'extensions' && loop.state().ext === null &&
       (loop.state().pkgCheck === 'idle' || loop.state().recheckUpdates)) {
     loop.checkUpdates(loop.agentDir, 'main');
@@ -62,6 +64,27 @@ export async function runSideEffects(loop: Loop, envs: Environment[], prev: Prev
   doSubmit(loop, names);
   doDelete(loop, names);
   await doRun(loop, envs);
+}
+
+/**
+ * Действия суб-экрана «Корзина»: восстановление записи и «удалить совсем».
+ * Синхронные файловые операции (как mcpOpSync): результат — в reducer и статус-строку.
+ */
+function hooksTrash(loop: Loop): void {
+  const pending = loop.state().trash?.pending ?? null;
+  if (pending === null) return;
+  const lang = loop.state().language;
+  const name = pending.dirName.split('@')[0] ?? pending.dirName;
+  const r = pending.kind === 'restore'
+    ? restoreTrash(loop.root, pending.dirName, lang)
+    : deleteTrashForever(loop.root, pending.dirName, lang);
+  const message = r.ok
+    ? t(lang, pending.kind === 'restore' ? 'status.trash-restored' : 'status.trash-deleted', { name })
+    : r.error;
+  loop.status(message);
+  // Имена окружений — свежие (после восстановления их стало больше): по ним reducer держит курсор на «Корзина».
+  loop.setState(reducer(loop.state(), { type: 'trash-result', ok: r.ok, message }, rctx(loop, loop.envs().map((e) => e.name))));
+  loop.repaint();
 }
 
 /** Каталог агента для формы: окружение (edit) или main-агент (create, окружение ещё не существует). */
@@ -192,7 +215,8 @@ function doDelete(loop: Loop, names: string[]): void {
   const cr = loop.state().create;
   if (cr === null || cr.view !== 'deleting') return;
   const name = cr.name;
-  const res = deleteEnvironment(loop.root, name, loop.state().language);
+  const res = moveToTrash(loop.root, name, Date.now(), loop.state().language);
+  if (res.ok) loop.status(t(loop.state().language, 'status.env-trashed', { name }));
   loop.setState(reducer(loop.state(), { type: 'delete-result', ok: res.ok, message: res.ok ? name : res.error }, rctx(loop, names)));
   if (res.ok) {
     const n = loop.envs().length;

@@ -10,12 +10,12 @@ const envs = (n: number) => Array.from({ length: n }, (_, i) => `env${i}`);
 test('initialState', () => {
   assert.deepEqual(initialState(), {
     tab: 'envs', focus: 'left', selected: 0, sub: null, colorToggle: true, recheckUpdates: false, recheckMcp: false, quit: false, language: 'ru',
-    catalog: emptyCatalog(), create: null, ext: null, mcp: null, catalogProgress: null, pkgCheck: 'idle', pkgLatest: {}, mcpCheck: 'idle', mcpLive: null,
+    catalog: emptyCatalog(), create: null, ext: null, mcp: null, trash: null, catalogProgress: null, pkgCheck: 'idle', pkgLatest: {}, mcpCheck: 'idle', mcpLive: null,
   });
 });
 
 test('listLength', () => {
-  assert.equal(listLength('envs', 3), 4);
+  assert.equal(listLength('envs', 3), 5); // окружения + «Создать» + «Корзина»
   assert.equal(listLength('extensions', 0, 3), 5);
   assert.equal(listLength('extensions', 0), 2);
   assert.equal(listLength('settings', 0), SETTINGS_COUNT);
@@ -40,7 +40,7 @@ test('TAB циклически переключает вкладки и сбра
   assert.equal(s.tab, 'envs');
 });
 
-test('↑↓ клампируются на границах списка', () => {
+test('↑↓ клампируются на границах списка (2 окружения + «Создать» + «Корзина»)', () => {
   let s = initialState();
   s = reducer(s, 'up', rc(envs(2)));
   assert.equal(s.selected, 0);
@@ -49,9 +49,11 @@ test('↑↓ клампируются на границах списка', () =>
   s = reducer(s, 'down', rc(envs(2)));
   assert.equal(s.selected, 2);
   s = reducer(s, 'down', rc(envs(2)));
-  assert.equal(s.selected, 2);
+  assert.equal(s.selected, 3);
+  s = reducer(s, 'down', rc(envs(2)));
+  assert.equal(s.selected, 3);
   s = reducer(s, 'up', rc(envs(2)));
-  assert.equal(s.selected, 1);
+  assert.equal(s.selected, 2);
 });
 
 test('Enter: окружение → run, последний пункт → create', () => {
