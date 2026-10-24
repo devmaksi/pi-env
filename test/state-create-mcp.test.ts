@@ -143,6 +143,34 @@ test('mcpAdd: esc — закрыть форму, назад в список', ()
   assert.equal(s.create?.view, 'mcp');
 });
 
+test('mcpAdd формы окружения: ←/→ на «Типе» меняют значение, курсор на строке', () => {
+  let s = reducer(editState({ cursor: 2 }), 'space', rc(envs(1)));   // «＋ Добавить»
+  s = reducer(s, 'down', rc(envs(1)));
+  assert.equal(s.create?.mcpAdd?.cursor, 1);
+  s = reducer(s, 'left', rc(envs(1)));
+  assert.equal(s.create?.mcpAdd?.type, 'http');
+  assert.equal(s.create?.mcpAdd?.cursor, 1);
+  s = reducer(s, 'left', rc(envs(1)));
+  assert.equal(s.create?.mcpAdd?.type, 'stdio');
+});
+
+test('mcpAdd формы окружения: ←/→ на «Exposure» меняют значение со циклом', () => {
+  let s = reducer(editState({ cursor: 2 }), 'space', rc(envs(1)));
+  for (let i = 0; i < 7; i++) s = reducer(s, 'down', rc(envs(1)));   // stdio: «Exposure»
+  assert.equal(s.create?.mcpAdd?.exposure, 'codemode');
+  s = reducer(s, 'left', rc(envs(1)));
+  assert.equal(s.create?.mcpAdd?.exposure, 'hidden');
+});
+
+test('mcpAdd формы окружения: Enter на enum-строке — не submit', () => {
+  let s = reducer(editState({ cursor: 2 }), 'space', rc(envs(1)));
+  s = reducer(s, 'down', rc(envs(1)));
+  s = reducer(s, 'enter', rc(envs(1)));
+  assert.equal(s.create?.view, 'mcp');                                 // view формы не меняется (state-create.ts:196)
+  assert.notEqual(s.create?.mcpAdd, null);                             // форма открыта, submit не случился
+  assert.equal(s.create?.mcpAdd?.type, 'stdio');
+});
+
 test('Список create: Space — toggle в c.mcp', () => {
   let s = createState({ view: 'mcp', cursor: 0 });
   s = reducer(s, 'space', rc(envs(1)));
