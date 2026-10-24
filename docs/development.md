@@ -27,6 +27,8 @@ npm run start          # run the built CLI (node dist/index.js)
 | `src/layout.ts`       | `computeLayout` (pure), threshold constants                                |
 | `src/catalog.ts`      | model/tool/package/skill catalogs, pi.dev catalog (pure)     |
 | `src/create.ts`       | creating/updating/deleting environments, name validation                    |
+| `src/trash.ts`        | environment trash (`<root>/.trash`): move, list, restore                    |
+| `src/state-trash.ts`  | “Trash” sub-screen: ↑↓/Enter/X/Esc (pure)                                   |
 | `src/state.ts`        | `AppState`, `reducer`, create/edit form machines (pure)        |
 | `src/render.ts`       | `render(args)` → ANSI strings (pure)                                      |
 | `src/sections.ts`     | tab sections: forms, “Extensions”, environments + details (pure)      |
@@ -71,3 +73,14 @@ reaches the npm tarball.
 
 A detailed description of the environments model, current status, and roadmap — in
 `AGENTS.md`.
+
+## Specifications
+
+Every architectural decision is documented per feature in
+`docs/superpowers/specs/`, implementation plans in `docs/superpowers/plans/`.
+Neither directory reaches the npm tarball (they are not in `files` in
+`package.json`): they are for development, not for the user.
+
+- [Environment trash](superpowers/specs/2026-10-24-env-trash-design.md) —
+  a deleted environment is moved into `<root>/.trash` instead of an irreversible
+  `rm -rf`; the “Trash” sub-screen restores it or deletes it forever.

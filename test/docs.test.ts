@@ -88,3 +88,18 @@ test('ссылки README и docs ведут в существующие фай�
     }
   }
 });
+
+test('доки: корзина окружений — новые модули в перечне и спецификация в репозитории', () => {
+  // Каталог `docs/superpowers/` не попадает в npm-тарбол (в `files` его нет), поэтому
+  // проверяем существование по репозиторию, а не по `files` — как тест демо-GIF.
+  for (const file of ['docs/development.md', 'docs/development.ru.md']) {
+    const text = repo(file);
+    assert.ok(text.includes('src/trash.ts'), `${file}: нет src/trash.ts в перечне файлов`);
+    assert.ok(text.includes('src/state-trash.ts'), `${file}: нет src/state-trash.ts в перечне файлов`);
+    assert.ok(text.includes('docs/superpowers/specs/'), `${file}: нет ссылки на каталог спецификаций`);
+  }
+  assert.ok(existsSync(pathOf('docs/superpowers/specs/2026-10-24-env-trash-design.md')),
+    'нет спецификации «Корзина окружений»');
+  assert.ok(existsSync(pathOf('docs/superpowers/plans/2026-10-24-env-trash.md')),
+    'нет плана «Корзина окружений»');
+});
