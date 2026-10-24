@@ -104,8 +104,8 @@ All installation methods (including Node.js setup), removal, and notes
 - [Installation](docs/installation.md) — Node.js, pi-env install/remove
 - [Development](docs/development.md) — stack, quick start, project structure,
   conventions
-- [CHANGELOG.md](CHANGELOG.md) — release history
-- [AGENTS.md](AGENTS.md) — environments model, current status, roadmap
+- [CHANGELOG.md](https://github.com/devmaksi/pi-env/blob/master/CHANGELOG.md) — release history
+- [AGENTS.md](https://github.com/devmaksi/pi-env/blob/master/AGENTS.md) — environments model, current status, roadmap
 
 ## For the pi agent
 

@@ -45,6 +45,33 @@ test('демо-GIF: английский в README.md, русский в README.
   assert.ok(existsSync(pathOf('docs/demo.ru.gif')), 'нет docs/demo.ru.gif');
 });
 
+test('относительные ссылки README попадают в npm-тарбол (files)', () => {
+  // Реестры (pi.dev, npm) переписывают относительные пути README в
+  // cdn.jsdelivr.net/npm/<pkg>@<ver>/<path>, то есть читают тарбол, а не репозиторий:
+  // файл, не попавший в `files`, даёт 404 на странице пакета при живом файле в репозитории.
+  const pkg = JSON.parse(repo('package.json')) as { files?: string[] };
+  const files = (pkg.files ?? []).map((entry) => entry.replace(/^\.\//, '').replace(/\/+$/, ''));
+  // npm кладёт эти файлы в тарбол всегда, независимо от `files`
+  const always = ['package.json', 'LICENSE', 'README.md', 'README.ru.md'];
+  const shipped = (rel: string): boolean =>
+    always.includes(rel) || files.some((entry) => rel === entry || rel.startsWith(`${entry}/`));
+
+  for (const file of ['README.md', 'README.ru.md']) {
+    const text = repo(file);
+    let i = 0;
+    while ((i = text.indexOf('](', i)) >= 0) {
+      const end = text.indexOf(')', i + 2);
+      const target = text.slice(i + 2, end);
+      i = end;
+      if (!target || target.startsWith('#') || target.startsWith('mailto:') ||
+          target.indexOf('://') > 0) continue;
+      const target2 = target.startsWith('./') ? target.slice(2) : target;
+      assert.ok(shipped(target2),
+        `${file}: ${target} не попадает в npm-тарбол — добавьте каталог в "files" package.json`);
+    }
+  }
+});
+
 test('ссылки README и docs ведут в существующие файлы', () => {
   for (const file of DOCS) {
     const text = repo(file);

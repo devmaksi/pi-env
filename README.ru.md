@@ -102,8 +102,8 @@ npm install -g @devmaksi/pi-env   # либо одноразово: npx @devmaksi
 - [Установка](docs/installation.ru.md) — Node.js, установка/удаление pi-env
 - [Разработка](docs/development.ru.md) — стек, быстрый старт, структура проекта,
   конвенции
-- [CHANGELOG.md](CHANGELOG.md) — история версий
-- [AGENTS.md](AGENTS.md) — модель окружений, текущий статус, дорожная карта
+- [CHANGELOG.md](https://github.com/devmaksi/pi-env/blob/master/CHANGELOG.md) — история версий
+- [AGENTS.md](https://github.com/devmaksi/pi-env/blob/master/AGENTS.md) — модель окружений, текущий статус, дорожная карта
 
 ## Для агента pi
 
