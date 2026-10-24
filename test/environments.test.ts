@@ -83,3 +83,25 @@ test('scan: mcp.json окружения — имена в details.mcp', () => {
     rmSync(dir, { recursive: true });
   }
 });
+
+test('scan: .trash не показывается как окружение', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'pienv-'));
+  try {
+    mkdirSync(join(dir, '.trash', 'e1@1000'), { recursive: true });
+    assert.deepEqual(scan(dir), []);
+  } finally {
+    rmSync(dir, { recursive: true });
+  }
+});
+
+test('scan: каталоги с точкой в начале пропускаются, обычные — нет', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'pienv-'));
+  try {
+    mkdirSync(join(dir, '.hidden'));
+    writeFileSync(join(dir, '.pi-env.json'), '{}');
+    mkdirSync(join(dir, 'ok'));
+    assert.deepEqual(scan(dir).map((e) => e.name), ['ok']);
+  } finally {
+    rmSync(dir, { recursive: true });
+  }
+});
