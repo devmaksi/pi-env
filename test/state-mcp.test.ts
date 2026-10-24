@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { initialState, reducer, listLength, freshMcpForm, type AppState, type ReducerCtx, type Catalog } from '../src/state.js';
+import { initialState, reducer, listLength, freshMcpForm, enumValues, MCP_TYPES, MCP_EXPOSURES, TEXT_ROWS, type AppState, type ReducerCtx, type Catalog } from '../src/state.js';
 import type { McpServer } from '../src/mcp.js';
 import { t } from '../src/i18n.js';
 
@@ -157,6 +157,14 @@ test('freshMcpForm: значения по умолчанию', () => {
   assert.equal(f.caret, 0);
   assert.equal(f.select, null);
   assert.equal(f.error, null);
+});
+
+test('enumValues: «Тип» и «Exposure» — закрытые списки, текстовые строки и «Добавить» — null', () => {
+  assert.deepEqual([...enumValues('type')!], [...MCP_TYPES]);
+  assert.deepEqual([...enumValues('exposure')!], [...MCP_EXPOSURES]);
+  for (const row of TEXT_ROWS) assert.equal(enumValues(row), null);
+  assert.equal(enumValues('action'), null);
+  assert.equal(enumValues('нет-такой-строки'), null);
 });
 
 // --- живой статус MCP на вкладке ---

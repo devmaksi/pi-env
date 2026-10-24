@@ -14,7 +14,7 @@ import type { McpTab } from './state-mcp.js';
 
 export { freshCreate, freshEdit, packageListSources, formRows, ROW_NAME, ROW_MODEL, ROW_TOOLS, ROW_PACKAGES, ROW_SKILLS, ROW_MCP, ROW_ACTION, ROW_DELETE, FORM_ROWS, MAX_NAME, UPDATE_ALL_ROW, INSTALL_ROW } from './state-form.js';
 export type { CreateView, CreateState } from './state-form.js';
-export { mcpFormRows, mcpFormStep, mcpListNames, freshMcpForm, freshMcpTab, MCP_TYPES, MCP_EXPOSURES, TEXT_ROWS } from './state-mcp.js';
+export { mcpFormRows, mcpFormStep, mcpListNames, freshMcpForm, freshMcpTab, MCP_TYPES, MCP_EXPOSURES, MCP_ENUM_ROWS, enumValues, TEXT_ROWS } from './state-mcp.js';
 export type { McpFormAdd, McpTabView, McpTab, McpFormStep, McpExposure } from './state-mcp.js';
 export { freshExt } from './state-ext.js';
 export { freshTrash, applyTrashResult, trashMachine } from './state-trash.js';

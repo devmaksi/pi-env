@@ -40,6 +40,17 @@ export type McpExposure = 'codemode' | 'deferred' | 'direct' | 'hidden';
 export const MCP_TYPES: readonly McpType[] = ['stdio', 'http'];
 export const MCP_EXPOSURES: readonly McpExposure[] = ['codemode', 'deferred', 'direct', 'hidden'];
 
+/** Закрытые списки значений строк формы: строка → варианты (cycle по ←/→). */
+export const MCP_ENUM_ROWS: Record<string, readonly string[]> = {
+  type: MCP_TYPES,
+  exposure: MCP_EXPOSURES,
+};
+
+/** Варианты enum-строки формы или null, если строка не enum (текст/действие). */
+export function enumValues(row: string): readonly string[] | null {
+  return MCP_ENUM_ROWS[row] ?? null;
+}
+
 /** Текстовые строки формы (редактируются вводом). */
 export const TEXT_ROWS = ['name', 'command', 'args', 'env', 'cwd', 'description', 'url'] as const;
 type TextField = (typeof TEXT_ROWS)[number];
