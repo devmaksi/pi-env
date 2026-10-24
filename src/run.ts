@@ -280,6 +280,7 @@ export async function run(root: string, term: Term = createTerm()): Promise<void
       height: h,
       useColor: state.colorToggle && !term.noColor,
       status: statusMsg ?? status,
+      trashEntries: listTrash(root),
     }).split('\n');
     const key = frameKey(w, h, computeLayout({ width: w, height: h }).twoColumns);
     // Экран неизвестен (первый кадр, resize, возврат из дочернего pi) → prevFrame не используется.

@@ -11,10 +11,12 @@ import {
   type ExtState,
   type McpFormAdd,
   type McpTab,
+  type TrashState,
 } from './state.js';
 import type { Environment } from './environments.js';
 import { filterPackages } from './catalog.js';
 import { liveMarker, mergeLive } from './mcp.js';
+import { formatTs, type TrashEntry } from './trash.js';
 import {
   c,
   ANSI,
@@ -336,7 +338,7 @@ function detailSection(title: string, items: string[], lines: string[], w: numbe
 }
 
 /** Вкладка «Окружения»: список + инфо-панель выбранного (без слияния в узком режиме). */
-export function renderEnvList(envs: Environment[], state: AppState, ctx: Ctx): Section {
+export function renderEnvList(envs: Environment[], state: AppState, ctx: Ctx, trashCount: number): Section {
   const left: string[] = [];
   const right: string[] = [];
   interface Row { text: string; selected: boolean; isSep: boolean }
@@ -348,6 +350,11 @@ export function renderEnvList(envs: Environment[], state: AppState, ctx: Ctx): S
     }
   });
   rows.push({ text: (state.selected === envs.length ? '> ' : '  ') + t(ctx.lang, 'form.create'), selected: state.selected === envs.length, isSep: false });
+  rows.push({
+    text: (state.selected === envs.length + 1 ? '> ' : '  ') + t(ctx.lang, 'envs.trash', { n: trashCount }),
+    selected: state.selected === envs.length + 1,
+    isSep: false,
+  });
 
   for (const r of rows) {
     if (r.isSep) {
@@ -359,7 +366,10 @@ export function renderEnvList(envs: Environment[], state: AppState, ctx: Ctx): S
     }
   }
 
-  if (state.selected < envs.length) {
+  if (state.selected === envs.length + 1) {
+    right.push(c(ANSI.dim, ctx.useColor) + t(ctx.lang, 'envs.trash', { n: trashCount }) + c(ANSI.reset, ctx.useColor));
+    right.push(c(ANSI.dim, ctx.useColor) + t(ctx.lang, 'envs.trash.pick') + c(ANSI.reset, ctx.useColor));
+  } else if (state.selected < envs.length) {
     const e = envs[state.selected];
     const d = e.details;
     right.push(c(ANSI.bold, ctx.useColor) + e.name + c(ANSI.reset, ctx.useColor));
@@ -376,7 +386,44 @@ export function renderEnvList(envs: Environment[], state: AppState, ctx: Ctx): S
   }
   const cursorRow = state.selected < envs.length
     ? state.selected
-    : envs.length === 0 ? 0 : envs.length + 1; // разделитель сдвигает «Создать»
+    : envs.length === 0 ? state.selected          // сепаратора нет: 0 → «Создать», 1 → «Корзина»
+    : state.selected + 1;                         // сепаратор сдвигает «Создать» и «Корзина»
+  return { left, right, cursorRow };
+}
+
+/**
+ * Суб-экран «Корзина»: список перенесённых окружений. Правки содержимого нет —
+ * только восстановить (Enter) и удалить совсем (X + подтверждение в инфо-панели).
+ */
+export function renderTrashTab(tr: TrashState, entries: TrashEntry[], ctx: Ctx): Section {
+  const left: string[] = [];
+  const right: string[] = [];
+  const dim = (s: string): string => c(ANSI.dim, ctx.useColor) + s + c(ANSI.reset, ctx.useColor);
+  const bold = (s: string): string => c(ANSI.bold, ctx.useColor) + s + c(ANSI.reset, ctx.useColor);
+  left.push(dim(t(ctx.lang, 'trash.title')));
+  if (entries.length === 0) left.push(dim(t(ctx.lang, 'empty')));
+  entries.forEach((e, i) => {
+    left.push(listRow(i, tr.cursor, truncateName(e.name, PKG_NAME_MAX) + '  ' + (e.ts === null ? '' : formatTs(e.ts)), ctx.L.leftWidth, ctx.useColor));
+  });
+  if (entries.length > 0) left.push(dim('─'.repeat(ctx.L.leftWidth - 2)));
+
+  const asked = tr.confirm === null ? undefined : entries.find((e) => e.dirName === tr.confirm);
+  const cur = entries[tr.cursor];
+  if (tr.confirm !== null) {
+    const name = asked !== undefined ? asked.name : (tr.confirm.split('@')[0] ?? tr.confirm);
+    right.push(bold(t(ctx.lang, 'busy.trash-delete', { name })));
+    right.push(dim(t(ctx.lang, 'hint.confirm')));
+    right.push(dim(t(ctx.lang, 'hint.cancel')));
+  } else if (cur !== undefined) {
+    right.push(bold(cur.name));
+    right.push(t(ctx.lang, 'trash.deleted-at', { v: cur.ts === null ? '—' : formatTs(cur.ts) }));
+    right.push(t(ctx.lang, 'envs.path', { v: cur.path }));
+    right.push(dim(t(ctx.lang, 'hint.trash-restore')));
+    right.push(dim(t(ctx.lang, 'hint.trash-delete')));
+  } else {
+    right.push(dim(t(ctx.lang, 'hint.back')));
+  }
+  const cursorRow = entries.length === 0 ? -1 : 1 + Math.min(tr.cursor, entries.length - 1);
   return { left, right, cursorRow };
 }
 
