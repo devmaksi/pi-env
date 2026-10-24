@@ -1,6 +1,7 @@
 import { join } from 'node:path';
-import { createEnvironment, updateEnvironment, deleteEnvironment } from './create.js';
+import { createEnvironment, updateEnvironment } from './create.js';
 import { copyMcpEntry, removeMcpEntry, readMcpServers } from './mcp.js';
+import { moveToTrash } from './trash.js';
 import { t } from './i18n.js';
 import { reducer, makeCtx } from './state.js';
 import { buildCreateRequest } from './pi-actions.js';
@@ -192,7 +193,8 @@ function doDelete(loop: Loop, names: string[]): void {
   const cr = loop.state().create;
   if (cr === null || cr.view !== 'deleting') return;
   const name = cr.name;
-  const res = deleteEnvironment(loop.root, name, loop.state().language);
+  const res = moveToTrash(loop.root, name, Date.now(), loop.state().language);
+  if (res.ok) loop.status(t(loop.state().language, 'status.env-trashed', { name }));
   loop.setState(reducer(loop.state(), { type: 'delete-result', ok: res.ok, message: res.ok ? name : res.error }, rctx(loop, names)));
   if (res.ok) {
     const n = loop.envs().length;

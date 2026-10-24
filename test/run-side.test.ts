@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { existsSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -10,6 +10,7 @@ import {
   type AppState, type Catalog, type CreateState, type Environment, type McpServer,
 } from '../src/state.js';
 import { writeMcpFile } from '../src/mcp.js';
+import { listTrash } from '../src/trash.js';
 
 const PKG_A = { source: 'npm:pkg-a', name: 'pkg-a', path: '/p', version: null, description: null, extensions: [], skills: [] };
 const CATALOG: Catalog = { ...emptyCatalog(), packages: [PKG_A] };
@@ -218,4 +219,14 @@ test('форма create: вход в список MCP — проверка по 
 test('форма: открыта форма добавления MCP — проверки нет', async () => {
   const h = await run(editForm({ mcpAdd: freshMcpForm() }), { view: 'mcp' });
   assert.deepEqual(h.log, []);
+});
+
+test('delete: deleting-вид переносит окружение в .trash и ставит статус', async () => {
+  const root = tmp();
+  mkdirSync(join(root, 'e0'));
+  writeFileSync(join(root, 'e0', 'settings.json'), '{}');
+  const h = await run(cr({ view: 'deleting', name: 'e0', mode: 'edit', origName: 'e0' }), { view: 'confirm-delete' }, root);
+  assert.equal(listTrash(root).length, 1);
+  assert.equal(existsSync(join(root, 'e0')), false);
+  assert.ok(h.log.some((l) => l.startsWith('status:') && l.includes('корзину')));
 });

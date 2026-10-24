@@ -3,7 +3,7 @@ import assert from 'node:assert';
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync, readFileSync, readdirSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { validateName, createEnvironment, readSettings, updateEnvironment, deleteEnvironment } from '../src/create.js';
+import { validateName, createEnvironment, readSettings, updateEnvironment } from '../src/create.js';
 import { listSkills } from '../src/catalog.js';
 
 function tmpDir(): string {
@@ -433,30 +433,7 @@ test('updateEnvironment: каталог моделей синхронизиру�
   }
 });
 
-test('deleteEnvironment: каталог удаляется вместе с содержимым', () => {
-  const root = tmpDir();
-  try {
-    const envDir = join(root, 'env1');
-    mkdirSync(join(envDir, 'skills', 's1'), { recursive: true });
-    writeFileSync(join(envDir, 'settings.json'), '{}');
-    const res = deleteEnvironment(root, 'env1');
-    assert.equal(res.ok, true);
-    assert.equal(existsSync(envDir), false);
-  } finally {
-    rmSync(root, { recursive: true, force: true });
-  }
-});
 
-test('deleteEnvironment: не найдено — ошибка', () => {
-  const root = tmpDir();
-  try {
-    const res = deleteEnvironment(root, 'nope');
-    assert.equal(res.ok, false);
-    if (!res.ok) assert.match(res.error, /не найдено/i);
-  } finally {
-    rmSync(root, { recursive: true, force: true });
-  }
-});
 
 test('validateName: ошибки на английском', () => {
   assert.equal(validateName('', [], 'en'), 'Enter an environment name');
@@ -464,13 +441,3 @@ test('validateName: ошибки на английском', () => {
   assert.equal(validateName('prod', ['prod'], 'en'), 'An environment with this name already exists');
 });
 
-test('deleteEnvironment: ошибка на английском', () => {
-  const root = tmpDir();
-  try {
-    const res = deleteEnvironment(root, 'nope', 'en');
-    assert.equal(res.ok, false);
-    if (!res.ok) assert.equal(res.error, 'Environment not found');
-  } finally {
-    rmSync(root, { recursive: true, force: true });
-  }
-});
