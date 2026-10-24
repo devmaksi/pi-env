@@ -180,6 +180,8 @@
   "mcp.form.title-main": "Добавление в основной агент",
   "mcp.form.title-env": "Добавление в окружение «{name}»",
   "mcp.hint.add": "Enter — добавить (форма)",
+  "mcp.hint.value": "←/→ — значение",
+  "mcp.hint.submit": "Enter — добавить",
   "form.mcp": "MCP: ",
   "form.mcp.name": "Имя: ",
   "form.mcp.type": "Тип: ",

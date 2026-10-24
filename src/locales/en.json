@@ -180,6 +180,8 @@
   "mcp.form.title-main": "Add to main agent",
   "mcp.form.title-env": "Add to environment \"{name}\"",
   "mcp.hint.add": "Enter — add (form)",
+  "mcp.hint.value": "←/→ — change value",
+  "mcp.hint.submit": "Enter — add",
   "form.mcp": "MCP: ",
   "form.mcp.name": "Name: ",
   "form.mcp.type": "Type: ",

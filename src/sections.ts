@@ -1,5 +1,6 @@
 import type { Layout } from './layout.js';
 import {
+  enumValues,
   mcpFormRows,
   mcpListNames,
   packageListSources,
@@ -248,7 +249,10 @@ export function renderMcpForm(f: McpFormAdd, ctx: Ctx, title: string): Section {
     left.push(listRow(i, f.cursor, label + value, ctx.L.leftWidth, ctx.useColor));
   });
   if (f.error) right.push(c(ANSI.bold, ctx.useColor) + '⚠ ' + f.error + c(ANSI.reset, ctx.useColor));
-  right.push(c(ANSI.dim, ctx.useColor) + t(ctx.lang, 'form.hint.enter') + c(ANSI.reset, ctx.useColor));
+  if (enumValues(rows[f.cursor]) !== null) {
+    right.push(c(ANSI.dim, ctx.useColor) + t(ctx.lang, 'mcp.hint.value') + c(ANSI.reset, ctx.useColor));
+  }
+  right.push(c(ANSI.dim, ctx.useColor) + t(ctx.lang, 'mcp.hint.submit') + c(ANSI.reset, ctx.useColor));
   right.push(c(ANSI.dim, ctx.useColor) + t(ctx.lang, 'form.hint.esc') + c(ANSI.reset, ctx.useColor));
   return { left, right, cursorRow: 1 + f.cursor };
 }

@@ -118,6 +118,28 @@ test('Форма: enum-строки показывают текущее знач
   assertBalancedRowEnds(s3);
 });
 
+test('Форма MCP: подсказка «←/→ — значение» только когда курсор на enum-строке', () => {
+  const onEnum = { ...freshMcpForm(), cursor: 1 };                      // «Тип»
+  const sEnum = render({ state: mcpState({ mcp: { view: 'add', form: onEnum, removing: null } }), envs, width: 100, height: 16, ...base });
+  assert.ok(sEnum.includes('←/→ — значение'));
+  const onText = { ...freshMcpForm(), cursor: 0 };                      // «Имя»
+  const sText = render({ state: mcpState({ mcp: { view: 'add', form: onText, removing: null } }), envs, width: 100, height: 16, ...base });
+  assert.ok(!sText.includes('←/→ — значение'));
+  const onAction = { ...freshMcpForm(), cursor: 8 };                    // «Добавить»
+  const sAction = render({ state: mcpState({ mcp: { view: 'add', form: onAction, removing: null } }), envs, width: 100, height: 16, ...base });
+  assert.ok(!sAction.includes('←/→ — значение'));
+});
+
+test('Форма MCP: Enter-подсказка — «Enter — добавить», подсказки про список значений нет', () => {
+  const form = { ...freshMcpForm(), cursor: 1 };
+  const s = render({ state: mcpState({ mcp: { view: 'add', form, removing: null } }), envs, width: 100, height: 16, ...base });
+  assert.ok(s.includes('Enter — добавить'));
+  assert.ok(!s.includes('открыть список'));
+  const lines = s.split('\n');
+  assert.equal(lines.length, 16);                            // кадр той же высоты
+  for (const line of lines) assert.equal(lastCol(line, () => 1, 100), 100);   // правая граница на месте
+});
+
 test('Список edit в форме: union, маркеры, кнопка', () => {
   const create = { ...freshEdit('dev', {}, catalog, envMcp), view: 'mcp' as const, cursor: 0 };
   const state = { ...initialState(catalog), sub: 'create' as const, create };
