@@ -1,7 +1,6 @@
 import type { Layout } from './layout.js';
 import {
-  MCP_EXPOSURES,
-  MCP_TYPES,
+  enumValues,
   mcpFormRows,
   mcpListNames,
   packageListSources,
@@ -199,7 +198,6 @@ export function renderMcpForm(f: McpFormAdd, ctx: Ctx, title: string): Section {
   const right: string[] = [];
   const rows = mcpFormRows(f.type);
   const textRows = new Set<string>(TEXT_ROWS);
-  const selRow = f.select === 'type' ? rows.indexOf('type') : f.select === 'exposure' ? rows.indexOf('exposure') : f.cursor;
   left.push(c(ANSI.bold, ctx.useColor) + title + c(ANSI.reset, ctx.useColor));
   rows.forEach((row, i) => {
     let label = '';
@@ -210,12 +208,8 @@ export function renderMcpForm(f: McpFormAdd, ctx: Ctx, title: string): Section {
         value = f.name;
         break;
       case 'type':
-        if (f.select === 'type') {
-          value = t(ctx.lang, ('form.mcp.type.' + MCP_TYPES[f.cursor]) as StrKey);
-        } else {
-          label = t(ctx.lang, 'form.mcp.type');
-          value = t(ctx.lang, ('form.mcp.type.' + f.type) as StrKey);
-        }
+        label = t(ctx.lang, 'form.mcp.type');
+        value = t(ctx.lang, ('form.mcp.type.' + f.type) as StrKey);
         break;
       case 'command':
         label = t(ctx.lang, 'form.mcp.command');
@@ -241,25 +235,26 @@ export function renderMcpForm(f: McpFormAdd, ctx: Ctx, title: string): Section {
         label = t(ctx.lang, 'form.mcp.description');
         value = f.description;
         break;
-      case 'exposure': {
-        const opt = f.select === 'exposure' ? MCP_EXPOSURES[f.cursor] : (f.exposure ?? 'codemode');
-        if (f.select !== 'exposure') label = t(ctx.lang, 'form.mcp.exposure');
-        value = t(ctx.lang, ('form.mcp.exposure.' + opt) as StrKey);
+      case 'exposure':
+        label = t(ctx.lang, 'form.mcp.exposure');
+        value = t(ctx.lang, ('form.mcp.exposure.' + (f.exposure ?? 'codemode')) as StrKey);
         break;
-      }
       case 'action':
         value = t(ctx.lang, 'form.mcp.action');
         break;
     }
-    if (textRows.has(row) && i === f.cursor && f.select === null) {
+    if (textRows.has(row) && i === f.cursor) {
       value = value.slice(0, f.caret) + '▌' + value.slice(f.caret);
     }
-    left.push(listRow(i, selRow, label + value, ctx.L.leftWidth, ctx.useColor));
+    left.push(listRow(i, f.cursor, label + value, ctx.L.leftWidth, ctx.useColor));
   });
   if (f.error) right.push(c(ANSI.bold, ctx.useColor) + '⚠ ' + f.error + c(ANSI.reset, ctx.useColor));
-  right.push(c(ANSI.dim, ctx.useColor) + t(ctx.lang, 'form.hint.enter') + c(ANSI.reset, ctx.useColor));
+  if (enumValues(rows[f.cursor]) !== null) {
+    right.push(c(ANSI.dim, ctx.useColor) + t(ctx.lang, 'mcp.hint.value') + c(ANSI.reset, ctx.useColor));
+  }
+  right.push(c(ANSI.dim, ctx.useColor) + t(ctx.lang, 'mcp.hint.submit') + c(ANSI.reset, ctx.useColor));
   right.push(c(ANSI.dim, ctx.useColor) + t(ctx.lang, 'form.hint.esc') + c(ANSI.reset, ctx.useColor));
-  return { left, right, cursorRow: 1 + selRow };
+  return { left, right, cursorRow: 1 + f.cursor };
 }
 
 /** Списки выбора: провайдер / модель / инструменты / скиллы. */

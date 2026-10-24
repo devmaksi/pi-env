@@ -70,8 +70,9 @@ different purpose.
 - installing extensions from the `https://pi.dev/packages` catalog: globally
   (the “Extensions” tab) and into a specific environment (“Install” button
   in the form);
-- MCP: a tab with the server list, form-based addition (`pi mcp add`), removal,
-  and live connection status (`pi mcp list --json`);
+- MCP: a tab with the server list, form-based addition (`pi mcp add`) — closed-choice values
+  ("Type", "Exposure") cycle with left/right arrows right on the row — removal, and live status
+  (`pi mcp list --json`);
 - environment details: info panel of the selected one (model, tools, skills,
   extension packages, MCP);
 - application settings: “Colored output”, “Recheck updates”

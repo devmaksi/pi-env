@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { initialState, reducer, listLength, freshMcpForm, type AppState, type ReducerCtx, type Catalog } from '../src/state.js';
+import { initialState, reducer, listLength, freshMcpForm, enumValues, MCP_TYPES, MCP_EXPOSURES, TEXT_ROWS, type AppState, type ReducerCtx, type Catalog } from '../src/state.js';
 import type { McpServer } from '../src/mcp.js';
 import { t } from '../src/i18n.js';
 
@@ -59,33 +59,79 @@ test('Форма: ввод имени, caret, backspace', () => {
   assert.equal(s.mcp?.form?.caret, 0);
 });
 
-test('Форма: Тип — выбор из списка', () => {
+test('Форма: «Тип» — ←/→ меняют значение со циклом, курсор на строке', () => {
   let s = reducer(tabState({ selected: 2 }), 'enter', rc(envs(1)));
-  s = reducer(s, 'down', rc(envs(1))); // строка «Тип»
-  s = reducer(s, 'enter', rc(envs(1)));
-  assert.equal(s.mcp?.form?.select, 'type');
-  assert.equal(s.mcp?.form?.cursor, 0);
-  s = reducer(s, 'down', rc(envs(1)));
-  s = reducer(s, 'enter', rc(envs(1)));
+  s = reducer(s, 'down', rc(envs(1)));                       // строка «Тип» (stdio: индекс 1)
+  assert.equal(s.mcp?.form?.cursor, 1);
+  s = reducer(s, 'right', rc(envs(1)));
   assert.equal(s.mcp?.form?.type, 'http');
-  assert.equal(s.mcp?.form?.select, null);
-  assert.ok(s.mcp?.form?.cursor !== undefined && s.mcp.form.cursor <= 5);
+  assert.equal(s.mcp?.form?.cursor, 1);                      // курсор не прыгнул
+  s = reducer(s, 'right', rc(envs(1)));                      // цикл по концу списка
+  assert.equal(s.mcp?.form?.type, 'stdio');
+  s = reducer(s, 'left', rc(envs(1)));                       // цикл через начало
+  assert.equal(s.mcp?.form?.type, 'http');
 });
 
-test('Форма: exposure — 4 варианта, esc из выбора не меняет значение', () => {
+test('Форма: «Exposure» — 4 значения по ←/→ со циклом в обе стороны', () => {
   let s = reducer(tabState({ selected: 2 }), 'enter', rc(envs(1)));
-  for (let i = 0; i < 7; i++) s = reducer(s, 'down', rc(envs(1))); // строка «Exposure» (stdio: 8-я)
-  s = reducer(s, 'enter', rc(envs(1)));
-  assert.equal(s.mcp?.form?.select, 'exposure');
+  for (let i = 0; i < 7; i++) s = reducer(s, 'down', rc(envs(1)));  // stdio: «Exposure» — индекс 7
+  assert.equal(s.mcp?.form?.exposure, 'codemode');
+  s = reducer(s, 'left', rc(envs(1)));
+  assert.equal(s.mcp?.form?.exposure, 'hidden');
+  for (let i = 0; i < 4; i++) s = reducer(s, 'right', rc(envs(1)));
+  assert.equal(s.mcp?.form?.exposure, 'hidden');            // цикл: 4 шага → тот же цикл
+  assert.equal(s.mcp?.form?.cursor, 7);                     // и курсор по-прежнему на строке
+});
+
+test('Форма: ↑/↓ на enum-строке значение не меняют — только переход по строкам', () => {
+  let s = reducer(tabState({ selected: 2 }), 'enter', rc(envs(1)));
+  s = reducer(s, 'down', rc(envs(1)));                       // «Тип»
+  const before = s.mcp!.form!;
   s = reducer(s, 'down', rc(envs(1)));
+  assert.equal(s.mcp?.form?.type, before.type);
+  assert.equal(s.mcp?.form?.cursor, 2);                      // «Команда»
+  s = reducer(s, 'up', rc(envs(1)));
+  assert.equal(s.mcp?.form?.cursor, 1);
+  assert.equal(s.mcp?.form?.type, before.type);
+});
+
+test('Форма: Enter на enum-строке — не список и не submit', () => {
+  let s = reducer(tabState({ selected: 2 }), 'enter', rc(envs(1)));
+  s = reducer(s, 'down', rc(envs(1)));                       // «Тип»
   s = reducer(s, 'enter', rc(envs(1)));
-  assert.equal(s.mcp?.form?.exposure, 'deferred');
-  s = reducer(s, 'enter', rc(envs(1))); // открыть выбор снова
-  assert.equal(s.mcp?.form?.select, 'exposure');
-  assert.equal(s.mcp?.form?.cursor, 1); // курсор на текущем
+  assert.equal(s.mcp?.view, 'add');                           // submit (submitting) не случился
+  assert.equal(s.mcp?.form?.type, 'stdio');
+  assert.equal(s.mcp?.form?.cursor, 1);                            // курсор не ушёл в список значений
+  for (let i = 0; i < 6; i++) s = reducer(s, 'down', rc(envs(1)));  // stdio: «Exposure» — индекс 7
+  s = reducer(s, 'enter', rc(envs(1)));
+  assert.equal(s.mcp?.view, 'add');
+  assert.equal(s.mcp?.form?.exposure, 'codemode');
+  assert.equal(s.mcp?.form?.cursor, 7);                             // и здесь курсор остался на строке
+});
+
+test('Форма: смена «Типа» перестраивает набор строк, курсор остаётся на «Тип»', () => {
+  let s = reducer(tabState({ selected: 2 }), 'enter', rc(envs(1)));
+  for (const ch of ['f', 's']) s = reducer(s, ch, rc(envs(1)));    // имя «fs»
+  s = reducer(s, 'down', rc(envs(1)));                       // «Тип» (индекс 1)
+  s = reducer(s, 'right', rc(envs(1)));                      // → http: набор строк 6 вместо 9
+  assert.equal(s.mcp?.form?.type, 'http');
+  assert.equal(s.mcp?.form?.cursor, 1);                      // курсор не сдвинулся перестройкой
+  s = reducer(s, 'down', rc(envs(1)));                       // следующая строка http-набора — «URL»
+  s = reducer(s, 'u', rc(envs(1)));
+  assert.equal(s.mcp?.form?.url, 'u');
+  assert.equal(s.mcp?.form?.name, 'fs');
+  for (let i = 0; i < 3; i++) s = reducer(s, 'down', rc(envs(1)));
+  assert.equal(s.mcp?.form?.cursor, 5);                      // «Добавить» http: кламп, не выход за набор
+});
+
+test('Форма: UI-поля `select` больше нет; esc закрывает форму', () => {
+  const f = freshMcpForm() as unknown as Record<string, unknown>;
+  assert.equal('select' in f, false);
+  let s = reducer(tabState({ selected: 2 }), 'enter', rc(envs(1)));
+  s = reducer(s, 'down', rc(envs(1)));
+  s = reducer(s, 'right', rc(envs(1)));                       // значение изменено
   s = reducer(s, 'esc', rc(envs(1)));
-  assert.equal(s.mcp?.form?.select, null);
-  assert.equal(s.mcp?.form?.exposure, 'deferred');
+  assert.equal(s.mcp, null);                                  // Esc — выход из формы, не «назад из списка»
 });
 
 test('Форма: валидация на «Добавить» — ошибка пустого имени', () => {
@@ -155,8 +201,15 @@ test('freshMcpForm: значения по умолчанию', () => {
   assert.equal(f.type, 'stdio');
   assert.equal(f.cursor, 0);
   assert.equal(f.caret, 0);
-  assert.equal(f.select, null);
   assert.equal(f.error, null);
+});
+
+test('enumValues: «Тип» и «Exposure» — закрытые списки, текстовые строки и «Добавить» — null', () => {
+  assert.deepEqual([...enumValues('type')!], [...MCP_TYPES]);
+  assert.deepEqual([...enumValues('exposure')!], [...MCP_EXPOSURES]);
+  for (const row of TEXT_ROWS) assert.equal(enumValues(row), null);
+  assert.equal(enumValues('action'), null);
+  assert.equal(enumValues('нет-такой-строки'), null);
 });
 
 // --- живой статус MCP на вкладке ---
