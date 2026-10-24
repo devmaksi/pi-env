@@ -76,10 +76,10 @@ A detailed description of the environments model, current status, and roadmap �
 
 ## Specifications
 
-Every architectural decision is documented per feature in
-`docs/superpowers/specs/`, implementation plans in `docs/superpowers/plans/`.
-Neither directory reaches the npm tarball (they are not in `files` in
-`package.json`): they are for development, not for the user.
+Every architectural decision is documented per feature in `docs/superpowers/specs/`,
+implementation plans in `docs/superpowers/plans/`. The `docs` directory (with
+`docs/superpowers/` inside) is in `files` in `package.json`, so it is visible both in the
+repository and in the npm tarball — links to specifications work there too.
 
 - [Environment trash](superpowers/specs/2026-10-24-env-trash-design.md) —
   a deleted environment is moved into `<root>/.trash` instead of an irreversible

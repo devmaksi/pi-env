@@ -77,9 +77,9 @@ demo.test_capture`. В `files` package.json `demo/` нет, поэтому в np
 ## Спецификации
 
 Архитектурные решения описаны отдельным документом на каждую фичу — в каталоге
-`docs/superpowers/specs/`, планы реализации — в `docs/superpowers/plans/`. Оба
-каталога не попадают в npm-тарбелл (их нет в `files` package.json): они нужны для
-разработки, а не пользователю.
+`docs/superpowers/specs/`, планы реализации — в `docs/superpowers/plans/`. Каталог
+`docs` (вместе с `docs/superpowers/`) попадает в `files` package.json, поэтому оба
+каталога видны и в репозитории, и в npm-тарболе — ссылки на спецификации работают везде.
 
 - [Корзина окружений](superpowers/specs/2026-10-24-env-trash-design.md) —
   перенос удалённого окружения в `<root>/.trash` вместо безвозвратного `rm -rf`,

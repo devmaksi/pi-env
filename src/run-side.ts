@@ -56,7 +56,7 @@ export async function runSideEffects(loop: Loop, envs: Environment[], prev: Prev
   hooksExt(loop, prev.ext);
   hooksMcp(loop, prev.mcp, names);
   hooksMcpCheck(loop, prev);
-  hooksTrash(loop, names);
+  hooksTrash(loop);
   if (prev.tab !== 'extensions' && loop.state().tab === 'extensions' && loop.state().ext === null &&
       (loop.state().pkgCheck === 'idle' || loop.state().recheckUpdates)) {
     loop.checkUpdates(loop.agentDir, 'main');
@@ -70,7 +70,7 @@ export async function runSideEffects(loop: Loop, envs: Environment[], prev: Prev
  * Действия суб-экрана «Корзина»: восстановление записи и «удалить совсем».
  * Синхронные файловые операции (как mcpOpSync): результат — в reducer и статус-строку.
  */
-function hooksTrash(loop: Loop, names: string[]): void {
+function hooksTrash(loop: Loop): void {
   const pending = loop.state().trash?.pending ?? null;
   if (pending === null) return;
   const lang = loop.state().language;
@@ -82,7 +82,8 @@ function hooksTrash(loop: Loop, names: string[]): void {
     ? t(lang, pending.kind === 'restore' ? 'status.trash-restored' : 'status.trash-deleted', { name })
     : r.error;
   loop.status(message);
-  loop.setState(reducer(loop.state(), { type: 'trash-result', ok: r.ok, message }, rctx(loop, names)));
+  // Имена окружений — свежие (после восстановления их стало больше): по ним reducer держит курсор на «Корзина».
+  loop.setState(reducer(loop.state(), { type: 'trash-result', ok: r.ok, message }, rctx(loop, loop.envs().map((e) => e.name))));
   loop.repaint();
 }
 

@@ -16,7 +16,7 @@ import {
 import type { Environment } from './environments.js';
 import { filterPackages } from './catalog.js';
 import { liveMarker, mergeLive } from './mcp.js';
-import { formatTs, type TrashEntry } from './trash.js';
+import { formatTs, trashLabel, type TrashEntry } from './trash.js';
 import {
   c,
   ANSI,
@@ -403,7 +403,7 @@ export function renderTrashTab(tr: TrashState, entries: TrashEntry[], ctx: Ctx):
   left.push(dim(t(ctx.lang, 'trash.title')));
   if (entries.length === 0) left.push(dim(t(ctx.lang, 'empty')));
   entries.forEach((e, i) => {
-    left.push(listRow(i, tr.cursor, truncateName(e.name, PKG_NAME_MAX) + '  ' + (e.ts === null ? '' : formatTs(e.ts)), ctx.L.leftWidth, ctx.useColor));
+    left.push(listRow(i, tr.cursor, trashLabel({ ...e, name: truncateName(e.name, PKG_NAME_MAX) }), ctx.L.leftWidth, ctx.useColor));
   });
   if (entries.length > 0) left.push(dim('─'.repeat(ctx.L.leftWidth - 2)));
 

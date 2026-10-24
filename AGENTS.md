@@ -221,7 +221,8 @@
   `restoreTrash`/`deleteTrashForever` (переносы `fs.rename` между `<root>/<имя>` и
   `<root>/.trash/<имя>@<мс>`; одно имя = последняя запись, `@` разделитель — его
   запрещает `validateName`), `formatTs`/`trashLabel` (метка «2026-10-24 14:30»),
-  `safeDirName`/`parseDirName` (имя каталога окружения и обратно)
+  служебные (не экспортируются) `safeDirName` (имя безопасно как один уровень `.trash`)
+  и `parseDirName` (имя/метка обратно из имени каталога)
 - `src/state-trash.ts` — суб-экран «Корзина»: `TrashState` (`cursor`, `confirm`,
   `pending`), `freshTrash`, `trashMachine` (↑↓/Enter/X/Esc/TAB), `applyTrashResult`
   (результат restore/delete навсегда; список пуст → курсор 0) (чистые)

@@ -88,3 +88,8 @@ test('кадр любого суб-экрана корзины — ровно he
     }
   }
 });
+
+test('суб-экран корзины: метка записи — «<имя> · <дата>» (тот же разделитель, что и в модуле корзины)', () => {
+  const s = frame(opened(), ENVS, ENTRIES);
+  assert.ok(s.some((l) => l.includes('old · ' + formatTs(3000))), JSON.stringify(s[3]));
+});

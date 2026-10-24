@@ -64,8 +64,14 @@ export function trashMachine(state: AppState, action: Action, ctx: ReducerCtx): 
   return state; // печатные символы, space, ←/→, R в суб-экране корзины ничего не делают
 }
 
-/** Результат восстановления/удаления: pending снят, курсор в новых границах, суб-экран открыт. */
+/** Результат восстановления/удаления: pending снят, курсоры в новых границах, суб-экран открыт.
+ * Курсор списка окружений держим на строке «Корзина»: после восстановления окружений стало
+ * больше, и без этого он съехал бы на «Создать» (Enter открыл бы форму создания). */
 export function applyTrashResult(state: AppState, _action: { ok: boolean; message: string }, ctx: ReducerCtx): AppState {
   if (state.trash === null) return state;
-  return { ...state, trash: { ...state.trash, pending: null, cursor: clampCursor(state.trash.cursor, names(ctx).length) } };
+  return {
+    ...state,
+    selected: ctx.envNames.length + 1, // «Корзина» — последняя строка списка окружений
+    trash: { ...state.trash, pending: null, cursor: clampCursor(state.trash.cursor, names(ctx).length) },
+  };
 }

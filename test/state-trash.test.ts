@@ -120,3 +120,10 @@ test('↑/↓ на вкладке «Окружения» доходят до с�
   for (let i = 0; i < 6; i++) s = reducer(s, 'down', ctx());
   assert.equal(s.selected, 4);
 });
+
+test('applyTrashResult: после восстановления курсор списка остаётся на строке «Корзина» (окружений стало больше)', () => {
+  // До восстановления 2 окружения (курсор 3 = «Корзина»), после — 3: курсор должен уехать на 4.
+  const busy = { ...open(), selected: 3, trash: freshTrash({ pending: { kind: 'restore', dirName: 'e9@3000' } }) };
+  const after = reducer(busy, { type: 'trash-result', ok: true, message: 'ok' }, ctx(['e0', 'e1', 'e2'], ['e8@2000']));
+  assert.equal(after.selected, 4, 'курсор — на «Корзина» нового списка, а не на «Создать»');
+});

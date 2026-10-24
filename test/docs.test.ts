@@ -56,7 +56,7 @@ test('относительные ссылки README попадают в npm-т�
   const shipped = (rel: string): boolean =>
     always.includes(rel) || files.some((entry) => rel === entry || rel.startsWith(`${entry}/`));
 
-  for (const file of ['README.md', 'README.ru.md']) {
+  for (const file of ['README.md', 'README.ru.md', ...DOCS]) {
     const text = repo(file);
     let i = 0;
     while ((i = text.indexOf('](', i)) >= 0) {
@@ -66,7 +66,9 @@ test('относительные ссылки README попадают в npm-т�
       if (!target || target.startsWith('#') || target.startsWith('mailto:') ||
           target.indexOf('://') > 0) continue;
       const target2 = target.startsWith('./') ? target.slice(2) : target;
-      assert.ok(shipped(target2),
+      // относительная ссылка внутри docs/ живёт относительно каталога docs/
+      const dir = file.indexOf('/') > 0 ? file.slice(0, file.lastIndexOf('/') + 1) : '';
+      assert.ok(shipped(dir + target2),
         `${file}: ${target} не попадает в npm-тарбол — добавьте каталог в "files" package.json`);
     }
   }
@@ -90,8 +92,8 @@ test('ссылки README и docs ведут в существующие фай�
 });
 
 test('доки: корзина окружений — новые модули в перечне и спецификация в репозитории', () => {
-  // Каталог `docs/superpowers/` не попадает в npm-тарбол (в `files` его нет), поэтому
-  // проверяем существование по репозиторию, а не по `files` — как тест демо-GIF.
+  // Спецификации/планы живут в `docs/superpowers/` — каталог `docs` в `files` package.json,
+  // поэтому они попадают и в репозиторий, и в npm-тарбол (это проверяет тест ссылок ниже).
   for (const file of ['docs/development.md', 'docs/development.ru.md']) {
     const text = repo(file);
     assert.ok(text.includes('src/trash.ts'), `${file}: нет src/trash.ts в перечне файлов`);
