@@ -103,10 +103,19 @@ test('Форма stdio: строки, caret', () => {
   assert.ok(!s2.includes('Аргументы: '));
 });
 
-test('Форма: выбор типа', () => {
-  const form = { ...freshMcpForm(), select: 'type' as const, cursor: 1 };
-  const s = render({ state: mcpState({ mcp: { view: 'add', form, removing: null } }), envs, width: 100, height: 16, ...base });
-  assert.ok(s.includes('> http (url)'));
+test('Форма: enum-строки показывают текущее значение вместе с меткой', () => {
+  const stdio = { ...freshMcpForm(), cursor: 1 };
+  const s = render({ state: mcpState({ mcp: { view: 'add', form: stdio, removing: null } }), envs, width: 100, height: 16, ...base });
+  assert.ok(s.includes('Тип: stdio (команда)'));
+  const http = { ...freshMcpForm(), type: 'http' as const, cursor: 1 };
+  const s2 = render({ state: mcpState({ mcp: { view: 'add', form: http, removing: null } }), envs, width: 100, height: 16, ...base });
+  assert.ok(s2.includes('Тип: http (url)'));
+  const exp = { ...freshMcpForm(), exposure: 'hidden' as const, cursor: 7 };
+  const s3 = render({ state: mcpState({ mcp: { view: 'add', form: exp, removing: null } }), envs, width: 100, height: 16, ...base });
+  assert.ok(s3.includes('Exposure: hidden (скрыт)'));
+  assertBalancedRowEnds(s);
+  assertBalancedRowEnds(s2);
+  assertBalancedRowEnds(s3);
 });
 
 test('Список edit в форме: union, маркеры, кнопка', () => {

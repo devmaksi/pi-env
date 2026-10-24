@@ -11,7 +11,6 @@ export type McpFormAdd = McpFormFields & {
   cursor: number;
   caret: number;
   error: string | null;
-  select: 'type' | 'exposure' | null;
 };
 
 /** Подэкраны вкладки «MCP». */
@@ -59,7 +58,7 @@ type TextField = (typeof TEXT_ROWS)[number];
 export function freshMcpForm(): McpFormAdd {
   return {
     name: '', type: 'stdio', command: '', args: '', url: '', env: '', cwd: '', description: '', exposure: 'codemode',
-    cursor: 0, caret: 0, error: null, select: null,
+    cursor: 0, caret: 0, error: null,
   };
 }
 
@@ -77,36 +76,24 @@ export function mcpFormStep(form: McpFormAdd, action: Action, language: string):
   const row = rows[form.cursor];
   const textRow = TEXT_ROWS.includes(row as TextField);
   if (action === 'up' || action === 'down') {
-    if (form.select === 'type') {
-      const delta = action === 'up' ? -1 : 1;
-      return { kind: 'form', form: { ...form, cursor: (form.cursor + delta + MCP_TYPES.length) % MCP_TYPES.length } };
-    }
-    if (form.select === 'exposure') {
-      const delta = action === 'up' ? -1 : 1;
-      return { kind: 'form', form: { ...form, cursor: (form.cursor + delta + MCP_EXPOSURES.length) % MCP_EXPOSURES.length } };
-    }
     const delta = action === 'up' ? -1 : 1;
     return { kind: 'form', form: { ...form, cursor: Math.min(rows.length - 1, Math.max(0, form.cursor + delta)) } };
   }
   if (action === 'left' || action === 'right') {
-    if (form.select !== null) {
-      const n = form.select === 'type' ? MCP_TYPES.length : MCP_EXPOSURES.length;
-      const delta = action === 'left' ? -1 : 1;
-      return { kind: 'form', form: { ...form, cursor: (form.cursor + delta + n) % n } };
+    const delta = action === 'left' ? -1 : 1;
+    const vals = enumValues(row);
+    if (vals !== null) {
+      // имя enum-строки совпадает с именем поля формы (MCP_ENUM_ROWS: type, exposure)
+      const i = vals.indexOf(form[row as keyof McpFormAdd] as string);
+      const next = vals[(Math.max(0, i) + delta + vals.length) % vals.length];
+      return { kind: 'form', form: { ...form, [row]: next } as unknown as McpFormAdd };
     }
     if (!textRow) return { kind: 'form', form };
     const v = form[row as TextField];
-    const caret = Math.min(v.length, Math.max(0, form.caret + (action === 'left' ? -1 : 1)));
+    const caret = Math.min(v.length, Math.max(0, form.caret + delta));
     return { kind: 'form', form: { ...form, caret } };
   }
   if (action === 'enter') {
-    if (form.select === 'type') return { kind: 'form', form: { ...form, type: MCP_TYPES[form.cursor], select: null, cursor: rows.indexOf('type') } };
-    if (form.select === 'exposure') return { kind: 'form', form: { ...form, exposure: MCP_EXPOSURES[form.cursor], select: null, cursor: rows.indexOf('exposure') } };
-    if (row === 'type') return { kind: 'form', form: { ...form, select: 'type', cursor: form.type === 'http' ? 1 : 0 } };
-    if (row === 'exposure') {
-      const i = MCP_EXPOSURES.indexOf((form.exposure ?? '') as McpExposure);
-      return { kind: 'form', form: { ...form, select: 'exposure', cursor: i === -1 ? 0 : i } };
-    }
     if (row === 'action') {
       const error = validateMcpForm(form, language);
       if (error !== null) return { kind: 'form', form: { ...form, error } };
@@ -120,7 +107,6 @@ export function mcpFormStep(form: McpFormAdd, action: Action, language: string):
     return { kind: 'form', form: { ...form, [row]: v.slice(0, -1), caret: Math.max(0, form.caret - 1) } as McpFormAdd };
   }
   if (action === 'esc') {
-    if (form.select !== null) return { kind: 'form', form: { ...form, select: null } };
     return { kind: 'close' };
   }
   if (isPrintable(action)) {
