@@ -91,17 +91,18 @@ test('ссылки README и docs ведут в существующие фай�
   }
 });
 
-test('доки: корзина окружений — новые модули в перечне и спецификация в репозитории', () => {
-  // Спецификации/планы живут в `docs/superpowers/` — каталог `docs` в `files` package.json,
-  // поэтому они попадают и в репозиторий, и в npm-тарбол (это проверяет тест ссылок ниже).
+test('доки: корзина окружений — новые модули в перечне и спецификация названа, а не соссылана', () => {
+  // `docs/superpowers/` — в `.gitignore` (рабочие артефакты разработки): их нет ни в
+  // репозитории, ни в CI. Поэтому доки называют спецификацию текстом, а тест следит, чтобы в
+  // доках не появилась ссылка в gitignored-каталог (для читателя репозитория она был бы битой).
   for (const file of ['docs/development.md', 'docs/development.ru.md']) {
     const text = repo(file);
     assert.ok(text.includes('src/trash.ts'), `${file}: нет src/trash.ts в перечне файлов`);
     assert.ok(text.includes('src/state-trash.ts'), `${file}: нет src/state-trash.ts в перечне файлов`);
-    assert.ok(text.includes('docs/superpowers/specs/'), `${file}: нет ссылки на каталог спецификаций`);
+    assert.ok(text.includes('docs/superpowers/specs/2026-10-24-env-trash-design.md'),
+      `${file}: нет упоминания спецификации «Корзина окружений»`);
+    assert.ok(!text.includes('](superpowers/'), `${file}: ссылка в gitignored-каталог docs/superpowers/`);
   }
-  assert.ok(existsSync(pathOf('docs/superpowers/specs/2026-10-24-env-trash-design.md')),
-    'нет спецификации «Корзина окружений»');
-  assert.ok(existsSync(pathOf('docs/superpowers/plans/2026-10-24-env-trash.md')),
-    'нет плана «Корзина окружений»');
+  assert.ok(repo('.gitignore').includes('docs/superpowers/'),
+    '`.gitignore` больше не исключает docs/superpowers/ — текст документа про это разошёлся с фактом');
 });
