@@ -10,6 +10,7 @@ import { frameKey, paintFrame, type PrevFrame } from './diff.js';
 import { createThrottle, type Throttle, type ThrottleDeps } from './throttle.js';
 import { render } from './render.js';
 import { readSettings } from './create.js';
+import { listTrash } from './trash.js';
 import { parseMcpList, readMcpServers } from './mcp.js';
 import { AppState, initialState, Key, reducer, type Action, type McpFormAdd, makeCtx, type ReducerCtx } from './state.js';
 import { createTerm, Term } from './terminal.js';
@@ -81,9 +82,13 @@ export async function run(root: string, term: Term = createTerm()): Promise<void
     return load().envs.map((e) => e.name);
   }
 
-  /** Контекст reducer: свежие имена окружений + раскладка. */
-  function rctx(names?: string[]): ReducerCtx {
-    return makeCtx(names ?? envNames(), twoColumns());
+  /** Контекст reducer: свежие имена окружений, записи корзины + раскладка. */
+  function trashNames(): string[] {
+    return listTrash(root).map((e) => e.dirName);
+  }
+
+  function rctx(names?: string[], tnames?: string[]): ReducerCtx {
+    return makeCtx(names ?? envNames(), twoColumns(), tnames ?? trashNames());
   }
 
   /** Перечитывает каталог main-агента; ошибка — остаётся старый. */
@@ -249,12 +254,13 @@ export async function run(root: string, term: Term = createTerm()): Promise<void
     const prevLang = state.language;
     const { envs } = load();
     const names = envs.map((e) => e.name);
+    const tnames = trashNames();
     const prev: PrevSnap = { view: state.create?.view ?? null, ext: state.ext, mcp: state.mcp, tab: state.tab, mcpCheck: state.mcpCheck, createMcpCheck: state.create?.mcpCheck ?? 'idle' };
-    if (key === 'e' && state.tab === 'envs' && state.sub === null && state.selected < envs.length) {
+    if (key === 'e' && state.tab === 'envs' && state.sub === null && state.trash === null && state.selected < envs.length) {
       const settings = readSettings(envs[state.selected].path) ?? {};
-      state = reducer(state, { type: 'edit-start', name: envs[state.selected].name, settings, mcp: readMcpServers(envs[state.selected].path) }, rctx(names));
+      state = reducer(state, { type: 'edit-start', name: envs[state.selected].name, settings, mcp: readMcpServers(envs[state.selected].path) }, rctx(names, tnames));
     } else {
-      state = reducer(state, key, rctx(names));
+      state = reducer(state, key, rctx(names, tnames));
     }
     if (state.colorToggle !== prevColor || state.recheckUpdates !== prevRecheck || state.recheckMcp !== prevRecheckMcp || state.language !== prevLang) {
       saveAppSettings(root, { color: state.colorToggle, recheckUpdates: state.recheckUpdates, recheckMcp: state.recheckMcp, language: state.language });

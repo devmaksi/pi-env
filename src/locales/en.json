@@ -75,7 +75,7 @@
   "sel.model.plain": "Model",
   "sel.tools": "Custom tools",
   "sel.skills": "Skills",
-  "busy.delete-env": "Move env \"{name}\" to trash?",
+  "busy.delete-env": "Move \"{name}\" to trash?",
   "busy.deleting": "Deleting…",
   "busy.creating": "Creating…",
   "busy.delete-ext": "Delete extension \"{name}\"?",

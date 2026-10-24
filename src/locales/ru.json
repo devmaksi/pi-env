@@ -75,7 +75,7 @@
   "sel.model.plain": "Модель",
   "sel.tools": "Свои инструменты",
   "sel.skills": "Скиллы",
-  "busy.delete-env": "Удалить окружение «{name}» в корзину?",
+  "busy.delete-env": "Удалить «{name}» в корзину?",
   "busy.deleting": "Удаление…",
   "busy.creating": "Создание…",
   "busy.delete-ext": "Удалить расширение «{name}»?",

@@ -1,7 +1,7 @@
 import { join } from 'node:path';
 import { createEnvironment, updateEnvironment } from './create.js';
 import { copyMcpEntry, removeMcpEntry, readMcpServers } from './mcp.js';
-import { moveToTrash } from './trash.js';
+import { listTrash, moveToTrash } from './trash.js';
 import { t } from './i18n.js';
 import { reducer, makeCtx } from './state.js';
 import { buildCreateRequest } from './pi-actions.js';
@@ -44,9 +44,9 @@ export interface Loop {
   doMcpCheck(dir: string, scope: 'main' | 'create'): void;
 }
 
-/** Контекст reducer для side-effect-хуков. */
+/** Контекст reducer для side-effect-хуков (имена записей корзины — для суб-экрана «Корзина»). */
 function rctx(loop: Loop, envNames: string[]): ReducerCtx {
-  return makeCtx(envNames, loop.twoColumns());
+  return makeCtx(envNames, loop.twoColumns(), listTrash(loop.root).map((e) => e.dirName));
 }
 
 /** Хуки переходов после reducer — 1-в-1 с телом прежнего dispatch. */

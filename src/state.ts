@@ -5,6 +5,8 @@ import type { McpLiveReport, McpServer } from './mcp.js';
 import { mcpMachine, freshMcpForm, freshMcpTab, applyMcpLiveMain, onRefreshMcp } from './state-mcp.js';
 import { extMachine, freshExt } from './state-ext.js';
 import { createReducer } from './state-create.js';
+import { freshTrash, applyTrashResult, trashMachine } from './state-trash.js';
+import type { TrashState } from './state-trash.js';
 import { freshCreate, freshEdit } from './state-form.js';
 import type { CreateState } from './state-form.js';
 import type { ExtState } from './state-ext.js';
@@ -15,6 +17,8 @@ export type { CreateView, CreateState } from './state-form.js';
 export { mcpFormRows, mcpFormStep, mcpListNames, freshMcpForm, freshMcpTab, MCP_TYPES, MCP_EXPOSURES, TEXT_ROWS } from './state-mcp.js';
 export type { McpFormAdd, McpTabView, McpTab, McpFormStep, McpExposure } from './state-mcp.js';
 export { freshExt } from './state-ext.js';
+export { freshTrash, applyTrashResult, trashMachine } from './state-trash.js';
+export type { TrashPending, TrashState } from './state-trash.js';
 export type { ExtView, ExtState } from './state-ext.js';
 
 export type Tab = 'envs' | 'extensions' | 'mcp' | 'settings' | 'about';
@@ -49,6 +53,8 @@ export interface AppState {
   /** Проверка живого статуса MCP и её результат (вкладка «MCP», main-агент). */
   mcpCheck: PkgCheck;
   mcpLive: McpLiveReport | null;
+  /** Суб-экран «Корзина» на вкладке «Окружения» (null — показан список окружений). */
+  trash: TrashState | null;
   /** Прогресс загрузки каталога pi.dev (страницы); null — не грузится. */
   catalogProgress: { loaded: number; total: number } | null;
   pkgCheck: PkgCheck;
@@ -62,7 +68,7 @@ export const LANGUAGE_ROW = 4; // «Язык» — последняя строк
 export function initialState(catalog: Catalog = emptyCatalog()): AppState {
   return {
     tab: 'envs', focus: 'left', selected: 0, sub: null, colorToggle: true, recheckUpdates: false, recheckMcp: false, quit: false, language: 'ru',
-    catalog, create: null, ext: null, mcp: null, catalogProgress: null, pkgCheck: 'idle', pkgLatest: {}, mcpCheck: 'idle', mcpLive: null,
+    catalog, create: null, ext: null, mcp: null, trash: null, catalogProgress: null, pkgCheck: 'idle', pkgLatest: {}, mcpCheck: 'idle', mcpLive: null,
   };
 }
 
@@ -82,10 +88,11 @@ export type Action =
   | { type: 'remove-result'; ok: boolean; message: string }
   | { type: 'install-result'; ok: boolean; message: string; sources?: string[] }
   | { type: 'mcp-result'; ok: boolean; message: string; scope: 'main' | 'create'; list?: McpServer[] }
-  | { type: 'mcp-live-result'; ok: boolean; message: string; scope: 'main' | 'create'; report: McpLiveReport | null };
+  | { type: 'mcp-live-result'; ok: boolean; message: string; scope: 'main' | 'create'; report: McpLiveReport | null }
+  | { type: 'trash-result'; ok: boolean; message: string };
 
 export function listLength(tab: Tab, envCount: number, pkgCount = 0, mcpCount = 0): number {
-  if (tab === 'envs') return envCount + 1; // окружения + «Создать»
+  if (tab === 'envs') return envCount + 2; // окружения + «Создать» + «Корзина»
   if (tab === 'extensions') return pkgCount + 2; // пакеты + «Обновить все» + «Установить»
   if (tab === 'mcp') return mcpCount + 1; // серверы + «Добавить»
   if (tab === 'settings') return SETTINGS_COUNT;
@@ -101,11 +108,13 @@ function clampSelected(state: AppState, ctx: ReducerCtx): number {
 export interface ReducerCtx {
   envNames: string[];
   twoColumns: boolean;
+  /** Имена записей корзины (`dirName` из `.trash`) — Enter/X в суб-экране корзины. */
+  trashNames?: string[];
 }
 
 /** Общий конструктор контекста для run.ts и run-side.ts. */
-export function makeCtx(envNames: string[], twoColumns: boolean): ReducerCtx {
-  return { envNames, twoColumns };
+export function makeCtx(envNames: string[], twoColumns: boolean, trashNames: string[] = []): ReducerCtx {
+  return { envNames, twoColumns, trashNames };
 }
 
 /** Действие — результат сервисной команды (не клавиша): явная проверка для createReducer. */
@@ -131,6 +140,10 @@ export function reducer(state: AppState, action: Action, ctx: ReducerCtx): AppSt
     const next = mcpMachine(state, action);
     if (next !== null) return next;
   }
+  if (state.tab === 'envs' && state.trash !== null) {
+    const next = trashMachine(state, action, ctx);
+    if (next !== null) return next;
+  }
   return reducerMain(state, action, ctx);
 }
 
@@ -145,6 +158,7 @@ function applyResults(state: AppState, action: Action, ctx: ReducerCtx): AppStat
   if (action.type === 'updates-result') return applyUpdatesResult(state, action);
   if (action.type === 'mcp-result' && action.scope === 'main') return applyMcpResultMain(state, action);
   if (action.type === 'mcp-live-result' && action.scope === 'main') return applyMcpLiveMain(state, action);
+  if (action.type === 'trash-result') return applyTrashResult(state, action, ctx);
   // scope 'create' — проходит в createReducer
   if (state.sub === null && state.ext !== null) return applyExtResult(state, action, ctx);
   return null;
@@ -210,7 +224,7 @@ function onEsc(state: AppState): AppState {
 function onTab(state: AppState): AppState {
   const idx = TABS.indexOf(state.tab);
   const next = TABS[(idx + 1) % TABS.length];
-  return { ...state, tab: next, focus: 'left', selected: 0, sub: null, ext: null, mcp: null };
+  return { ...state, tab: next, focus: 'left', selected: 0, sub: null, ext: null, mcp: null, trash: null };
 }
 
 function onUpDown(state: AppState, delta: number, ctx: ReducerCtx): AppState {
@@ -247,7 +261,8 @@ function onEnter(state: AppState, ctx: ReducerCtx): AppState {
 
 function enterEnvs(state: AppState, envNames: string[]): AppState {
   if (state.selected < envNames.length) return { ...state, sub: 'run' };
-  return { ...state, sub: 'create', create: freshCreate() };
+  if (state.selected === envNames.length) return { ...state, sub: 'create', create: freshCreate() };
+  return { ...state, trash: freshTrash() }; // строка «Корзина (N)»
 }
 
 function enterExtensions(state: AppState): AppState {
