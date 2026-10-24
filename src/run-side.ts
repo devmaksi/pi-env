@@ -1,7 +1,7 @@
 import { join } from 'node:path';
 import { createEnvironment, updateEnvironment } from './create.js';
 import { copyMcpEntry, removeMcpEntry, readMcpServers } from './mcp.js';
-import { listTrash, moveToTrash } from './trash.js';
+import { deleteTrashForever, listTrash, moveToTrash, restoreTrash } from './trash.js';
 import { t } from './i18n.js';
 import { reducer, makeCtx } from './state.js';
 import { buildCreateRequest } from './pi-actions.js';
@@ -56,6 +56,7 @@ export async function runSideEffects(loop: Loop, envs: Environment[], prev: Prev
   hooksExt(loop, prev.ext);
   hooksMcp(loop, prev.mcp, names);
   hooksMcpCheck(loop, prev);
+  hooksTrash(loop, names);
   if (prev.tab !== 'extensions' && loop.state().tab === 'extensions' && loop.state().ext === null &&
       (loop.state().pkgCheck === 'idle' || loop.state().recheckUpdates)) {
     loop.checkUpdates(loop.agentDir, 'main');
@@ -63,6 +64,26 @@ export async function runSideEffects(loop: Loop, envs: Environment[], prev: Prev
   doSubmit(loop, names);
   doDelete(loop, names);
   await doRun(loop, envs);
+}
+
+/**
+ * Действия суб-экрана «Корзина»: восстановление записи и «удалить совсем».
+ * Синхронные файловые операции (как mcpOpSync): результат — в reducer и статус-строку.
+ */
+function hooksTrash(loop: Loop, names: string[]): void {
+  const pending = loop.state().trash?.pending ?? null;
+  if (pending === null) return;
+  const lang = loop.state().language;
+  const name = pending.dirName.split('@')[0] ?? pending.dirName;
+  const r = pending.kind === 'restore'
+    ? restoreTrash(loop.root, pending.dirName, lang)
+    : deleteTrashForever(loop.root, pending.dirName, lang);
+  const message = r.ok
+    ? t(lang, pending.kind === 'restore' ? 'status.trash-restored' : 'status.trash-deleted', { name })
+    : r.error;
+  loop.status(message);
+  loop.setState(reducer(loop.state(), { type: 'trash-result', ok: r.ok, message }, rctx(loop, names)));
+  loop.repaint();
 }
 
 /** Каталог агента для формы: окружение (edit) или main-агент (create, окружение ещё не существует). */

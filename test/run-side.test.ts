@@ -6,7 +6,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { runSideEffects, type Loop, type PrevSnap } from '../src/run-side.js';
 import {
-  initialState, emptyCatalog, freshCreate, freshExt, freshMcpForm, freshMcpTab,
+  initialState, emptyCatalog, freshCreate, freshExt, freshMcpForm, freshMcpTab, freshTrash,
   type AppState, type Catalog, type CreateState, type Environment, type McpServer,
 } from '../src/state.js';
 import { writeMcpFile } from '../src/mcp.js';
@@ -229,4 +229,46 @@ test('delete: deleting-вид переносит окружение в .trash и
   assert.equal(listTrash(root).length, 1);
   assert.equal(existsSync(join(root, 'e0')), false);
   assert.ok(h.log.some((l) => l.startsWith('status:') && l.includes('корзину')));
+});
+
+const tr = (over: Parameters<typeof freshTrash>[0]): AppState =>
+  ({ ...initialState(CATALOG), selected: 1, trash: freshTrash(over) });
+
+test('trash: pending restore — каталог вернулся в корень, запись исчезла из .trash, статус восстановлено', async () => {
+  const root = tmp();
+  mkdirSync(join(root, '.trash', 'e1@1000'), { recursive: true });
+  writeFileSync(join(root, '.trash', 'e1@1000', 'settings.json'), '{}');
+  const h = await run(tr({ pending: { kind: 'restore', dirName: 'e1@1000' } }), {}, root);
+  assert.equal(existsSync(join(root, 'e1', 'settings.json')), true);
+  assert.deepEqual(listTrash(root), []);
+  assert.ok(h.log.some((l) => l.startsWith('status:') && l.includes('восстановлено')));
+  assert.equal(h.state.trash!.pending, null);
+});
+
+test('trash: pending delete — запись удалена из .trash безвозвратно, статус «навсегда»', async () => {
+  const root = tmp();
+  mkdirSync(join(root, '.trash', 'e1@1000'), { recursive: true });
+  const h = await run(tr({ pending: { kind: 'delete', dirName: 'e1@1000' } }), {}, root);
+  assert.equal(existsSync(join(root, '.trash', 'e1@1000')), false);
+  assert.ok(h.log.some((l) => l.startsWith('status:') && l.includes('совсем')));
+  assert.equal(h.state.trash!.pending, null);
+});
+
+test('trash: pending restore при занятом имени — запись остаётся в .trash, статус — ошибка, pending снят', async () => {
+  const root = tmp();
+  mkdirSync(join(root, '.trash', 'e1@1000'), { recursive: true });
+  mkdirSync(join(root, 'e1'));
+  const h = await run(tr({ pending: { kind: 'restore', dirName: 'e1@1000' } }), {}, root);
+  assert.equal(existsSync(join(root, '.trash', 'e1@1000')), true);
+  assert.equal(listTrash(root).length, 1);
+  assert.ok(h.log.some((l) => l.startsWith('status:') && l.includes('занято')));
+  assert.equal(h.state.trash!.pending, null);
+});
+
+test('trash: без pending — никаких файловых операций и repaint', async () => {
+  const root = tmp();
+  mkdirSync(join(root, '.trash', 'e1@1000'), { recursive: true });
+  const h = await run(tr({}), {}, root);
+  assert.deepEqual(h.log, []);
+  assert.equal(listTrash(root).length, 1);
 });
