@@ -15,6 +15,11 @@ const badJson = (): Promise<FakeRes> => Promise.resolve({ ok: true, json: async 
 const noLatest = (): Promise<FakeRes> => Promise.resolve({ ok: true, json: async () => ({ 'dist-tags': {} }), text: async () => '' });
 const latest024 = (): Promise<FakeRes> => Promise.resolve({ ok: true, json: async () => ({ 'dist-tags': { latest: '0.2.4' } }), text: async () => '' });
 const latest023 = (): Promise<FakeRes> => Promise.resolve({ ok: true, json: async () => ({ 'dist-tags': { latest: '0.2.3' } }), text: async () => '' });
+// Реальный ответ `registry.npmjs.org/<pkg>/latest` — документ конкретной версии:
+// в нём есть `version`, а `dist-tags` отсутствует вовсе (проверено на @devmaksi/pi-env 0.2.3).
+const docVersion024 = (): Promise<FakeRes> => Promise.resolve({ ok: true, json: async () => ({ name: '@devmaksi/pi-env', version: '0.2.4' }), text: async () => '' });
+const docVersion023 = (): Promise<FakeRes> => Promise.resolve({ ok: true, json: async () => ({ name: '@devmaksi/pi-env', version: '0.2.3' }), text: async () => '' });
+const docNoVersion = (): Promise<FakeRes> => Promise.resolve({ ok: true, json: async () => ({ name: '@devmaksi/pi-env' }), text: async () => '' });
 
 const baseDeps: SelfCheckDeps = {
   fetchFn: latest024,
@@ -51,6 +56,19 @@ test('runSelfCheck: noCheck и установка из исходников — 
 test('runSelfCheck: устарели → SelfUpdate с номером и способом', async () => {
   const r = await runSelfCheck({ ...baseDeps, fetchFn: latest024, now: () => 1_700_000_000_000 });
   assert.deepEqual(r, { latest: '0.2.4', installed: '0.2.3', kind: 'npm-global', checkedAt: 1_700_000_000_000 });
+});
+
+test('runSelfCheck: /latest отдаёт документ версии без dist-tags — читаем version (реальный формат npm)', async () => {
+  const r = await runSelfCheck({ ...baseDeps, fetchFn: docVersion024, now: () => 1_700_000_000_000 });
+  assert.deepEqual(r, { latest: '0.2.4', installed: '0.2.3', kind: 'npm-global', checkedAt: 1_700_000_000_000 });
+});
+
+test('runSelfCheck: документ версии = установленная → null (вкладки нет)', async () => {
+  assert.equal(await runSelfCheck({ ...baseDeps, fetchFn: docVersion023 }), null);
+});
+
+test('runSelfCheck: в ответе нет ни dist-tags, ни version → null', async () => {
+  assert.equal(await runSelfCheck({ ...baseDeps, fetchFn: docNoVersion }), null);
 });
 
 test('runSelfCheck: установлена последняя версия → null (вкладки нет)', async () => {

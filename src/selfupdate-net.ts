@@ -38,8 +38,10 @@ async function fetchLatest(deps: SelfCheckDeps): Promise<string | null> {
   try {
     const res = await deps.fetchFn(LATEST_URL, { signal: timeoutSignal(deps) });
     if (!res.ok) return null;
-    const data = await res.json();
-    const latest = (data as { 'dist-tags'?: { latest?: unknown } })?.['dist-tags']?.latest;
+    const doc = (await res.json()) as { 'dist-tags'?: { latest?: unknown }; version?: unknown };
+    // Формы ответа npm: `/latest` — документ конкретной версии (`version`), полный документ
+    // пакета — `dist-tags.latest`. Читаем оба, чтобы не зависеть от формы.
+    const latest = doc?.['dist-tags']?.latest ?? doc?.version;
     return typeof latest === 'string' ? latest : null;
   } catch {
     return null;
