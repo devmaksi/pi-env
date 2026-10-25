@@ -580,5 +580,6 @@ export function renderUpdateTab(info: SelfUpdate, ui: UpdateUi, ctx: Ctx): Secti
     }
   }
   left.push(c(ANSI.dim, ctx.useColor) + t(ctx.lang, 'update.checked', { time: formatTs(info.checkedAt) }) + c(ANSI.reset, ctx.useColor));
+  left.push(c(ANSI.dim, ctx.useColor) + t(ctx.lang, 'update.hint.keys') + c(ANSI.reset, ctx.useColor));
   return { left, right: [], cursorRow: ui.cursor };
 }

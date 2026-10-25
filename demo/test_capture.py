@@ -12,7 +12,7 @@ from pathlib import Path
 
 from demo.capture import (
     gif_canvas, output_path, parse_args, pinned_exit_output, pinned_language,
-    pinned_last_changelog, pi_env_processes, require_no_pi_env_running, take_cast_path,
+    pinned_last_changelog, pi_env_processes, require_no_pi_env_running, take_cast_path, take_env,
 )
 from demo.ptycast import DOWN, ENTER, ESC, UP
 from demo.script import DEMO_ENVS, STEPS_TO_FIRST, STEPS_TO_SECOND, UP_CLAMP, take
@@ -216,6 +216,14 @@ class TakeCastNameTest(unittest.TestCase):
             self.assertEqual(ok.name, "en.cast")
             self.assertEqual(failed.name, "ru-failed.cast")
 
+
+class TakeEnvTest(unittest.TestCase):
+    def test_take_env_turns_off_the_self_update_check(self):
+        env = take_env(Path("/tmp/pi-env-demo-root"), "en")
+        self.assertEqual(env["PI_ENV_NO_UPDATE_CHECK"], "1")
+        self.assertEqual(env["PI_ENV_ROOT"], "/tmp/pi-env-demo-root")
+        self.assertEqual(env["LANG"], "en_US.UTF-8")
+        self.assertEqual(take_env(Path("/tmp"), "ru")["LANG"], "ru_RU.UTF-8")
 
 if __name__ == "__main__":
     unittest.main()

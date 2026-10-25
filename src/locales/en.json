@@ -23,6 +23,7 @@
   "update.changelog.loading": "Loading changelog…",
   "update.changelog.error": "Changelog unavailable",
   "update.checked": "checked {time}",
+  "update.hint.keys": "↑↓ list  Enter copies the command  R reloads",
   "status.update-available": "pi-env {latest} is available → \"Update\" tab",
   "status.copied": "Command copied to the clipboard",
   "status.changelog-error": "Could not load the changelog",

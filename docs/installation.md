@@ -78,6 +78,31 @@ pi-env --help       # help
 > npm's global prefix is already in `PATH` by default. If the command is not found —
 > restart the terminal.
 
+## Updating pi-env
+
+pi-env never updates itself: it only reports that a newer version exists and shows
+the command for the way you installed it.
+
+```bash
+npm i -g @devmaksi/pi-env@latest        # installed with npm -g
+pi update @devmaksi/pi-env              # installed as a pi package
+git pull && npm install && npm run build   # source checkout (npm link)
+```
+
+`npx @devmaksi/pi-env` uses a temporary cached copy every time, so a global install
+is recommended — the “Update” tab says the same. A source checkout is detected and
+never queried against npm.
+
+The “Update” tab (it appears only when an update exists) shows the current and the
+available version, the command, and the changelog of the releases you skipped; Enter
+on a command row copies it to the clipboard, `R` re-reads the registry and the
+changelog. The check is a single background request per launch to
+`https://registry.npmjs.org`. Turn it off with:
+
+```bash
+PI_ENV_NO_UPDATE_CHECK=1 pi-env
+```
+
 ## Removing the global installation
 
 ```bash

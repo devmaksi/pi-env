@@ -23,6 +23,7 @@
   "update.changelog.loading": "Загрузка чейнджлога…",
   "update.changelog.error": "Чейнджлог недоступен",
   "update.checked": "проверено {time}",
+  "update.hint.keys": "↑↓ список  Enter копировать команду  R перечитать",
   "status.update-available": "Доступна pi-env {latest} → вкладка «Обновление»",
   "status.copied": "Команда скопирована в буфер обмена",
   "status.changelog-error": "Не удалось загрузить чейнджлог",

@@ -5,6 +5,33 @@ Russian text: [CHANGELOG.ru.md](CHANGELOG.ru.md).
 
 ## [Unreleased]
 
+### Self-update: the «Update» tab
+
+- **A sixth tab, «Update», appears only when a newer pi-env exists.** On launch the app makes
+  one background request to `https://registry.npmjs.org/@devmaksi%2Fpi-env/latest`; when the
+  registry offers a newer version, the tab joins the tab bar between «Settings» and «About».
+  It shows the installed and the available version, how this instance was installed (`npm -g`,
+  npx cache, pi package, source checkout, unknown — detected from the real module path) and the
+  update command for that way; `Enter` copies the command to the clipboard (OSC 52), `R`
+  re-reads the registry and the changelog. Below the commands — the changelog of the releases
+  between the installed and the available version, in the interface language with a fallback to
+  the other one.
+- **The application never updates, downloads or restarts itself** — that is the design
+  decision: pi-env shows the right command for your install method and nothing more. A source
+  checkout is recognised and never queried against npm, `PI_ENV_NO_UPDATE_CHECK=1` switches the
+  check off, and there is no cache and no Settings toggle (a failed check simply shows no tab).
+- **The tab bar adapts to the terminal width:** full names, then short names (`tab.*.short`)
+  with a two-space separator, then «active tab N/M» — six tabs no longer overflow a narrow
+  terminal. Long changelog lines wrap by visible width (`wrapVisible`); a word wider than the
+  column is cut by cells.
+- **Bilingual changelog:** `CHANGELOG.md` became the English canonical file, the Russian text
+  moved to `CHANGELOG.ru.md`, and every release is written to both. `test/docs.test.ts` checks
+  that the two files describe the same set of versions and that each README links its own.
+- Tests: `test/selfupdate.test.ts`, `test/selfupdate-net.test.ts`, `test/state-update.test.ts`,
+  `test/render-update.test.ts`, `test/app-update.test.ts` (the real `run()` loop: tab → Enter →
+  copied command). The demo take pins `PI_ENV_NO_UPDATE_CHECK=1`, so the GIF never depends on
+  the registry answer.
+
 ### MCP add form
 
 - **Enumerated values change with arrows right on the row.** Changing «Type» or «Exposure»

@@ -171,6 +171,8 @@ def take_env(root: Path, lang: str) -> dict[str, str]:
         "PS1": "~/Project/pi-env \\$ ",
         "HISTFILE": "/dev/null",
         "PI_ENV_ROOT": str(root),
+        # Дубль не зависит от ответа npm-реестра: вкладка «Обновление» в кадре не появляется.
+        "PI_ENV_NO_UPDATE_CHECK": "1",
     }
 
 

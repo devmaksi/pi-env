@@ -76,3 +76,16 @@ test('defaultLang: системный код среди известных ил�
   const lang = defaultLang(['ru', 'en']);
   assert.ok(lang === 'ru' || lang === 'en');
 });
+
+test('словари: все ключи ru есть в en (включая короткие имена вкладок и вкладку «Обновление»)', () => {
+  const ru = JSON.parse(readFileSync('src/locales/ru.json', 'utf8')) as Record<string, string>;
+  const en = JSON.parse(readFileSync('src/locales/en.json', 'utf8')) as Record<string, string>;
+  const missing = Object.keys(ru).filter((k) => k !== 'native-name' && !(k in en));
+  assert.deepEqual(missing, []);
+  const extra = Object.keys(en).filter((k) => k !== 'native-name' && !(k in ru));
+  assert.deepEqual(extra, []);
+  for (const key of ['tab.update', 'tab.envs.short', 'tab.extensions.short', 'tab.mcp.short',
+    'tab.settings.short', 'tab.update.short', 'tab.about.short', 'update.hint.keys']) {
+    assert.ok(key in ru && key in en, `${key}: нет в словаре`);
+  }
+});

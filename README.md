@@ -78,6 +78,13 @@ different purpose.
 - application settings: “Colored output”, “Recheck updates”
   (`npm outdated` on every visit to the “Extensions” tab); stored in
   `<root>/.pi-env.json` and survive restarts.
+- update indication for pi-env itself: when the npm registry has a newer
+  version, a sixth “Update” tab appears with the version number, the update
+  command for your install method (Enter copies it to the clipboard) and the
+  changelog of the releases you skipped. The application never updates or
+  restarts itself; the check is one background request per launch and is
+  switched off by `PI_ENV_NO_UPDATE_CHECK=1` (and is never made when pi-env
+  runs from a source checkout).
 
 ## Controls (main keys)
 
@@ -85,10 +92,12 @@ different purpose.
 | ---------------------------- | --------------------------------------------------------------------- |
 | ↑/↓                          | move through the list                                                  |
 | ←/→                          | column focus (wide mode, “Environments” tab)                    |
-| TAB                          | switch tabs                                                  |
+| TAB                          | switch tabs (a sixth “Update” tab joins when it is available)   |
 | Enter                        | confirm (launch environment, action on the selected item)         |
 | Space                        | mark in creation lists / toggle in settings (color, recheck) |
 | E                            | edit the selected environment                                     |
+| R                            | reload: live MCP status, changelog on the “Update” tab        |
+| Enter on a command row     | copy the update command to the clipboard (“Update” tab)  |
 | X                            | remove the selected extension (with confirmation)                       |
 | printable characters / Backspace | entering a name (creation form)                                           |
 | ESC                          | back from a sub-screen / exit                                           |
