@@ -1,7 +1,7 @@
 import { Environment } from './environments.js';
 import { computeLayout, NARROW_MIN, LOW_MIN, type Layout } from './layout.js';
 import { type AppState, type PkgCheck, tabsOf, type Tab } from './state.js';
-import { renderCreate, renderExtTab, renderEnvList, renderMcpTab, renderTrashTab, type Ctx, type Section } from './sections.js';
+import { renderCreate, renderExtTab, renderEnvList, renderMcpTab, renderTrashTab, renderUpdateTab, type Ctx, type Section } from './sections.js';
 import type { PkgItem, CatalogPkg } from './catalog.js';
 import type { McpLiveStatus, McpServer } from './mcp.js';
 import type { TrashEntry } from './trash.js';
@@ -41,9 +41,9 @@ function cupBorder(row: number, width: number): string {
   return `\x1b[${row};${width}H`;
 }
 
-/** Видимая ширина строки в символах (ANSI-коды не учитываются). */
+/** Видимая ширина строки в клетках терминала (ANSI- и позиционирующие коды не учитываются). */
 export function visibleWidth(s: string): number {
-  return s.replace(/\x1b\[[0-9;]*m/g, '').length;
+  return s.replace(/\x1b\[[0-9;]*[a-zA-Z]/g, '').length;
 }
 
 // Обрезка по видимым символам: точка разреза не делит ANSI-последовательность
@@ -211,7 +211,8 @@ export function render(a: RenderArgs): string {
 
   const L = computeLayout({ width, height });
   // «О программе» — центрированный текст на всю ширину, двухколоночная сетка его режет пополам
-  const twoCol = L.twoColumns && state.tab !== 'about';
+  // «О программе» и «Обновление» — текст на всю ширину: двухколоночная сетка их режет пополам
+  const twoCol = L.twoColumns && state.tab !== 'about' && state.tab !== 'update';
   const inner = width - 2;
   const contentRows = height - CHROME_ROWS; // таб-бар(1) + разделитель(1) + футер(2)
   const ctx: Ctx = { state, L, useColor, inner, contentRows, twoCol, root, lang: state.language };
@@ -238,7 +239,9 @@ export function render(a: RenderArgs): string {
     : state.tab === 'extensions' ? renderExtTab(state.ext, ctx)
     : state.tab === 'mcp' ? renderMcpTab(state.mcp, ctx)
     : state.tab === 'settings' ? renderSettings(state, ctx)
-    : renderAbout(ctx);
+    : state.tab === 'update' && state.updateUi !== null && state.selfUpdate !== null
+      ? renderUpdateTab(state.selfUpdate, state.updateUi, ctx)
+      : renderAbout(ctx);
   const { left, right, cursorRow } = section;
   const top = scrollTop(cursorRow, left.length, contentRows);
 

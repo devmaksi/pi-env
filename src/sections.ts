@@ -11,6 +11,9 @@ import {
   type McpFormAdd,
   type McpTab,
   type TrashState,
+  type SelfUpdate,
+  type UpdateUi,
+  UPDATE_ROW_COMMANDS,
 } from './state.js';
 import type { Environment } from './environments.js';
 import { filterPackages } from './catalog.js';
@@ -28,7 +31,9 @@ import {
   catalogPickerLines,
   PKG_NAME_MAX,
   mcpInfoLines,
+  wrapVisible,
 } from './render.js';
+import { updateCommands } from './selfupdate.js';
 import { t, type StrKey } from './i18n.js';
 
 /** Контекст рендера: раскладка и параметры кадра, общие для всех секций. */
@@ -542,3 +547,38 @@ const EXT_BUSY: Record<string, { text: (ext: ExtState, lang: string) => string; 
   'removing': { text: (_ext, lang) => t(lang, 'busy.deleting'), hints: ['hint.back'] },
   'confirm-remove': { text: (ext, lang) => t(lang, 'busy.delete-ext', { name: ext.removing ?? '' }), bold: true, hints: ['hint.confirm', 'hint.cancel'] },
 };
+
+/**
+ * Вкладка «Обновление»: версии, способ установки, команды и чейнджлог пропущенных
+ * релизов — одна колонка на всю ширину (тексту чейнджлога не делить себя пополам).
+ */
+export function renderUpdateTab(info: SelfUpdate, ui: UpdateUi, ctx: Ctx): Section {
+  const left: string[] = [];
+  const commands = updateCommands(info.kind);
+  left.push(t(ctx.lang, 'update.title', { installed: info.installed, latest: info.latest }));
+  left.push(t(ctx.lang, ('update.kind.' + info.kind) as StrKey));
+  left.push(t(ctx.lang, 'update.command-hint'));
+  left.push('');
+  commands.forEach((cmd, i) =>
+    left.push(listRow(UPDATE_ROW_COMMANDS + i, ui.cursor, cmd, ctx.inner, ctx.useColor)));
+  left.push(c(ANSI.dim, ctx.useColor) + t(ctx.lang, 'update.changelog') + c(ANSI.reset, ctx.useColor));
+  if (ui.check === 'loading') {
+    left.push(t(ctx.lang, 'update.changelog.loading'));
+  } else if (ui.check === 'error') {
+    left.push(t(ctx.lang, 'update.changelog.error'));
+  } else if (ui.rows.length === 0) {
+    left.push(t(ctx.lang, 'update.changelog.empty', { latest: info.latest }));
+  } else {
+    for (const row of ui.rows) {
+      if (row.kind === 'version') {
+        left.push(c(ANSI.bold, ctx.useColor) + row.text + c(ANSI.reset, ctx.useColor));
+      } else if (row.kind === 'section') {
+        left.push(c(ANSI.dim, ctx.useColor) + row.text + c(ANSI.reset, ctx.useColor));
+      } else {
+        for (const piece of wrapVisible(row.text, ctx.inner - 4)) left.push('  • ' + piece);
+      }
+    }
+  }
+  left.push(c(ANSI.dim, ctx.useColor) + t(ctx.lang, 'update.checked', { time: formatTs(info.checkedAt) }) + c(ANSI.reset, ctx.useColor));
+  return { left, right: [], cursorRow: ui.cursor };
+}
