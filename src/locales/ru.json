@@ -10,7 +10,7 @@
   "tab.mcp.short": "MCP",
   "tab.settings.short": "Настр",
   "tab.update.short": "Обнов",
-  "tab.about.short": "О прог",
+  "tab.about.short": "Справка",
   "update.title": "pi-env {installed} → доступна версия {latest}",
   "update.kind.npm-global": "Способ установки: глобальный npm",
   "update.kind.npx-cache": "Способ установки: запуск через npx (кэш)",

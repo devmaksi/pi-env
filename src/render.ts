@@ -1,6 +1,6 @@
 import { Environment } from './environments.js';
 import { computeLayout, NARROW_MIN, LOW_MIN, type Layout } from './layout.js';
-import { type AppState, type PkgCheck } from './state.js';
+import { type AppState, type PkgCheck, tabsOf, type Tab } from './state.js';
 import { renderCreate, renderExtTab, renderEnvList, renderMcpTab, renderTrashTab, type Ctx, type Section } from './sections.js';
 import type { PkgItem, CatalogPkg } from './catalog.js';
 import type { McpLiveStatus, McpServer } from './mcp.js';
@@ -82,6 +82,92 @@ function center(s: string, w: number): string {
   return ' '.repeat(left) + s + ' '.repeat(w - v - left);
 }
 
+/** Клетки символа: «неопределённые» символы считаем за две (консервативно). */
+function charWidth(ch: string): number {
+  return WIDE_CHARS.has(ch) ? 2 : 1;
+}
+
+function wordWidth(word: string): number {
+  let n = 0;
+  for (const ch of word) n += charWidth(ch);
+  return n;
+}
+
+/**
+ * Перенос текста по пробелам в колонку ширины `width` (ANSI в тексте нет):
+ * слово длиннее ширины — режется по клеткам. Пустая строка → `['']`.
+ */
+export function wrapVisible(text: string, width: number): string[] {
+  if (text === '') return [''];
+  const limit = Math.max(1, width);
+  const lines: string[] = [];
+  let line = '';
+  let used = 0;
+  const flush = () => { if (line !== '') { lines.push(line); line = ''; used = 0; } };
+  for (const word of text.split(/\s+/).filter((w) => w !== '')) {
+    const w = wordWidth(word);
+    if (used === 0 ? w <= limit : used + 1 + w <= limit) {
+      line = used === 0 ? word : line + ' ' + word;
+      used += used === 0 ? w : 1 + w;
+      continue;
+    }
+    flush();
+    if (w <= limit) { line = word; used = w; continue; }
+    let piece = '';
+    let pieceW = 0;
+    for (const ch of word) {
+      const cw = charWidth(ch);
+      if (pieceW + cw > limit) { lines.push(piece); piece = ''; pieceW = 0; }
+      piece += ch;
+      pieceW += cw;
+    }
+    line = piece;
+    used = pieceW;
+  }
+  flush();
+  return lines.length > 0 ? lines : [''];
+}
+
+export type TabBarPlan = { mode: 'full' | 'short' | 'minimal'; sep: number };
+
+const SEP_FULL = 4;
+const SEP_SHORT = 2;
+
+function rowWidth(names: string[], sep: number): number {
+  return names.reduce((n, name) => n + wordWidth(name), 0) + Math.max(0, names.length - 1) * sep;
+}
+
+/** Полные имена → короткие имена → «активная вкладка N/M»: выбор по внутренней ширине кадра. */
+export function tabBarPlan(full: string[], short: string[], inner: number): TabBarPlan {
+  if (rowWidth(full, SEP_FULL) + 2 <= inner) return { mode: 'full', sep: SEP_FULL };
+  if (rowWidth(short, SEP_SHORT) + 2 <= inner) return { mode: 'short', sep: SEP_SHORT };
+  return { mode: 'minimal', sep: SEP_SHORT };
+}
+
+export function tabLabel(tab: Tab, lang: string, mode: TabBarPlan['mode']): string {
+  return mode === 'full' ? t(lang, TAB_KEYS[tab]) : t(lang, TAB_SHORT_KEYS[tab]);
+}
+
+/** Строка таб-бара: содержимое внутренней части кадра (рамочные `│` добавляет render). */
+export function tabBarRow(state: AppState, lang: string, inner: number, useColor: boolean): string {
+  const tabs = tabsOf(state);
+  const full = tabs.map((tab) => t(lang, TAB_KEYS[tab]));
+  const short = tabs.map((tab) => t(lang, TAB_SHORT_KEYS[tab]));
+  const plan = tabBarPlan(full, short, inner);
+  const active = tabs.indexOf(state.tab);
+  const mark = (label: string): string =>
+    c(ANSI.bright, useColor) + c(ANSI.bold, useColor) + label + c(ANSI.reset, useColor);
+  if (plan.mode === 'minimal') {
+    return padRight(mark(`${tabLabel(tabs[active], lang, 'short')} ${active + 1}/${tabs.length}`), inner);
+  }
+  const names = plan.mode === 'full' ? full : short;
+  const sep = ' '.repeat(plan.sep);
+  return padRight(
+    names.map((name, i) => (i === active ? mark(`[${name}]`) : c(ANSI.dim, useColor) + name + c(ANSI.reset, useColor))).join(sep),
+    inner,
+  );
+}
+
 export interface RenderArgs {
   state: AppState;
   envs: Environment[];
@@ -94,7 +180,8 @@ export interface RenderArgs {
   trashEntries?: TrashEntry[];
 }
 
-const TAB_KEYS = { envs: 'tab.envs', extensions: 'tab.extensions', mcp: 'tab.mcp', settings: 'tab.settings', about: 'tab.about' } as const;
+const TAB_KEYS = { envs: 'tab.envs', extensions: 'tab.extensions', mcp: 'tab.mcp', settings: 'tab.settings', update: 'tab.update', about: 'tab.about' } as const;
+const TAB_SHORT_KEYS = { envs: 'tab.envs.short', extensions: 'tab.extensions.short', mcp: 'tab.mcp.short', settings: 'tab.settings.short', update: 'tab.update.short', about: 'tab.about.short' } as const;
 
 /** Число хромовых строк: таб-бар + разделитель + футер из двух строк. */
 const CHROME_ROWS = 4;
@@ -131,15 +218,9 @@ export function render(a: RenderArgs): string {
   const lines: string[] = [];
 
   // Таб-бар
-  const tabs = (Object.keys(TAB_KEYS) as Array<keyof typeof TAB_KEYS>).map((k) => {
-    const active = k === state.tab;
-    const label = active ? '[' + t(state.language, TAB_KEYS[k]) + ']' : t(state.language, TAB_KEYS[k]);
-    if (active) {
-      return c(ANSI.bright, useColor) + c(ANSI.bold, useColor) + label + c(ANSI.reset, useColor);
-    }
-    return c(ANSI.dim, useColor) + label + c(ANSI.reset, useColor);
-  });
-  lines.push('│' + padRight(tabs.join('    '), inner) + '│');
+  const tabRow = tabBarRow(state, state.language, inner, useColor);
+  const tabWide = wideCount(tabRow);
+  lines.push('│' + padRight(tabRow, tabWide > 0 ? inner - tabWide : inner) + (tabWide > 0 ? cupBorder(1, width) : '') + '│');
 
   // Разделитель под таб-баром
   if (twoCol) {
