@@ -11,6 +11,7 @@ const repo = (rel: string): string => {
   return readFileSync(path, 'utf8');
 };
 
+import { parseChangelog } from '../src/selfupdate.js';
 const DOCS = ['README.md', 'README.ru.md', 'docs/installation.md', 'docs/installation.ru.md',
   'docs/development.md', 'docs/development.ru.md'];
 
@@ -105,4 +106,17 @@ test('доки: корзина окружений — новые модули в
   }
   assert.ok(repo('.gitignore').includes('docs/superpowers/'),
     '`.gitignore` больше не исключает docs/superpowers/ — текст документа про это разошёлся с фактом');
+});
+
+test('чейнджлог: en и ru описывают один набор версий', () => {
+  const en = parseChangelog(repo('CHANGELOG.md'));
+  const ru = parseChangelog(repo('CHANGELOG.ru.md'));
+  assert.ok(en.length > 0, 'CHANGELOG.md не разбирается парсером чейнджлога');
+  assert.deepEqual(en.map((e) => e.version), ru.map((e) => e.version));
+});
+
+test('README: ru-читатель ведёт на CHANGELOG.ru.md, en — на CHANGELOG.md', () => {
+  assert.match(repo('README.ru.md'), /blob\/master\/CHANGELOG\.ru\.md\)/);
+  assert.match(repo('README.md'), /blob\/master\/CHANGELOG\.md\)/);
+  assert.doesNotMatch(repo('README.md'), /CHANGELOG\.ru\.md/);
 });
