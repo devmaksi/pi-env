@@ -8,6 +8,10 @@ import { createReducer } from './state-create.js';
 import { freshTrash, applyTrashResult, trashMachine } from './state-trash.js';
 import type { TrashState } from './state-trash.js';
 import { freshCreate, freshEdit } from './state-form.js';
+import { applyChangelogResult, applySelfUpdateResult, onRefreshUpdate, tabsOf, updateListLength, updateMachine } from './state-update.js';
+import type { UpdateCheck, UpdateUi } from './state-update.js';
+import type { ChangelogRow } from './selfupdate.js';
+import type { SelfUpdate } from './selfupdate-net.js';
 import type { CreateState } from './state-form.js';
 import type { ExtState } from './state-ext.js';
 import type { McpTab } from './state-mcp.js';
@@ -19,9 +23,13 @@ export type { McpFormAdd, McpTabView, McpTab, McpFormStep, McpExposure } from '.
 export { freshExt } from './state-ext.js';
 export { freshTrash, applyTrashResult, trashMachine } from './state-trash.js';
 export type { TrashPending, TrashState } from './state-trash.js';
+export { freshUpdateUi, tabsOf, updateMachine, applySelfUpdateResult, applyChangelogResult, onRefreshUpdate, selectedCommand, updateListLength, UPDATE_ROW_COMMANDS } from './state-update.js';
+export type { UpdateCheck, UpdateUi } from './state-update.js';
+export type { SelfUpdate } from './selfupdate-net.js';
+export type { InstallKind, ChangelogRow } from './selfupdate.js';
 export type { ExtView, ExtState } from './state-ext.js';
 
-export type Tab = 'envs' | 'extensions' | 'mcp' | 'settings' | 'about';
+export type Tab = 'envs' | 'extensions' | 'mcp' | 'settings' | 'update' | 'about';
 export type Sub = 'create' | 'run' | null;
 
 export type ControlKey =
@@ -55,6 +63,11 @@ export interface AppState {
   mcpLive: McpLiveReport | null;
   /** Суб-экран «Корзина» на вкладке «Окружения» (null — показан список окружений). */
   trash: TrashState | null;
+  /** Обновление самого pi-env: null — свеж или проверка не делалась/отключена. */
+  selfUpdate: SelfUpdate | null;
+  /** Содержимое вкладки «Обновление» (null — вкладки нет). */
+  updateUi: UpdateUi | null;
+  selfCheck: UpdateCheck;
   /** Прогресс загрузки каталога pi.dev (страницы); null — не грузится. */
   catalogProgress: { loaded: number; total: number } | null;
   pkgCheck: PkgCheck;
@@ -68,7 +81,7 @@ export const LANGUAGE_ROW = 4; // «Язык» — последняя строк
 export function initialState(catalog: Catalog = emptyCatalog()): AppState {
   return {
     tab: 'envs', focus: 'left', selected: 0, sub: null, colorToggle: true, recheckUpdates: false, recheckMcp: false, quit: false, language: 'ru',
-    catalog, create: null, ext: null, mcp: null, trash: null, catalogProgress: null, pkgCheck: 'idle', pkgLatest: {}, mcpCheck: 'idle', mcpLive: null,
+    catalog, create: null, ext: null, mcp: null, trash: null, catalogProgress: null, pkgCheck: 'idle', pkgLatest: {}, mcpCheck: 'idle', mcpLive: null, selfUpdate: null, updateUi: null, selfCheck: 'idle',
   };
 }
 
@@ -89,18 +102,21 @@ export type Action =
   | { type: 'install-result'; ok: boolean; message: string; sources?: string[] }
   | { type: 'mcp-result'; ok: boolean; message: string; scope: 'main' | 'create'; list?: McpServer[] }
   | { type: 'mcp-live-result'; ok: boolean; message: string; scope: 'main' | 'create'; report: McpLiveReport | null }
-  | { type: 'trash-result'; ok: boolean; message: string };
+  | { type: 'trash-result'; ok: boolean; message: string }
+  | { type: 'self-update-result'; info: SelfUpdate | null }
+  | { type: 'changelog-result'; ok: boolean; rows: ChangelogRow[] };
 
-export function listLength(tab: Tab, envCount: number, pkgCount = 0, mcpCount = 0): number {
+export function listLength(tab: Tab, envCount: number, pkgCount = 0, mcpCount = 0, state?: AppState): number {
   if (tab === 'envs') return envCount + 2; // окружения + «Создать» + «Корзина»
   if (tab === 'extensions') return pkgCount + 2; // пакеты + «Обновить все» + «Установить»
   if (tab === 'mcp') return mcpCount + 1; // серверы + «Добавить»
   if (tab === 'settings') return SETTINGS_COUNT;
+  if (tab === 'update') return state === undefined ? 0 : updateListLength(state);
   return 0;
 }
 
 function clampSelected(state: AppState, ctx: ReducerCtx): number {
-  const len = listLength(state.tab, ctx.envNames.length, state.catalog.packages.length, state.catalog.mcp.length);
+  const len = listLength(state.tab, ctx.envNames.length, state.catalog.packages.length, state.catalog.mcp.length, state);
   return Math.max(0, Math.min(state.selected, len - 1));
 }
 
@@ -144,6 +160,10 @@ export function reducer(state: AppState, action: Action, ctx: ReducerCtx): AppSt
     const next = trashMachine(state, action, ctx);
     if (next !== null) return next;
   }
+  if (state.tab === 'update' && state.updateUi !== null) {
+    const next = updateMachine(state, action);
+    if (next !== null) return next;
+  }
   return reducerMain(state, action, ctx);
 }
 
@@ -159,6 +179,8 @@ function applyResults(state: AppState, action: Action, ctx: ReducerCtx): AppStat
   if (action.type === 'mcp-result' && action.scope === 'main') return applyMcpResultMain(state, action);
   if (action.type === 'mcp-live-result' && action.scope === 'main') return applyMcpLiveMain(state, action);
   if (action.type === 'trash-result') return applyTrashResult(state, action, ctx);
+  if (action.type === 'self-update-result') return applySelfUpdateResult(state, action.info);
+  if (action.type === 'changelog-result') return applyChangelogResult(state, action.ok, action.rows);
   // scope 'create' — проходит в createReducer
   if (state.sub === null && state.ext !== null) return applyExtResult(state, action, ctx);
   return null;
@@ -212,7 +234,7 @@ function reducerMain(state: AppState, action: Action, ctx: ReducerCtx): AppState
   if (action === 'space') return onSpace(state);
   if ((action === 'x' || action === 'X') && state.sub === null && state.ext === null && state.mcp === null &&
       (state.tab === 'extensions' || state.tab === 'mcp')) return onX(state);
-  if (action === 'R') return onRefreshMcp(state);
+  if (action === 'R') return state.tab === 'update' ? onRefreshUpdate(state) : onRefreshMcp(state);
   return state;
 }
 
@@ -222,8 +244,8 @@ function onEsc(state: AppState): AppState {
 }
 
 function onTab(state: AppState): AppState {
-  const idx = TABS.indexOf(state.tab);
-  const next = TABS[(idx + 1) % TABS.length];
+  const tabs = tabsOf(state);
+  const next = tabs[(tabs.indexOf(state.tab) + 1) % tabs.length];
   return { ...state, tab: next, focus: 'left', selected: 0, sub: null, ext: null, mcp: null, trash: null };
 }
 
