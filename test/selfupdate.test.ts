@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert';
-import { classifyInstall, isOutdated, parseVersion, updateCommands } from '../src/selfupdate.js';
+import { changelogRange, changelogRows, classifyInstall, isOutdated, mergeChangelog, parseChangelog, parseVersion, updateCommands } from '../src/selfupdate.js';
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -44,4 +44,50 @@ test('updateCommands: своя команда на каждый способ', (
   assert.deepEqual(updateCommands('pi-package'), ['pi update @devmaksi/pi-env']);
   assert.deepEqual(updateCommands('unknown'), ['npm i -g @devmaksi/pi-env@latest']);
   assert.deepEqual(updateCommands('source'), []);
+});
+
+const SAMPLE = [
+  '# Changelog', '', '## [Unreleased]', '', '### Foo', '', '- **New tab**.', '  More text.', '',
+  '## [0.2.3] — 2026-10-24', '', '### Витрина пакета (npm, pi.dev)', '',
+  '- **Картинки и ссылки** больше не 404.', '  Тарбол вырос до ≈1.2 МБ.', '',
+  '## [0.2.2] — 2026-10-24', '', '- `pi update` пункт.',
+].join('\n');
+
+test('parseChangelog: блоки по версиям, Unreleased выброшен, Markdown снят', () => {
+  const e = parseChangelog(SAMPLE);
+  assert.deepEqual(e.map((x) => x.version), ['0.2.3', '0.2.2']);
+  assert.equal(e[0].date, '2026-10-24');
+  assert.deepEqual(e[0].sections[0].items, ['Картинки и ссылки больше не 404. Тарбол вырос до ≈1.2 МБ.']);
+  assert.deepEqual(e[1].sections[0].items, ['pi update пункт.']);
+});
+
+test('parseChangelog: управляющие символы и CR вырезаны', () => {
+  const e = parseChangelog('## [0.3.0] — 2026-11-01\r\n- пункт\x1b[31m красный\x00\r\n');
+  assert.deepEqual(e[0].sections[0].items, ['пункт[31m красный']);
+});
+
+test('parseChangelog: пустой текст → пустой список', () => assert.deepEqual(parseChangelog(''), []));
+
+test('changelogRange: только installed < v <= latest, свежие выше', () => {
+  const e = parseChangelog(SAMPLE);
+  assert.deepEqual(changelogRange(e, '0.2.1', '0.2.3').map((x) => x.version), ['0.2.3', '0.2.2']);
+  assert.deepEqual(changelogRange(e, '0.2.3', '0.2.3'), []);
+  assert.deepEqual(changelogRange(e, '0.2.3', '0.9.0'), []);
+});
+
+test('mergeChangelog: недостающая версия берётся из другого языка', () => {
+  const ru = parseChangelog('## [0.2.3] — 2026-10-24\n- пункт ru\n');
+  const en = parseChangelog('## [0.2.3] — 2026-10-24\n- item en\n## [0.2.2] — 2026-10-24\n- item 0.2.2\n');
+  const merged = mergeChangelog(ru, en);
+  assert.deepEqual(merged.map((x) => x.version), ['0.2.3', '0.2.2']);
+  assert.equal(merged[0].sections[0].items[0], 'пункт ru');
+  assert.equal(merged[1].sections[0].items[0], 'item 0.2.2');
+});
+
+test('changelogRows: версия, заголовок секции, пункт', () => {
+  assert.deepEqual(changelogRows(parseChangelog(SAMPLE)).slice(0, 3), [
+    { kind: 'version', text: '0.2.3 — 2026-10-24' },
+    { kind: 'section', text: 'Витрина пакета (npm, pi.dev)' },
+    { kind: 'item', text: 'Картинки и ссылки больше не 404. Тарбол вырос до ≈1.2 МБ.' },
+  ]);
 });
