@@ -9,12 +9,6 @@ type FakeRes = { ok: boolean; json: () => Promise<unknown>; text: () => Promise<
 
 const fakeText = (body: string): FakeRes => ({ ok: true, json: async () => ({}), text: async () => body });
 
-const changelogDeps: Omit<SelfCheckDeps, 'installedVersion'> = {
-  fetchFn: latest024,
-  moduleRealPath: '/opt/node/lib/node_modules/@devmaksi/pi-env/dist/index.js',
-  agentNpmDir: '/home/u/.pi/agent/npm',
-  noCheck: false,
-};
 const boom = () => Promise.reject(new Error('offline'));
 const notFound = (): Promise<FakeRes> => Promise.resolve({ ok: false, json: async () => ({}), text: async () => '' });
 const badJson = (): Promise<FakeRes> => Promise.resolve({ ok: true, json: async () => { throw new Error('bad'); }, text: async () => 'x' });
@@ -25,6 +19,12 @@ const latest023 = (): Promise<FakeRes> => Promise.resolve({ ok: true, json: asyn
 const baseDeps: SelfCheckDeps = {
   fetchFn: latest024,
   installedVersion: '0.2.3',
+  moduleRealPath: '/opt/node/lib/node_modules/@devmaksi/pi-env/dist/index.js',
+  agentNpmDir: '/home/u/.pi/agent/npm',
+  noCheck: false,
+};
+const changelogDeps: Omit<SelfCheckDeps, 'installedVersion'> = {
+  fetchFn: latest024,
   moduleRealPath: '/opt/node/lib/node_modules/@devmaksi/pi-env/dist/index.js',
   agentNpmDir: '/home/u/.pi/agent/npm',
   noCheck: false,
