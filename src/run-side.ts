@@ -8,7 +8,7 @@ import { buildCreateRequest } from './pi-actions.js';
 import { launchPi } from './pirun.js';
 import type { Catalog } from './catalog.js';
 import type { Environment } from './environments.js';
-import type { AppState, CreateView, ExtState, McpFormAdd, McpTab, PkgCheck, Tab, ReducerCtx } from './state.js';
+import type { AppState, CreateView, ExtState, McpFormAdd, McpTab, PkgCheck, Tab, UpdateCheck, ReducerCtx } from './state.js';
 import type { Term } from './terminal.js';
 
 /** Снимок суб-экранов и вкладки до обработки клавиши. */
@@ -19,6 +19,7 @@ export interface PrevSnap {
   tab: Tab;
   mcpCheck: PkgCheck;
   createMcpCheck: PkgCheck;
+  selfCheck: UpdateCheck;
 }
 
 /** Окно в состояние цикла запуска для обработчиков побочных эффектов. */
@@ -42,6 +43,8 @@ export interface Loop {
   doInstall(installDir: string, source: string, envName: string | null): void;
   doMcpAdd(dir: string, form: McpFormAdd, scope: 'main' | 'create'): void;
   doMcpCheck(dir: string, scope: 'main' | 'create'): void;
+  runSelfUpdate(): void;
+  loadChangelog(): void;
 }
 
 /** Контекст reducer для side-effect-хуков (имена записей корзины — для суб-экрана «Корзина»). */
@@ -56,7 +59,9 @@ export async function runSideEffects(loop: Loop, envs: Environment[], prev: Prev
   hooksExt(loop, prev.ext);
   hooksMcp(loop, prev.mcp, names);
   hooksMcpCheck(loop, prev);
+  hooksUpdate(loop, prev);
   hooksTrash(loop);
+  hooksCopy(loop);
   if (prev.tab !== 'extensions' && loop.state().tab === 'extensions' && loop.state().ext === null &&
       (loop.state().pkgCheck === 'idle' || loop.state().recheckUpdates)) {
     loop.checkUpdates(loop.agentDir, 'main');
@@ -231,4 +236,28 @@ async function doRun(loop: Loop, envs: Environment[]): Promise<void> {
   const res = await launchPi(loop.term, envs[st.selected]);
   loop.setState(reducer(loop.state(), { type: 'run-result', ok: res.ok }, rctx(loop, envs.map((e) => e.name))));
   if (!res.ok) loop.status(t(loop.state().language, 'status.pi-launch', { err: res.message }));
+}
+
+/**
+ * Вкладка «Обновление»: R перечитывает реестр (reducer уже перевёл selfCheck в
+ * loading), первый вход на вкладку грузит чейнджлог пропущенных релизов.
+ */
+function hooksUpdate(loop: Loop, prev: PrevSnap): void {
+  const st = loop.state();
+  if (st.selfUpdate === null || st.updateUi === null) return;
+  if (st.selfCheck === 'loading' && prev.selfCheck !== 'loading') {
+    loop.runSelfUpdate();
+    return;
+  }
+  if (prev.tab !== 'update' && st.tab === 'update' && st.updateUi.rows.length === 0) loop.loadChangelog();
+}
+
+/** Enter на строке команды: копирование через OSC 52 и снятие запроса. */
+function hooksCopy(loop: Loop): void {
+  const ui = loop.state().updateUi;
+  if (ui === null || ui.copyRequest === null) return;
+  const text = ui.copyRequest;
+  loop.term.copy(text);
+  loop.status(t(loop.state().language, 'status.copied'));
+  loop.setState({ ...loop.state(), updateUi: { ...ui, copyRequest: null } });
 }

@@ -7,6 +7,11 @@ import { runPassthrough } from './pirun.js';
 import { parsePiEnvArgs } from './cli.js';
 import { loadAppSettings } from './appsettings.js';
 import { t, defaultLang, localeCodes } from './i18n.js';
+import { realpathSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+import { createTerm } from './terminal.js';
+import { installedVersion } from './selfupdate.js';
+import { fetchChangelogEntries, runSelfCheck, type SelfCheckDeps } from './selfupdate-net.js';
 
 /** Язык для до-TUI выводов: явное значение из .pi-env.json, иначе системный дефолт. */
 function appLang(root: string): string {
@@ -55,7 +60,18 @@ function main(): void {
     process.stderr.write(t(lang, 'tty.error') + '\n');
     process.exit(2);
   }
-  void run(root);
+  const agentDir = process.env.PI_CODING_AGENT_DIR ?? join(homedir(), '.pi', 'agent');
+  const check: SelfCheckDeps = {
+    fetchFn: (url, init) => globalThis.fetch(url, init),
+    installedVersion: installedVersion(),
+    moduleRealPath: realpathSync(fileURLToPath(import.meta.url)),
+    agentNpmDir: join(agentDir, 'npm'),
+    noCheck: process.env.PI_ENV_NO_UPDATE_CHECK === '1',
+  };
+  void run(root, createTerm(), {
+    selfCheck: () => runSelfCheck(check),
+    changelog: (lang, secondary, range) => fetchChangelogEntries(check, lang, secondary, range),
+  });
 }
 
 main();

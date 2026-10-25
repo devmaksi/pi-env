@@ -17,6 +17,8 @@ import { createTerm, Term } from './terminal.js';
 import { defaultLang, localeCodes, t } from './i18n.js';
 import { piUpdateAll, piUpdateOne, piRemove, piInstall, piMcpAdd, piMcpList, npmOutdated } from './pi-actions.js';
 import { runSideEffects, type Loop, type PrevSnap } from './run-side.js';
+import { changelogRows, type ChangelogEntry } from './selfupdate.js';
+import type { SelfUpdate, VersionRange } from './selfupdate-net.js';
 
 function defaultAgentDir(): string {
   return process.env.PI_CODING_AGENT_DIR ?? join(homedir(), '.pi', 'agent');
@@ -56,7 +58,14 @@ export function makeProgressPainter(
  * Побочные эффекты — в run-side.ts (хуки переходов, submit/delete/run),
  * команды pi/npm — в pi-actions.ts; запуск дочернего pi — в pirun.ts.
  */
-export async function run(root: string, term: Term = createTerm()): Promise<void> {
+export interface RunDeps {
+  /** Есть ли более свежая версия pi-env; по умолчанию — не проверять (тесты идут офлайн). */
+  selfCheck?: () => Promise<SelfUpdate | null>;
+  /** Записи чейнджлога пропущенных релизов; по умолчанию — не загружать. */
+  changelog?: (lang: string, secondary: string, range: VersionRange) => Promise<ChangelogEntry[] | null>;
+}
+
+export async function run(root: string, term: Term = createTerm(), deps: RunDeps = {}): Promise<void> {
   /** Последний записанный на экран кадр (для построчного диффа); null — писать целиком. */
   let prevFrame: PrevFrame | null = null;
   const agentDir = defaultAgentDir();
@@ -226,6 +235,47 @@ export async function run(root: string, term: Term = createTerm()): Promise<void
     repaint();
   }
 
+  const selfCheckFn = deps.selfCheck ?? (async (): Promise<SelfUpdate | null> => null);
+  const changelogFn = deps.changelog ?? (async (): Promise<ChangelogEntry[] | null> => null);
+  let selfCheckId = 0;
+  let changelogLoadId = 0;
+
+  /** Номер последней доступной версии (один раз на запуск + по R на вкладке «Обновление»). */
+  async function runSelfUpdate(): Promise<void> {
+    const id = ++selfCheckId;
+    let info: SelfUpdate | null;
+    try {
+      info = await selfCheckFn();
+    } catch {
+      info = null;
+    }
+    if (id !== selfCheckId) return;
+    state = reducer(state, { type: 'self-update-result', info }, rctx());
+    if (info !== null) statusMsg = t(state.language, 'status.update-available', { latest: info.latest });
+    repaint();
+    if (info !== null && state.tab === 'update' && state.updateUi !== null) await loadChangelog();
+  }
+
+  /** Записи чейнджлога пропущенных релизов для вкладки «Обновление». */
+  async function loadChangelog(): Promise<void> {
+    const info = state.selfUpdate;
+    if (info === null || state.updateUi === null) return;
+    const id = ++changelogLoadId;
+    state = { ...state, updateUi: { ...state.updateUi, check: 'loading' } };
+    repaint();
+    const lang = state.language;
+    let entries: ChangelogEntry[] | null;
+    try {
+      entries = await changelogFn(lang, lang === 'ru' ? 'en' : 'ru', { installed: info.installed, latest: info.latest });
+    } catch {
+      entries = null;
+    }
+    if (id !== changelogLoadId) return;
+    state = reducer(state, { type: 'changelog-result', ok: entries !== null, rows: changelogRows(entries ?? []) }, rctx());
+    if (entries === null) statusMsg = t(state.language, 'status.changelog-error');
+    repaint();
+  }
+
   const loop: Loop = {
     root, agentDir, term,
     state: () => state,
@@ -244,6 +294,8 @@ export async function run(root: string, term: Term = createTerm()): Promise<void
     doInstall: (dir, source, envName) => { void doInstall(dir, source, envName); },
     doMcpAdd: (dir, form, scope) => { void doMcpAdd(dir, form, scope); },
     doMcpCheck: (dir, scope) => { void doMcpCheck(dir, scope); },
+    runSelfUpdate: () => { void runSelfUpdate(); },
+    loadChangelog: () => { void loadChangelog(); },
   };
 
   function applyKey(key: Key): { envs: Environment[]; prev: PrevSnap } {
@@ -255,7 +307,7 @@ export async function run(root: string, term: Term = createTerm()): Promise<void
     const { envs } = load();
     const names = envs.map((e) => e.name);
     const tnames = trashNames();
-    const prev: PrevSnap = { view: state.create?.view ?? null, ext: state.ext, mcp: state.mcp, tab: state.tab, mcpCheck: state.mcpCheck, createMcpCheck: state.create?.mcpCheck ?? 'idle' };
+    const prev: PrevSnap = { view: state.create?.view ?? null, ext: state.ext, mcp: state.mcp, tab: state.tab, mcpCheck: state.mcpCheck, createMcpCheck: state.create?.mcpCheck ?? 'idle', selfCheck: state.selfCheck };
     if (key === 'e' && state.tab === 'envs' && state.sub === null && state.trash === null && state.selected < envs.length) {
       const settings = readSettings(envs[state.selected].path) ?? {};
       state = reducer(state, { type: 'edit-start', name: envs[state.selected].name, settings, mcp: readMcpServers(envs[state.selected].path) }, rctx(names, tnames));
@@ -299,6 +351,7 @@ export async function run(root: string, term: Term = createTerm()): Promise<void
       term.onResize(repaint);
       term.start();
       repaint();
+      void runSelfUpdate();
       for (;;) {
         const key = await term.key();
         const { envs, prev } = applyKey(key as Key);

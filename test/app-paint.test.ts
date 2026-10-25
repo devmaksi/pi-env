@@ -56,6 +56,7 @@ function fakeTerm(keys: string[]) {
       return true;
     },
     screenKnown: () => !screenUnknown,
+    copy() {},
   };
   return { term, patches, bytes, calls };
 }

@@ -67,6 +67,14 @@ export function parseKeys(chunk: Buffer, prev: PrevState): KeyParse {
   return { keys, prev: { esc, utf8 } };
 }
 
+/**
+ * Копирование в буфер терминала (OSC 52): последовательность пишется как есть —
+ * поддержкой буфера занимается терминал, приложение ничего не меняет локально.
+ */
+export function copyToClipboard(text: string, write: (s: string) => void): void {
+  write('\x1b]52;c;' + Buffer.from(text, 'utf8').toString('base64') + '\x07');
+}
+
 export interface Term {
   start(): void;
   stop(): void;
@@ -77,6 +85,8 @@ export interface Term {
   paint(patch: FramePatch): boolean;
   /** Известно ли, что сейчас на экране: false сразу и после каждого start(). */
   screenKnown(): boolean;
+  /** Скопировать текст в буфер терминала (OSC 52). */
+  copy(text: string): void;
   onResize(cb: () => void): void;
   noColor: boolean;
 }
@@ -161,6 +171,10 @@ export function createTerm(): Term {
     },
     onResize(cb) {
       resizes.push(cb);
+    },
+    copy(text) {
+      if (!running) return; // терминалом владеет дочерний pi — копирования не будет
+      copyToClipboard(text, (s) => out.write(s));
     },
   };
 }

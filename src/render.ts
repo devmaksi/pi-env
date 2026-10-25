@@ -6,7 +6,7 @@ import type { PkgItem, CatalogPkg } from './catalog.js';
 import type { McpLiveStatus, McpServer } from './mcp.js';
 import type { TrashEntry } from './trash.js';
 import { t, nativeName, type StrKey } from './i18n.js';
-import { createRequire } from 'node:module';
+import { installedVersion } from './selfupdate.js';
 
 export const ANSI = {
   bright: '\x1b[96m',
@@ -301,8 +301,8 @@ function renderSettings(state: AppState, ctx: Ctx): Section {
   return { left, right, cursorRow: state.selected };
 }
 
-/** Версия из package.json (читается один раз при импорте модуля). */
-const VERSION = createRequire(import.meta.url)('../package.json').version;
+/** Версия приложения — из package.json (общая точка правды с проверкой обновления). */
+const VERSION = installedVersion();
 const SUPPORT_URL = 'https://boosty.to/devmaksi';
 /** Вкладка «О программе»: центрированный блок на всю ширину. */
 function renderAbout(ctx: Ctx): Section {

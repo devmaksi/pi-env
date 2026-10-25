@@ -1,4 +1,5 @@
 import { existsSync } from 'node:fs';
+import { createRequire } from 'node:module';
 import { dirname, join } from 'node:path';
 
 /** Обновление самого pi-env: номер версии и способ установки (чистые функции). */
@@ -178,4 +179,9 @@ export function changelogRows(entries: ChangelogEntry[]): ChangelogRow[] {
 /** Устарело ли: установлена строже доступной (нечитаемое — не устарело). */
 export function isOutdated(installed: string, latest: string): boolean {
   return compareVersions(installed, latest) < 0;
+}
+
+/** Версия запущенного pi-env (общая точка правды для UI и проверки). */
+export function installedVersion(): string {
+  return (createRequire(import.meta.url)('../package.json') as { version: string }).version;
 }

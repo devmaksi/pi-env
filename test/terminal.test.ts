@@ -90,7 +90,7 @@ test('term: повторный start() не включает alternate screen п
 
 import { test } from 'node:test';
 import assert from 'node:assert';
-import { parseKeys, createTerm, initialPrev } from '../src/terminal.js';
+import { copyToClipboard, createTerm, initialPrev, parseKeys } from '../src/terminal.js';
 import { withFakeTermStreams } from './fake-streams.js';
 
 test('parseKeys: печатные ASCII-символы', () => {
@@ -119,4 +119,10 @@ test('parseKeys: смешанная последовательность', () =>
 
 test('parseKeys: неизвестная CSI-последовательность игнорируется', () => {
   assert.deepEqual(parseKeys(Buffer.from([0x1b, 0x5b, 0x4f]), initialPrev).keys, []);
+});
+
+test('copyToClipboard: OSC 52 с base64 UTF-8', () => {
+  const w: string[] = [];
+  copyToClipboard('npm i -g @devmaksi/pi-env@latest', (s) => w.push(s));
+  assert.deepEqual(w, ['\x1b]52;c;' + Buffer.from('npm i -g @devmaksi/pi-env@latest', 'utf8').toString('base64') + '\x07']);
 });

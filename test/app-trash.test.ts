@@ -37,6 +37,7 @@ async function drive(root: string, keys: string[]): Promise<void> {
     onResize() {},
     paint: () => true,
     screenKnown: () => true,
+    copy() {},
   };
   try {
     await run(root, term);
