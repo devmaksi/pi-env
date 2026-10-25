@@ -226,7 +226,9 @@
   `envSkillDirName` (идентичность скилла: имя из каталога main-агента, `/` → `-`
   — одно имя используется в create, update и `freshEdit`)
 - `src/selfupdate.ts` — версия и способ установки (чистые): `parseVersion`/`compareVersions`/`isOutdated`, `classifyInstall`
-  (порядок: pi-package → npx-cache → source → npm-global → unknown), `updateCommands`, `installedVersion()` (общая точка правды версии для UI и проверки),
+  (порядок: pi-package → npx-cache → source → npm-global → unknown; `source` — `.git` в корне самого
+  экземпляра: checkout, `npm link`, git worktree; `.git` в `$HOME` или репозиторий-обёртка выше по пути
+  npm-установку checkout'ом не делают), `updateCommands`, `installedVersion()` (общая точка правды версии для UI и проверки),
   парсер чейнджлога `parseChangelog`/`changelogRange`/`mergeChangelog`/`changelogRows`/`changelogUrl` (Markdown-украшение снимается, управляющие символы вырезаются)
 - `src/selfupdate-net.ts` — только fetch: `runSelfCheck` (номер из ответа `.../latest` — `version` или `dist-tags.latest`, npm отдаёт обе формы; `noCheck` или `kind === 'source'` — без запроса; `checkedAt`),
   `fetchChangelogEntries` (второй язык догружается, если в основном нет блока последней доступной версии), `AbortSignal.timeout`

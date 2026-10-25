@@ -20,6 +20,10 @@ Russian text: [CHANGELOG.ru.md](CHANGELOG.ru.md).
   decision: pi-env shows the right command for your install method and nothing more. A source
   checkout is recognised and never queried against npm, `PI_ENV_NO_UPDATE_CHECK=1` switches the
   check off, and there is no cache and no Settings toggle (a failed check simply shows no tab).
+- **The install method is read from the install itself:** a checkout is the directory whose own root
+  holds `.git` (working tree, `npm link`, git worktree). A `.git` further up the path — a
+  dotfiles-managed `$HOME` or a wrapper repository — no longer turns an npm install into a checkout,
+  so those users keep both the check and the tab.
 - **The tab bar adapts to the terminal width:** full names, then short names (`tab.*.short`)
   with a two-space separator, then «active tab N/M» — six tabs no longer overflow a narrow
   terminal. Long changelog lines wrap by visible width (`wrapVisible`); a word wider than the

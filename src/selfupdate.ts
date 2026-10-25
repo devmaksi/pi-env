@@ -1,4 +1,4 @@
-import { existsSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { dirname, join } from 'node:path';
 
@@ -40,15 +40,51 @@ export function compareVersions(a: string, b: string): number {
 
 const PKG_PATH_MARK = 'node_modules/@devmaksi/pi-env/';
 
-/** Есть ли `.git` выше по пути (рабочий checkout — в том числе мишень `npm link`). */
-function hasGitRoot(filePath: string): boolean {
-  let dir = dirname(filePath);
+/** Наш ли package.json в этой директории — manifest самого pi-env, а не чужого проекта. */
+function isOurManifest(dir: string): boolean {
+  const pkg = join(dir, 'package.json');
+  if (!existsSync(pkg)) return false;
+  try {
+    return (JSON.parse(readFileSync(pkg, 'utf8')) as { name?: unknown }).name === PKG_NAME;
+  } catch {
+    return false;
+  }
+}
+
+/** Корень этого экземпляра: ближайший предок с manifest pi-env (у npm-установки — сам пакет). */
+function packageRootOf(moduleRealPath: string): string | null {
+  let dir = dirname(moduleRealPath);
   for (;;) {
-    if (existsSync(join(dir, '.git'))) return true;
+    if (isOurManifest(dir)) return dir;
     const parent = dirname(dir);
-    if (parent === dir) return false;
+    if (parent === dir) return null;
     dir = parent;
   }
+}
+
+/** Есть ли `.git` в самой директории или выше по пути. */
+function hasGitAtOrAbove(dir: string): boolean {
+  let cur = dir;
+  for (;;) {
+    if (existsSync(join(cur, '.git'))) return true;
+    const parent = dirname(cur);
+    if (parent === cur) return false;
+    cur = parent;
+  }
+}
+
+/**
+ * Рабочий checkout pi-env: `.git` лежит в корне самого экземпляра — рабочий каталог,
+ * `npm link` или git-worktree (там `.git` — файл). Для пакета, развёрнутого в
+ * `node_modules`, `.git` выше по пути ничего не значит: иначе npm-установка в
+ * репозитории-обёртке или в `$HOME` с `.git` (dotfiles-дом) осталась бы без проверки.
+ * Вне `node_modules` (монорепо) репозиторий выше по пути тоже считается checkout'ом.
+ */
+function isSourceCheckout(moduleRealPath: string, inPackageDir: boolean): boolean {
+  const root = packageRootOf(moduleRealPath);
+  if (root === null) return false;
+  if (existsSync(join(root, '.git'))) return true;
+  return !inPackageDir && hasGitAtOrAbove(root);
 }
 
 /**
@@ -61,7 +97,7 @@ export function classifyInstall(moduleRealPath: string, agentNpmDir: string): In
   const inPkg = path.includes(PKG_PATH_MARK);
   if (inPkg && path.startsWith(withTrailingSep(agentNpmDir))) return 'pi-package';
   if (path.includes('/_npx/')) return 'npx-cache';
-  if (hasGitRoot(moduleRealPath)) return 'source';
+  if (isSourceCheckout(moduleRealPath, inPkg)) return 'source';
   if (inPkg) return 'npm-global';
   return 'unknown';
 }

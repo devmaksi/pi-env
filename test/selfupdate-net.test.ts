@@ -1,8 +1,9 @@
 import { test } from 'node:test';
 import assert from 'node:assert';
-import { mkdirSync, mkdtempSync, rmSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { PKG_NAME } from '../src/selfupdate.js';
 import { fetchChangelogEntries, runSelfCheck, type SelfCheckDeps } from '../src/selfupdate-net.js';
 
 type FakeRes = { ok: boolean; json: () => Promise<unknown>; text: () => Promise<string> };
@@ -44,6 +45,7 @@ test('runSelfCheck: сеть/битый ответ → null на всех чет
 test('runSelfCheck: noCheck и установка из исходников — fetch не вызывается вовсе', async () => {
   const repo = mkdtempSync(join(tmpdir(), 'pienv-src-'));
   mkdirSync(join(repo, '.git'));
+  writeFileSync(join(repo, 'package.json'), JSON.stringify({ name: PKG_NAME, version: '0.0.0' }));
   mkdirSync(join(repo, 'dist'));
   let calls = 0;
   const spy = () => { calls++; return boom(); };

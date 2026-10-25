@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert';
-import { changelogRange, changelogRows, classifyInstall, isOutdated, mergeChangelog, parseChangelog, parseVersion, updateCommands } from '../src/selfupdate.js';
+import { changelogRange, changelogRows, classifyInstall, isOutdated, mergeChangelog, parseChangelog, parseVersion, PKG_NAME, updateCommands } from '../src/selfupdate.js';
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -30,11 +30,52 @@ test('classifyInstall: глобальный npm, npx-кэш, pi-пакет, ис
 test('classifyInstall: checkout с .git выше по пути — source (важнее npm-global)', () => {
   const repo = mkdtempSync(join(tmpdir(), 'pienv-repo-'));
   mkdirSync(join(repo, '.git'));
+  writeFileSync(join(repo, 'package.json'), JSON.stringify({ name: PKG_NAME, version: '0.0.0' }));
   const pkgDir = join(repo, 'node_modules', '@devmaksi', 'pi-env', 'dist');
   mkdirSync(pkgDir, { recursive: true });
   const linkedPath = join(pkgDir, 'index.js');
   writeFileSync(linkedPath, '');
   assert.equal(classifyInstall(linkedPath, '/home/u/.pi/agent'), 'source');
+  rmSync(repo, { recursive: true, force: true });
+});
+
+test('classifyInstall: .git в home (dotfiles-дом) не превращает npm-установку в исходники', () => {
+  const home = mkdtempSync(join(tmpdir(), 'pienv-home-'));
+  mkdirSync(join(home, '.git'));
+  const npmGlobal = join(home, '.npm-global', 'lib', 'node_modules', '@devmaksi', 'pi-env', 'dist');
+  const nvm = join(home, '.nvm', 'versions', 'node', 'v22.23.2', 'lib', 'node_modules', '@devmaksi', 'pi-env', 'dist');
+  for (const dir of [npmGlobal, nvm]) {
+    mkdirSync(dir, { recursive: true });
+    const entry = join(dir, 'index.js');
+    writeFileSync(entry, '');
+    writeFileSync(join(dir, 'package.json'), JSON.stringify({ name: PKG_NAME, version: '0.2.3' }));
+    assert.equal(classifyInstall(entry, join(home, '.pi', 'agent')), 'npm-global');
+  }
+  rmSync(home, { recursive: true, force: true });
+});
+
+test('classifyInstall: монорепо — наш package.json в подсказке, .git выше → source', () => {
+  const root = mkdtempSync(join(tmpdir(), 'pienv-mono-'));
+  mkdirSync(join(root, '.git'));
+  const checkout = join(root, 'apps', 'pi-env');
+  mkdirSync(join(checkout, 'src'), { recursive: true });
+  writeFileSync(join(checkout, 'package.json'), JSON.stringify({ name: PKG_NAME, version: '0.0.0' }));
+  const entry = join(checkout, 'src', 'index.ts');
+  writeFileSync(entry, '');
+  assert.equal(classifyInstall(entry, '/home/u/.pi/agent'), 'source');
+  rmSync(root, { recursive: true, force: true });
+});
+
+test('classifyInstall: npm-установка в чужом репозитории — не source', () => {
+  const repo = mkdtempSync(join(tmpdir(), 'pienv-other-'));
+  mkdirSync(join(repo, '.git'));
+  writeFileSync(join(repo, 'package.json'), JSON.stringify({ name: 'other-project', version: '1.0.0' }));
+  const pkgDir = join(repo, 'node_modules', '@devmaksi', 'pi-env', 'dist');
+  mkdirSync(pkgDir, { recursive: true });
+  const entry = join(pkgDir, 'index.js');
+  writeFileSync(entry, '');
+  writeFileSync(join(pkgDir, 'package.json'), JSON.stringify({ name: PKG_NAME, version: '0.2.3' }));
+  assert.equal(classifyInstall(entry, '/home/u/.pi/agent'), 'npm-global');
   rmSync(repo, { recursive: true, force: true });
 });
 
