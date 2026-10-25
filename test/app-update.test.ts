@@ -7,6 +7,7 @@ import { run } from '../src/run.js';
 import { parseChangelog } from '../src/selfupdate.js';
 import type { SelfUpdate } from '../src/selfupdate-net.js';
 import { t } from '../src/i18n.js';
+import { DEFAULT_APP_SETTINGS, saveAppSettings } from '../src/appsettings.js';
 import type { Term } from '../src/terminal.js';
 
 const painted: string[] = [];
@@ -16,6 +17,17 @@ const dirs: string[] = [];
 function tmpRoot(): string {
   const dir = mkdtempSync(join(tmpdir(), 'pienv-'));
   dirs.push(dir);
+  return dir;
+}
+
+/**
+ * Корень с закреплённым языком интерфейса. Сквозной прогон `run()` берёт язык
+ * из настроек, а их нет → `defaultLang` по системной локали: у GitHub-раннера
+ * `LANG=C.UTF-8` → «en», и русские строки кадра перестают находиться тестом.
+ */
+function tmpRootRu(): string {
+  const dir = tmpRoot();
+  saveAppSettings(dir, { ...DEFAULT_APP_SETTINGS, language: 'ru' });
   return dir;
 }
 
@@ -49,7 +61,7 @@ test('сквозной прогон: selfCheck → вкладка → Enter → 
   process.env.PI_CODING_AGENT_DIR = agentDir;
   try {
     // envs → extensions → mcp → settings → update, затем ↓×4 на строку команды
-    await run(tmpRoot(), fakeTerm(['tab', 'tab', 'tab', 'tab', 'down', 'down', 'down', 'down', 'enter', 'ctrlc']), {
+    await run(tmpRootRu(), fakeTerm(['tab', 'tab', 'tab', 'tab', 'down', 'down', 'down', 'down', 'enter', 'ctrlc']), {
       selfCheck: async () => INFO,
       changelog: async () => parseChangelog('## [0.2.4] — 2026-11-01\n- new tab\n'),
     });
@@ -71,7 +83,7 @@ test('сквозной прогон без deps: вкладки «Обновле
   const prevAgentDir = process.env.PI_CODING_AGENT_DIR;
   process.env.PI_CODING_AGENT_DIR = agentDir;
   try {
-    await run(tmpRoot(), fakeTerm(['tab', 'tab', 'tab', 'tab', 'tab', 'ctrlc']));
+    await run(tmpRootRu(), fakeTerm(['tab', 'tab', 'tab', 'tab', 'tab', 'ctrlc']));
   } finally {
     if (prevAgentDir === undefined) delete process.env.PI_CODING_AGENT_DIR;
     else process.env.PI_CODING_AGENT_DIR = prevAgentDir;
