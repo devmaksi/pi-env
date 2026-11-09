@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { readJsonFile, readMcpServers, writeMcpFile, mcpAddCliArgs, validateMcpForm, copyMcpEntry, removeMcpEntry, parseMcpList, mergeLive, liveMarker, type McpFormFields, type McpLiveStatus, type McpServer } from '../src/mcp.js';
+import { readJsonFile, readJsonFileDetailed, readMcpServers, readMcpServersDetailed, writeMcpFile, mcpAddCliArgs, validateMcpForm, copyMcpEntry, removeMcpEntry, parseMcpList, mergeLive, liveMarker, type McpFormFields, type McpLiveStatus, type McpServer } from '../src/mcp.js';
 import { t } from '../src/i18n.js';
 
 function dir(): string {
@@ -67,6 +67,60 @@ test('readMcpServers: trailing commas допускаются', () => {
   writeMcp(d, '{\n  "mcpServers": {\n    "fs": {\n      "command": "npx",\n      "args": ["-y", "x"],\n    },\n  },\n}');
   const servers = readMcpServers(d);
   assert.deepEqual(servers.map((s) => s.name), ['fs']);
+  rmSync(d, { recursive: true, force: true });
+});
+
+test('readJsonFileDetailed: валидный JSON — value без ошибки', () => {
+  const d = dir();
+  writeFileSync(join(d, 'f.json'), '{"a":1,}');
+  assert.deepEqual(readJsonFileDetailed(join(d, 'f.json')), { value: { a: 1 }, error: null });
+  rmSync(d, { recursive: true, force: true });
+});
+
+test('readJsonFileDetailed: битый JSON — текст ошибки, нет файла — ни value, ни ошибки', () => {
+  const d = dir();
+  writeFileSync(join(d, 'bad.json'), '{не json');
+  const bad = readJsonFileDetailed(join(d, 'bad.json'));
+  assert.equal(bad.value, null);
+  assert.ok(typeof bad.error === 'string' && bad.error !== '');
+  assert.deepEqual(readJsonFileDetailed(join(d, 'nope.json')), { value: null, error: null });
+  rmSync(d, { recursive: true, force: true });
+});
+
+test('readMcpServersDetailed: битый mcp.json — fileError, записей нет', () => {
+  const d = dir();
+  writeMcp(d, '{не json');
+  const r = readMcpServersDetailed(d);
+  assert.deepEqual(r.servers, []);
+  assert.ok(typeof r.fileError === 'string' && r.fileError !== '');
+  assert.deepEqual(r.skipped, []);
+  rmSync(d, { recursive: true, force: true });
+});
+
+test('readMcpServersDetailed: битая запись — имя в skipped, остальные читаются', () => {
+  const d = dir();
+  writeMcp(d, JSON.stringify({ mcpServers: { ok: { command: 'cmd' }, notObject: 'строка' } }));
+  const r = readMcpServersDetailed(d);
+  assert.deepEqual(
+    r.servers.map((s) => s.name),
+    ['ok'],
+  );
+  assert.equal(r.fileError, null);
+  assert.deepEqual(r.skipped, ['notObject']);
+  rmSync(d, { recursive: true, force: true });
+});
+
+test('readMcpServersDetailed: чистый и отсутствующий mcp.json — fileError null, skipped пусто', () => {
+  const d = dir();
+  writeMcp(d, JSON.stringify({ mcpServers: { fs: { command: 'npx' } } }));
+  const r = readMcpServersDetailed(d);
+  assert.deepEqual(
+    r.servers.map((s) => s.name),
+    ['fs'],
+  );
+  assert.equal(r.fileError, null);
+  assert.deepEqual(r.skipped, []);
+  assert.deepEqual(readMcpServersDetailed(join(d, 'nope')), { servers: [], fileError: null, skipped: [] });
   rmSync(d, { recursive: true, force: true });
 });
 

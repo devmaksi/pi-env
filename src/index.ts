@@ -12,6 +12,7 @@ import { fileURLToPath } from 'node:url';
 import { createTerm } from './terminal.js';
 import { installedVersion } from './selfupdate.js';
 import { fetchChangelogEntries, runSelfCheck, type SelfCheckDeps } from './selfupdate-net.js';
+import { debugEnabled, fileLogger } from './debuglog.js';
 
 /** Язык для до-TUI выводов: явное значение из .pi-env.json, иначе системный дефолт. */
 function appLang(root: string): string {
@@ -71,6 +72,7 @@ function main(): void {
   void run(root, createTerm(), {
     selfCheck: () => runSelfCheck(check),
     changelog: (lang, secondary, range) => fetchChangelogEntries(check, lang, secondary, range),
+    debugLog: debugEnabled(process.env) ? fileLogger(root) : undefined,
   });
 }
 

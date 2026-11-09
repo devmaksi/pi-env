@@ -16,7 +16,7 @@ const catalog: Catalog = {
 };
 
 const envs: Environment[] = [
-  { name: 'dev', path: '/root/dev', details: { hasSettings: true, model: null, tools: [], skills: [], packages: [], mcp: [] } },
+  { name: 'dev', path: '/root/dev', details: { hasSettings: true, model: null, tools: [], skills: [], packages: [], mcp: [], settingsError: null, mcpError: null, mcpSkipped: [] } },
 ];
 
 function createState(over: Partial<AppState['create']> = {}, app: Partial<AppState> = {}): AppState {

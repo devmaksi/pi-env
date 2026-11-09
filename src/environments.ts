@@ -1,6 +1,6 @@
-import { existsSync, readdirSync, readFileSync, type Dirent } from 'node:fs';
+import { existsSync, readdirSync, type Dirent } from 'node:fs';
 import { join } from 'node:path';
-import { readMcpServers } from './mcp.js';
+import { readJsonFileDetailed, readMcpServersDetailed } from './mcp.js';
 
 export interface EnvDetails {
   hasSettings: boolean;
@@ -9,6 +9,12 @@ export interface EnvDetails {
   skills: string[];
   packages: string[];
   mcp: string[];
+  /** Текст сбоя чтения settings.json (`null`, если файл читается или его нет). */
+  settingsError: string | null;
+  /** Текст сбоя чтения mcp.json (`null`, если файл читается или его нет). */
+  mcpError: string | null;
+  /** Имена записей mcp.json, которые не удалось разобрать. */
+  mcpSkipped: string[];
 }
 
 export interface Environment {
@@ -44,27 +50,37 @@ export function scan(root: string): Environment[] | null {
 /**
  * Детализация окружения: модель и пакеты из settings.json,
  * инструменты — файлы extensions/, скиллы — подкаталоги skills/.
- * Битый или отсутствующий settings.json — только hasSettings.
+ * Битые settings.json/mcp.json не молчат: их текст возвращается в settingsError,
+ * mcpError и mcpSkipped — оттуда их берут и журнал (`PI_ENV_DEBUG=1`), и маркер `⚠`
+ * в списке окружений.
  */
 function readDetails(dir: string): EnvDetails {
   const settingsPath = join(dir, 'settings.json');
+  const settings = readJsonFileDetailed(settingsPath);
   const hasSettings = existsSync(settingsPath);
   let model: string | null = null;
   let packages: string[] = [];
-  if (hasSettings) {
-    try {
-      const raw = JSON.parse(readFileSync(settingsPath, 'utf8')) as Record<string, unknown>;
-      const provider = typeof raw.defaultProvider === 'string' ? raw.defaultProvider : '';
-      const m = typeof raw.defaultModel === 'string' ? raw.defaultModel : '';
-      model = provider || m ? [provider, m].filter(Boolean).join('/') : null;
-      if (Array.isArray(raw.packages)) {
-        packages = raw.packages.filter((x): x is string => typeof x === 'string');
-      }
-    } catch {
-      /* битый settings.json — оставляем пустые значения */
+  if (settings.value !== null && typeof settings.value === 'object' && !Array.isArray(settings.value)) {
+    const raw = settings.value as Record<string, unknown>;
+    const provider = typeof raw.defaultProvider === 'string' ? raw.defaultProvider : '';
+    const m = typeof raw.defaultModel === 'string' ? raw.defaultModel : '';
+    model = provider || m ? [provider, m].filter(Boolean).join('/') : null;
+    if (Array.isArray(raw.packages)) {
+      packages = raw.packages.filter((x): x is string => typeof x === 'string');
     }
   }
-  return { hasSettings, model, tools: listEntries(join(dir, 'extensions'), (e) => e.isFile()), skills: listEntries(join(dir, 'skills'), (e) => e.isDirectory()), packages, mcp: readMcpServers(dir).map((s) => s.name) };
+  const mcp = readMcpServersDetailed(dir);
+  return {
+    hasSettings,
+    model,
+    tools: listEntries(join(dir, 'extensions'), (e) => e.isFile()),
+    skills: listEntries(join(dir, 'skills'), (e) => e.isDirectory()),
+    packages,
+    mcp: mcp.servers.map((s) => s.name),
+    settingsError: settings.error,
+    mcpError: mcp.fileError,
+    mcpSkipped: mcp.skipped,
+  };
 }
 
 function listEntries(dir: string, is: (e: Dirent) => boolean): string[] {

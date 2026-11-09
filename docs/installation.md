@@ -103,6 +103,20 @@ changelog. The check is a single background request per launch to
 PI_ENV_NO_UPDATE_CHECK=1 pi-env
 ```
 
+### Diagnostics
+
+An environment whose `settings.json` or `mcp.json` cannot be read is marked `⚠` in the
+environment list, and its info panel shows the error text. Failures that used to disappear
+without a trace (an unreadable root, a catalog that failed to reload, a version check that
+failed) are written to a journal when debugging is on:
+
+```bash
+PI_ENV_DEBUG=1 pi-env      # append to <root>/.pi-env.log
+```
+
+The journal is one line per problem — `2026-11-09 19:40:12 env demo: settings.json — <текст>`
+— and a distinct problem is recorded once per run. pi-env does not repair these files.
+
 ## Removing the global installation
 
 ```bash

@@ -343,8 +343,19 @@ export function renderEnvList(envs: Environment[], state: AppState, ctx: Ctx, tr
   const right: string[] = [];
   interface Row { text: string; selected: boolean; isSep: boolean }
   const rows: Row[] = [];
+  /**
+   * Проблемы конфигурации окружения (битые settings.json/mcp.json, неразобранные записи):
+   * тексты для инфо-панели; непустой список даёт маркер `⚠` у имени в списке.
+   */
+  const problems = (d: Environment['details']): string[] => {
+    const out: string[] = [];
+    if (d.settingsError) out.push(t(ctx.lang, 'envs.problem.settings', { v: d.settingsError }));
+    if (d.mcpError) out.push(t(ctx.lang, 'envs.problem.mcp', { v: d.mcpError }));
+    if (d.mcpSkipped.length > 0) out.push(t(ctx.lang, 'envs.problem.mcp-skipped', { v: d.mcpSkipped.join(', ') }));
+    return out;
+  };
   envs.forEach((e, i) => {
-    rows.push({ text: (i === state.selected ? '> ' : '  ') + e.name, selected: i === state.selected, isSep: false });
+    rows.push({ text: (i === state.selected ? '> ' : '  ') + e.name + (problems(e.details).length > 0 ? ' ⚠' : ''), selected: i === state.selected, isSep: false });
     if (i === envs.length - 1) {
       rows.push({ text: '─'.repeat(ctx.L.leftWidth - 2), selected: false, isSep: true });
     }
@@ -374,8 +385,11 @@ export function renderEnvList(envs: Environment[], state: AppState, ctx: Ctx, tr
     const d = e.details;
     right.push(c(ANSI.bold, ctx.useColor) + e.name + c(ANSI.reset, ctx.useColor));
     right.push(t(ctx.lang, 'envs.path', { v: e.path }));
-    right.push('settings.json ' + (d.hasSettings ? '✓' : '—'));
+    right.push('settings.json ' + (d.settingsError ? '⚠' : d.hasSettings ? '✓' : '—'));
     right.push(t(ctx.lang, 'form.model') + (d.model ?? '—'));
+    for (const problem of problems(d)) {
+      right.push(c(ANSI.dim, ctx.useColor) + problem + c(ANSI.reset, ctx.useColor));
+    }
     detailSection(t(ctx.lang, 'envs.tools'), d.tools, right, ctx.L.rightWidth, ctx.lang);
     detailSection(t(ctx.lang, 'envs.skills'), d.skills, right, ctx.L.rightWidth, ctx.lang);
     detailSection(t(ctx.lang, 'envs.extensions'), d.packages.map((s) => s.replace(/^npm:/, '')), right, ctx.L.rightWidth, ctx.lang);

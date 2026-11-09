@@ -17,6 +17,30 @@ Russian text: [CHANGELOG.ru.md](CHANGELOG.ru.md).
   becomes `null` (the info panel draws no empty line). `src/catalog.ts` (`cleanText`/`cleanOrNull` in
   `parsePackageCatalog`), tests in `test/catalog.test.ts`.
 
+### Diagnostics and the debug journal
+
+- **A broken configuration is no longer invisible.** `settings.json` and `mcp.json` are read
+  through `readJsonFileDetailed`/`readMcpServersDetailed`, which return the failure text along
+  with the value, and `scan()` carries it in `EnvDetails` (`settingsError`, `mcpError`,
+  `mcpSkipped`). An environment with such a problem gets a `⚠` next to its name in the
+  environment list, its info panel shows `settings.json ⚠` (a broken file is no longer the same
+  as a missing one) and the error text below. Before, a broken `settings.json` looked exactly
+  like an environment without a model, and an unreadable `mcp.json` simply produced an empty
+  server list.
+- **`PI_ENV_DEBUG=1` writes `<root>/.pi-env.log`.** Failures that used to vanish into `catch {}`
+  are logged instead: an unreadable root, every environment's broken settings/MCP file, a failed
+  catalog reload, a failed pi.dev catalog download, a failed version check and changelog load.
+  One line per problem (`2026-11-09 19:40:12 env demo: settings.json — …`), deduplicated by
+  `(tag, text)` for the run — necessary because `scan()` runs twice per key press — and a log
+  that cannot be written never breaks the app. Without the variable `run()` creates no files.
+  `src/debuglog.ts` (`debugEnabled`/`formatLogLine`/`dedupedLog`/`fileLogger`), wired through
+  `RunDeps.debugLog`.
+- Tests: `test/debuglog.test.ts`, `test/app-debug.test.ts` (the real `run()` loop: the broken
+  environment produces exactly one log line after several key presses), `test/render-envs.test.ts`
+  (the `⚠` row keeps the frame exactly `height` rows wide `width` on 1- and 2-cell terminals).
+  pi-env still does not repair configuration files — it only reports them.
+
+
 ## [0.2.4] — 2026-10-25
 
 ### Self-update: the «Update» tab

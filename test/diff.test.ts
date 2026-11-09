@@ -82,7 +82,7 @@ test('paintFrame: sink.paint вернул false → prev = null', () => {
 const env = (name: string): Environment => ({
   name,
   path: '/r/' + name,
-  details: { hasSettings: true, model: null, tools: [], skills: [], packages: [], mcp: [] },
+  details: { hasSettings: true, model: null, tools: [], skills: [], packages: [], mcp: [], settingsError: null, mcpError: null, mcpSkipped: [] },
 });
 
 const frame = (selected: number, envs: Environment[]): string[] =>

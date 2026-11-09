@@ -32,36 +32,66 @@ export interface McpFormFields {
   exposure: string | null;
 }
 
-/**
- * Читает JSON-файл; нет файла или битый JSON — null.
- * Trailing commas допускаются (особенность файлов пи): строковый литерал —
- * первая альтернатива regex, иначе запятые внутри строк вырезаются.
- */
-export function readJsonFile(path: string): unknown {
-  if (!existsSync(path)) return null;
-  try {
-    const repaired = readFileSync(path, 'utf8').replace(/"(?:[^"\\]|\\.)*"|,\s*([}\]])/g, (m, closer) => closer ?? m);
-    return JSON.parse(repaired);
-  } catch {
-    return null;
-  }
+export interface JsonFileRead {
+  value: unknown;
+  /** Текст проблемы, если файл есть, но не читается/не парсится; `null` и при отсутствии файла. */
+  error: string | null;
 }
 
 /**
- * Читает mcpServers из <dir>/mcp.json.
- * Нет файла, битый JSON или битая запись — пропускаются без исключений.
+ * Читает JSON-файл, возвращая и значение, и текст сбоя (молчаливый `catch {}` был
+ * единственной причиной, по которой битый `settings.json` выглядел как нормальный).
+ * Trailing commas допускаются (особенность файлов пи): строковый литерал —
+ * первая альтернатива regex, иначе запятые внутри строк вырезаются.
  */
-export function readMcpServers(dir: string): McpServer[] {
-  const raw = readJsonFile(join(dir, 'mcp.json'));
-  if (raw === null) return [];
-  const obj = raw as { mcpServers?: unknown };
-  if (obj.mcpServers === null || typeof obj.mcpServers !== 'object' || Array.isArray(obj.mcpServers)) return [];
-  const out: McpServer[] = [];
+export function readJsonFileDetailed(path: string): JsonFileRead {
+  if (!existsSync(path)) return { value: null, error: null };
+  try {
+    const repaired = readFileSync(path, 'utf8').replace(/"(?:[^"\\]|\\.)*"|,\s*([}\]])/g, (m, closer) => closer ?? m);
+    return { value: JSON.parse(repaired), error: null };
+  } catch (err) {
+    return { value: null, error: err instanceof Error ? err.message : String(err) };
+  }
+}
+
+/** Читает JSON-файл; нет файла или битый JSON — null. */
+export function readJsonFile(path: string): unknown {
+  return readJsonFileDetailed(path).value;
+}
+
+export interface McpFileRead {
+  servers: McpServer[];
+  /** Текст сбоя чтения `mcp.json` (битый JSON); `null`, если файл читается или его нет. */
+  fileError: string | null;
+  /** Имена записей `mcpServers`, которые не удалось разобрать. */
+  skipped: string[];
+}
+
+/**
+ * Читает mcpServers из <dir>/mcp.json вместе с диагностикой: битый файл и каждая
+ * битая запись видны вызывающему коду, а не исчезают в `catch {}`.
+ */
+export function readMcpServersDetailed(dir: string): McpFileRead {
+  const raw = readJsonFileDetailed(join(dir, 'mcp.json'));
+  if (raw.error !== null) return { servers: [], fileError: raw.error, skipped: [] };
+  if (raw.value === null) return { servers: [], fileError: null, skipped: [] };
+  const obj = raw.value as { mcpServers?: unknown };
+  if (obj.mcpServers === null || typeof obj.mcpServers !== 'object' || Array.isArray(obj.mcpServers)) {
+    return { servers: [], fileError: null, skipped: [] };
+  }
+  const servers: McpServer[] = [];
+  const skipped: string[] = [];
   for (const [name, value] of Object.entries(obj.mcpServers as Record<string, unknown>)) {
     const server = parseMcpEntry(name, value);
-    if (server !== null) out.push(server);
+    if (server !== null) servers.push(server);
+    else skipped.push(name);
   }
-  return out.sort((a, b) => a.name.localeCompare(b.name));
+  return { servers: servers.sort((a, b) => a.name.localeCompare(b.name)), fileError: null, skipped };
+}
+
+/** Читает mcpServers из <dir>/mcp.json; битые записи и битый файл просто пропускаются. */
+export function readMcpServers(dir: string): McpServer[] {
+  return readMcpServersDetailed(dir).servers;
 }
 
 /** Запись как объект mcp.json, иначе null (битая запись). */

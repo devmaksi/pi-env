@@ -57,6 +57,15 @@
   в список и по клавише `R`; далее при каждом входе — только с настройкой
   «Перепроверять MCP» (по умолчанию выкл). Во время проверки список доступен
   для навигации; индикатор «Проверка MCP…».
+- Отладчивость конфигурации: `scan()` отдаёт диагностику окружения (`EnvDetails.settingsError`,
+  `mcpError`, `mcpSkipped` — из `readJsonFileDetailed`/`readMcpServersDetailed`), окружение с
+  проблемой помечено `⚠` в списке, инфо-панель показывает `settings.json ⚠` (битый файл больше
+  не выглядит как отсутствующий) и ниже текст ошибки. Журнал отладки `PI_ENV_DEBUG=1` → append
+  `<root>/.pi-env.log` (`src/debuglog.ts`, приходит в `run()` через `RunDeps.debugLog`):
+  нечитаемый корень, битые settings/MCP окружений, провалы перечитки каталога, загрузки каталога
+  pi.dev, проверки версии и чейнджлога; дедуп по `(tag, текст)` на запуск (без него двойной
+  `scan()` на каждое нажатие плодил бы одинаковые строки), недоступный журнал не роняет
+  приложение, без переменной `run()` не создаёт файлов.
 - Корзина окружений: удаление окружения (`E` → «Удалить» → Enter → Enter) переносит
   каталог в `<root>/.trash/<имя>@<unix-мс>` вместо `rm -rf`; в списке вкладка
   «Окружения» — строка «Корзина (N)» после «Создать» (всегда видна, в том числе с
@@ -132,6 +141,8 @@
 - `python3 -m unittest demo.test_ptycast demo.test_capture` — тесты Python-стенда
   съёмки (cast, alt-screen-самопроверка, маркеры, закреплённые настройки)
 - `PI_ENV_NO_UPDATE_CHECK=1 npx tsx src/index.ts` — запуск без сетевого запроса о собственной версии (используется и в дубле GIF: `demo/capture.py` передаёт её всегда)
+- `PI_ENV_DEBUG=1 npx tsx src/index.ts` — запуск с журналом отладки `<root>/.pi-env.log`
+  (проблемы конфигурации окружений и сбои фонового чтения; без переменной файлов не создаётся)
 - `python3 -m demo.capture --selftest` — проверка стенда на alt-screen без pi-env
 
 
@@ -209,7 +220,13 @@
   инжектятся (чистая)
 - `src/environments.ts` — `scan(root)` с детализацией окружения
   (settings.json, extensions/, skills/, mcp.json); каталоги с `.` в начале — не
-  окружения, поэтому служебный `.trash` в список не попадает (чистая)
+  окружения, поэтому служебный `.trash` в список не попадает; битые `settings.json`/`mcp.json`
+  и неразобранные записи отдаёт в `settingsError`/`mcpError`/`mcpSkipped` (чистая)
+- `src/debuglog.ts` — журнал отладки (чистое ядро + тонкий writer): `debugEnabled`
+  (`PI_ENV_DEBUG=1`), `formatLogLine` (`YYYY-MM-DD HH:MM:SS tag: текст`), `dedupedLog`
+  (одна строка на пару `(tag, текст)`), `createDebugLog` (сток и часы инжектятся, сбой стока
+  наружу не выходит), `logFileFor`/`fileLogger` — append `<root>/.pi-env.log`, файл появляется
+  первой записью
 - `src/layout.ts` — `computeLayout` (чистая), константы порогов
 - `src/catalog.ts` — `loadCatalog` + `listProviders/listCustomTools/`
   `listPackages/listSkills` (`listSkills` уникализированы `uniqueName`), `parseOutdated`, `parsePackageCatalog`/
@@ -218,7 +235,9 @@
   `filterPackages` (поиск по имени пакета); вход из pi.dev-HTML санитизируется
   (`cleanText`/`cleanOrNull`: control-символы, включая ESC, вырезаны; переносы/табы/повторные
   пробелы → один пробел; пустое имя — карточка пропущена, пустые описание/автор — null) (чистые)
-- `src/mcp.ts` — mcp.json: `McpServer`/`McpFormFields`, `readJsonFile`, `readMcpServers`,
+- `src/mcp.ts` — mcp.json: `McpServer`/`McpFormFields`, `readJsonFile`/`readJsonFileDetailed`
+  (значение + текст сбоя), `readMcpServers`/`readMcpServersDetailed` (`servers` + `fileError` +
+  `skipped`),
   `writeMcpFile`, `mcpAddCliArgs` (аргументы `pi mcp add`), `validateMcpForm`,
   `copyMcpEntry`/`removeMcpEntry` (чистые)
 - `src/mcp-live.ts` — живой статус из `pi mcp list --json`: `McpLiveState`
@@ -307,7 +326,7 @@
 - `test/*.test.ts` — тесты чистого ядра (включая `mcp.test.ts`,
   `state-mcp.test.ts`, `state-create-mcp.test.ts`, `render-mcp.test.ts`, `shutdown.test.ts`, `terminal.test.ts` — гарантия терминала, `paint.test.ts` — `paint`/`screenKnown`, `diff.test.ts` — построчный дифф, `throttle.test.ts` — схлопывание прогресс-репоков, `app-paint.test.ts` — реальный цикл `run()` на фейковом терминале (сколько байт ушло на репок), `trash.test.ts`/`state-trash.test.ts`/`render-trash.test.ts` — корзина (переносы, машина суб-экрана, кадра), `app-trash.test.ts` — сквозной прогон `run()`: удаление → «Корзина (1)» → восстановить → удалить совсем, `ci.test.ts` — согласие `engines`/матрицы CI/документов и гейт `needs: test` перед публикацией,
   `selfupdate.test.ts`/`selfupdate-net.test.ts` — версия, способ установки, парсер и диапазон чейнджлога, фолбэк языка; `state-update.test.ts` — динамические вкладки и клавиши вкладки;
-  `render-update.test.ts` — `wrapVisible`, план таб-бара и invariant кадра; `app-update.test.ts` — сквозной `run()` с вкладкой и копированием)
+  `render-update.test.ts` — `wrapVisible`, план таб-бара и invariant кадра; `app-update.test.ts` — сквозной `run()` с вкладкой и копированием; `debuglog.test.ts` — формат строки журнала, дедуп и writer; `app-debug.test.ts` — сквозной `run()` с `debugLog` (ровно одна строка на проблему при двойном `scan()`); `render-envs.test.ts` — маркер `⚠`, тексты проблемы и кадры с ним)
 - `demo/ptycast.py` — PTY-стенд съёмки: `openpty` + reader-поток, запись asciinema
   cast v2, `alt_fix` (первый кадр после `\x1b[?1049h`), `Step` (клавиши, маркер,
   пауза до клавиш), рендер через `agg` (чистые функции, тесты `demo/test_ptycast.py`)
@@ -329,6 +348,11 @@
 - Строки из внешних источников (HTML каталога pi.dev) санитизируются на границе парсера
   (`catalog.ts` `cleanText`/`cleanOrNull`): control-символы, переносы и табы не должны доходить до
   кадра — иначе он перестаёт быть `height` строк фиксированной ширины и построчный дифф ломается.
+- Диагностика сбоя — данные, а не побочный эффект: парсер возвращает текст проблемы
+  (`readJsonFileDetailed`/`readMcpServersDetailed`, `EnvDetails.settingsError`/`mcpError`/
+  `mcpSkipped`), а журнал пишет только слой побочных эффектов (`run.ts` ← `RunDeps.debugLog`).
+  Без `deps.debugLog` `run()` не создаёт файлов — сквозные тесты остаются без побочных
+  артефактов; журнал не локализован и не чинит файлы, только сообщает.
 - UI-тексты и сообщения — через `t(lang, key)` (`src/i18n.ts`), словари —
   `src/locales/*.json` (ru — базовый, en — полный; новая локаль = новый файл,
   код не меняется); прямые литеральные строки в UI — не добавлять.

@@ -85,6 +85,10 @@ different purpose.
   restarts itself; the check is one background request per launch and is
   switched off by `PI_ENV_NO_UPDATE_CHECK=1` (and is never made when pi-env
   runs from a source checkout).
+- a broken configuration is visible, not silent: an environment whose `settings.json` or
+  `mcp.json` cannot be read gets a `⚠` in the list and the error text in its info panel;
+  `PI_ENV_DEBUG=1` appends such problems (and other failures that used to disappear in
+  `catch {}`) to `<root>/.pi-env.log`.
 
 ## Controls (main keys)
 

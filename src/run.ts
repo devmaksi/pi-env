@@ -19,6 +19,7 @@ import { piUpdateAll, piUpdateOne, piRemove, piInstall, piMcpAdd, piMcpList, npm
 import { runSideEffects, type Loop, type PrevSnap } from './run-side.js';
 import { changelogRows, type ChangelogEntry } from './selfupdate.js';
 import type { SelfUpdate, VersionRange } from './selfupdate-net.js';
+import { dedupedLog, type DebugLogFn } from './debuglog.js';
 
 function defaultAgentDir(): string {
   return process.env.PI_CODING_AGENT_DIR ?? join(homedir(), '.pi', 'agent');
@@ -63,6 +64,11 @@ export interface RunDeps {
   selfCheck?: () => Promise<SelfUpdate | null>;
   /** Записи чейнджлога пропущенных релизов; по умолчанию — не загружать. */
   changelog?: (lang: string, secondary: string, range: VersionRange) => Promise<ChangelogEntry[] | null>;
+  /**
+   * Журнал отладки (`PI_ENV_DEBUG=1` → `<root>/.pi-env.log`); по умолчанию — ничего
+   * не пишется, поэтому сквозные тесты `run()` не оставляют файлов.
+   */
+  debugLog?: DebugLogFn;
 }
 
 export async function run(root: string, term: Term = createTerm(), deps: RunDeps = {}): Promise<void> {
@@ -75,10 +81,24 @@ export async function run(root: string, term: Term = createTerm(), deps: RunDeps
   let state: AppState = { ...initialState(catalog), colorToggle: app.color, recheckUpdates: app.recheckUpdates, recheckMcp: app.recheckMcp, language: lang0 };
   let statusMsg: string | null = null;
 
+  /**
+   * Журнал отладки: строки о сбоях, которые иначе исчезают в `catch {}`. Дедуп обязателен —
+   * `load()` (а значит и `scan()`) вызывается дважды на каждое нажатие клавиши.
+   */
+  const log: DebugLogFn = dedupedLog(deps.debugLog ?? (() => {}));
+  const errText = (e: unknown): string => (e instanceof Error ? e.message : String(e));
+
   function load(): { envs: Environment[]; status: string | null } {
     const scanned = scan(root);
     if (scanned === null) {
+      log('scan', `корень ${root} не существует или не читается`);
       return { envs: [], status: t(state.language, 'status.not-found', { root }) };
+    }
+    for (const e of scanned) {
+      const d = e.details;
+      if (d.settingsError) log('env', `${e.name}: settings.json — ${d.settingsError}`);
+      if (d.mcpError) log('env', `${e.name}: mcp.json — ${d.mcpError}`);
+      if (d.mcpSkipped.length > 0) log('env', `${e.name}: mcp.json — не разобраны записи: ${d.mcpSkipped.join(', ')}`);
     }
     return { envs: scanned, status: null };
   }
@@ -105,7 +125,10 @@ export async function run(root: string, term: Term = createTerm(), deps: RunDeps
     try {
       catalog = loadCatalog(agentDir);
       state = { ...state, catalog };
-    } catch { /* каталог не перечитан — остаётся старый */ }
+    } catch (err) {
+      log('catalog', `${agentDir}: ${errText(err)}`);
+      /* каталог не перечитан — остаётся старый */
+    }
   }
 
   /** Общий финал pi-команды: результат в reducer, перечитка каталога, отрисовка. */
@@ -221,7 +244,8 @@ export async function run(root: string, term: Term = createTerm(), deps: RunDeps
         state = { ...state, catalogProgress: { loaded, total } };
         paintProgress.call();
       });
-    } catch {
+    } catch (err) {
+      log('catalog', `pi.dev/packages: ${errText(err)}`);
       pkgs = null;
     }
     if (id !== catalogLoadId) { paintProgress.cancel(); return; }
@@ -246,7 +270,8 @@ export async function run(root: string, term: Term = createTerm(), deps: RunDeps
     let info: SelfUpdate | null;
     try {
       info = await selfCheckFn();
-    } catch {
+    } catch (err) {
+      log('self-update', errText(err));
       info = null;
     }
     if (id !== selfCheckId) return;
@@ -267,7 +292,8 @@ export async function run(root: string, term: Term = createTerm(), deps: RunDeps
     let entries: ChangelogEntry[] | null;
     try {
       entries = await changelogFn(lang, lang === 'ru' ? 'en' : 'ru', { installed: info.installed, latest: info.latest });
-    } catch {
+    } catch (err) {
+      log('changelog', errText(err));
       entries = null;
     }
     if (id !== changelogLoadId) return;
