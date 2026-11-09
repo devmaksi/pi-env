@@ -3,6 +3,20 @@
 Format: new features and bug fixes as separate blocks. Versions below 0.1.2 are in the git history.
 Russian text: [CHANGELOG.ru.md](CHANGELOG.ru.md).
 
+## [Unreleased]
+
+### pi.dev package catalog
+
+- **Catalog strings are cleaned at the parser boundary.** The name, types, description and author
+  read from `https://pi.dev/packages` go through `cleanText`: control characters (ESC included)
+  are dropped, and line breaks, tabs and repeated spaces collapse into a single space. Before, a
+  control character or a line break inside a description reached the frame: `visibleWidth` counts it
+  as one cell, while the line break added a row to the frame — the layout slid and the line-by-line
+  repaint diff was invalidated; an ESC in a package name would have moved the terminal cursor. A card
+  whose name is only control characters is skipped, and an empty-after-cleaning description or author
+  becomes `null` (the info panel draws no empty line). `src/catalog.ts` (`cleanText`/`cleanOrNull` in
+  `parsePackageCatalog`), tests in `test/catalog.test.ts`.
+
 ## [0.2.4] — 2026-10-25
 
 ### Self-update: the «Update» tab

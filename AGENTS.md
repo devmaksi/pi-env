@@ -215,7 +215,9 @@
   `listPackages/listSkills` (`listSkills` уникализированы `uniqueName`), `parseOutdated`, `parsePackageCatalog`/
   `fetchPackageCatalog` (каталог pi.dev/packages: все страницы пагинации
   параллельно, `lastCatalogPage`, прогресс, дедупликация), `normalizePkgSource`,
-  `filterPackages` (поиск по имени пакета) (чистые)
+  `filterPackages` (поиск по имени пакета); вход из pi.dev-HTML санитизируется
+  (`cleanText`/`cleanOrNull`: control-символы, включая ESC, вырезаны; переносы/табы/повторные
+  пробелы → один пробел; пустое имя — карточка пропущена, пустые описание/автор — null) (чистые)
 - `src/mcp.ts` — mcp.json: `McpServer`/`McpFormFields`, `readJsonFile`, `readMcpServers`,
   `writeMcpFile`, `mcpAddCliArgs` (аргументы `pi mcp add`), `validateMcpForm`,
   `copyMcpEntry`/`removeMcpEntry` (чистые)
@@ -324,6 +326,9 @@
 - Терминальный слой тонкий; UI-логику в `terminal.ts` не переносить.
 - Вывод терминала наружу — только через `withShutdown` (`src/shutdown.ts`): `term.stop()` вне него не вызывать (исключение — `launchPi`, который сознательно отдаёт терминал дочернему `pi`).
 - Отрисовка — только через `term.paint(...)` (полный кадр или `rows`-патч из `src/diff.ts`); отдельного `clear()` в `Term` больше нет (полный кадр пишет очистку экрана сам), а `process.stdout.write` из `run.ts` не добавлять. Кадр обязан оставаться ровно `height` строк фиксированной видимой ширины (иначе построчный дифф инвалидируется); новый кадр с другой раскладкой узнаётся по `frameKey`, а не «на глаз».
+- Строки из внешних источников (HTML каталога pi.dev) санитизируются на границе парсера
+  (`catalog.ts` `cleanText`/`cleanOrNull`): control-символы, переносы и табы не должны доходить до
+  кадра — иначе он перестаёт быть `height` строк фиксированной ширины и построчный дифф ломается.
 - UI-тексты и сообщения — через `t(lang, key)` (`src/i18n.ts`), словари —
   `src/locales/*.json` (ru — базовый, en — полный; новая локаль = новый файл,
   код не меняется); прямые литеральные строки в UI — не добавлять.

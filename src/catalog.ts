@@ -200,6 +200,20 @@ export function filterPackages(pkgs: CatalogPkg[], query: string): CatalogPkg[] 
   if (q === '') return pkgs;
   return pkgs.filter((p) => p.name.toLowerCase().includes(q));
 }
+
+const CONTROL_RE = /[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]/g;
+
+/** Строка из pi.dev-HTML: control-символы вырезаны, переносы/табы/повторные пробелы — один пробел. */
+function cleanText(s: string): string {
+  return s.replace(CONTROL_RE, '').replace(/\s+/g, ' ').trim();
+}
+
+/** Пустое после санитизации описание/автор — null: инфо-панель не рисует пустую строку. */
+function cleanOrNull(s: string): string | null {
+  const clean = cleanText(s);
+  return clean === '' ? null : clean;
+}
+
 /**
  * Разбор HTML страницы https://pi.dev/packages в список пакетов.
  * ponytail: регулярки под текущую разметку pi.dev; при смене разметки список будет пустым
@@ -216,12 +230,14 @@ export function parsePackageCatalog(html: string): CatalogPkg[] {
     const downloads = /data-package-downloads="(\d+)"/.exec(m[0]);
     const desc = /<p class="packages-desc">([^<]*)<\/p>/.exec(slice);
     const meta = /class="packages-meta"><span>([^<]*)<\/span>/.exec(slice);
+    const name = cleanText(m[1]);
+    if (name === '') continue;
     out.push({
-      name: m[1],
-      types: types && types[1] !== '' ? types[1].split(' ').filter((t) => t !== '') : [],
+      name,
+      types: types ? cleanText(types[1]).split(' ').filter((t) => t !== '') : [],
       downloads: downloads ? Number(downloads[1]) : 0,
-      description: desc ? decodeEntities(desc[1]) : null,
-      author: meta ? decodeEntities(meta[1]) : null,
+      description: desc ? cleanOrNull(decodeEntities(desc[1])) : null,
+      author: meta ? cleanOrNull(decodeEntities(meta[1])) : null,
     });
   }
   return out.sort((a, b) => b.downloads - a.downloads || a.name.localeCompare(b.name));

@@ -288,6 +288,59 @@ test('parsePackageCatalog: мусорный/пустой HTML — пустой �
   assert.deepEqual(parsePackageCatalog('<article data-package-card="true"></article>'), []);
 });
 
+const cardHtml = (
+  name: string,
+  desc: string | null = null,
+  author: string | null = null,
+  types = 'extension',
+): string =>
+  [
+    `<article data-package-name="${name}" data-package-types="${types}" data-package-downloads="5">`,
+    desc !== null ? `<p class="packages-desc">${desc}</p>` : '',
+    author !== null ? `<div class="packages-meta"><span>${author}</span></div>` : '',
+    '</article>',
+  ].join('');
+
+test('parsePackageCatalog: управляющие символы из имени пакета вырезаны', () => {
+  const pkgs = parsePackageCatalog(cardHtml('evil\u0007pkg\u0000'));
+  assert.deepEqual(pkgs.map((p) => p.name), ['evilpkg']);
+});
+
+test('parsePackageCatalog: ESC из описания не доходит до кадра', () => {
+  const [pkg] = parsePackageCatalog(cardHtml('pkg', 'a\u001b[2Jb'));
+  assert.ok(!pkg.description.includes('\u001b'));
+  assert.ok(!/[\u0000-\u001f\u007f]/.test(pkg.description));
+});
+
+test('parsePackageCatalog: переносы и табы в описании схлопываются в один пробел', () => {
+  const [pkg] = parsePackageCatalog(cardHtml('pkg', 'первая\n   вторая\tтретья '));
+  assert.equal(pkg.description, 'первая вторая третья');
+});
+
+test('parsePackageCatalog: управляющие символы и переносы из автора вырезаны', () => {
+  const [pkg] = parsePackageCatalog(cardHtml('pkg', null, 'ник\u0007\n\tиванов '));
+  assert.equal(pkg.author, 'ник иванов');
+});
+
+test('parsePackageCatalog: типы разделены любым пробельным символом', () => {
+  const [pkg] = parsePackageCatalog(cardHtml('pkg', null, null, 'extension\n\tskill'));
+  assert.deepEqual(pkg.types, ['extension', 'skill']);
+});
+
+test('parsePackageCatalog: имя только из управляющих символов — карточка пропущена', () => {
+  const pkgs = parsePackageCatalog(cardHtml('\u0007\u0000', 'плохая') + cardHtml('good', 'хорошая'));
+  assert.deepEqual(
+    pkgs.map((p) => p.name),
+    ['good'],
+  );
+});
+
+test('parsePackageCatalog: пустые после санитизации описание и автор — null', () => {
+  const [pkg] = parsePackageCatalog(cardHtml('pkg', '\u0007\u0000 ', '\t '));
+  assert.equal(pkg.description, null);
+  assert.equal(pkg.author, null);
+});
+
 test('normalizePkgSource: по источнику, по legacy-имени, чужой — как есть', () => {
   const pkgs: PkgItem[] = [
     { source: 'npm:pkg-a', name: 'pkg-a', path: '/p/a', version: '1.0.0', description: null, extensions: [], skills: [] },
