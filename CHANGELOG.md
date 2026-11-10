@@ -3,7 +3,7 @@
 Format: new features and bug fixes as separate blocks. Versions below 0.1.2 are in the git history.
 Russian text: [CHANGELOG.ru.md](CHANGELOG.ru.md).
 
-## [Unreleased]
+## [0.2.5] — 2026-11-10
 
 ### pi.dev package catalog
 
