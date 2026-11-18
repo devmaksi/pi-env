@@ -1,7 +1,7 @@
 import { Environment } from './environments.js';
 import { computeLayout, NARROW_MIN, LOW_MIN, type Layout } from './layout.js';
 import { type AppState, type PkgCheck, tabsOf, type Tab } from './state.js';
-import { renderCreate, renderExtTab, renderEnvList, renderMcpTab, renderTrashTab, renderUpdateTab, type Ctx, type Section } from './sections.js';
+import { renderCloneTab, renderCreate, renderExtTab, renderEnvList, renderMcpTab, renderTrashTab, renderUpdateTab, type Ctx, type Section } from './sections.js';
 import type { PkgItem, CatalogPkg } from './catalog.js';
 import type { McpLiveStatus, McpServer } from './mcp.js';
 import type { TrashEntry } from './trash.js';
@@ -233,9 +233,11 @@ export function render(a: RenderArgs): string {
   const section = state.sub === 'create' && state.create
     ? renderCreate(state.create, ctx)
     : state.tab === 'envs'
-      ? state.trash !== null
-        ? renderTrashTab(state.trash, a.trashEntries ?? [], ctx)
-        : renderEnvList(envs, state, ctx, a.trashEntries?.length ?? 0)
+      ? state.clone !== null
+        ? renderCloneTab(state.clone, envs.find((e) => e.name === state.clone!.srcName), ctx)
+        : state.trash !== null
+          ? renderTrashTab(state.trash, a.trashEntries ?? [], ctx)
+          : renderEnvList(envs, state, ctx, a.trashEntries?.length ?? 0)
     : state.tab === 'extensions' ? renderExtTab(state.ext, ctx)
     : state.tab === 'mcp' ? renderMcpTab(state.mcp, ctx)
     : state.tab === 'settings' ? renderSettings(state, ctx)

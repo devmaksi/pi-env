@@ -118,3 +118,8 @@ test('кадр с ⚠: средняя граница на колонке leftWid
     }
   }
 });
+
+test('инфо-панель окружения: подсказка «C — создать копию»', () => {
+  const s = render({ state: st, envs: [plain], width: 100, height: 20, ...base });
+  assert.ok(s.includes(t('ru', 'envs.hint.clone')), s);
+});

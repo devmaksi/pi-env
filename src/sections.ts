@@ -11,6 +11,7 @@ import {
   type McpFormAdd,
   type McpTab,
   type TrashState,
+  type CloneState,
   type SelfUpdate,
   type UpdateUi,
   UPDATE_ROW_COMMANDS,
@@ -344,25 +345,26 @@ function detailSection(title: string, items: string[], lines: string[], w: numbe
   }
 }
 
+/**
+ * Проблемы конфигурации окружения (битые settings.json/mcp.json, неразобранные записи):
+ * тексты для инфо-панели; непустой список даёт маркер `⚠` у имени в списке.
+ */
+function envProblems(d: Environment['details'], lang: string): string[] {
+  const out: string[] = [];
+  if (d.settingsError) out.push(t(lang, 'envs.problem.settings', { v: d.settingsError }));
+  if (d.mcpError) out.push(t(lang, 'envs.problem.mcp', { v: d.mcpError }));
+  if (d.mcpSkipped.length > 0) out.push(t(lang, 'envs.problem.mcp-skipped', { v: d.mcpSkipped.join(', ') }));
+  return out;
+}
+
 /** Вкладка «Окружения»: список + инфо-панель выбранного (без слияния в узком режиме). */
 export function renderEnvList(envs: Environment[], state: AppState, ctx: Ctx, trashCount: number): Section {
   const left: string[] = [];
   const right: string[] = [];
   interface Row { text: string; selected: boolean; isSep: boolean }
   const rows: Row[] = [];
-  /**
-   * Проблемы конфигурации окружения (битые settings.json/mcp.json, неразобранные записи):
-   * тексты для инфо-панели; непустой список даёт маркер `⚠` у имени в списке.
-   */
-  const problems = (d: Environment['details']): string[] => {
-    const out: string[] = [];
-    if (d.settingsError) out.push(t(ctx.lang, 'envs.problem.settings', { v: d.settingsError }));
-    if (d.mcpError) out.push(t(ctx.lang, 'envs.problem.mcp', { v: d.mcpError }));
-    if (d.mcpSkipped.length > 0) out.push(t(ctx.lang, 'envs.problem.mcp-skipped', { v: d.mcpSkipped.join(', ') }));
-    return out;
-  };
   envs.forEach((e, i) => {
-    rows.push({ text: (i === state.selected ? '> ' : '  ') + e.name + (problems(e.details).length > 0 ? ' ⚠' : ''), selected: i === state.selected, isSep: false });
+    rows.push({ text: (i === state.selected ? '> ' : '  ') + e.name + (envProblems(e.details, ctx.lang).length > 0 ? ' ⚠' : ''), selected: i === state.selected, isSep: false });
     if (i === envs.length - 1) {
       rows.push({ text: '─'.repeat(ctx.L.leftWidth - 2), selected: false, isSep: true });
     }
@@ -394,7 +396,7 @@ export function renderEnvList(envs: Environment[], state: AppState, ctx: Ctx, tr
     right.push(t(ctx.lang, 'envs.path', { v: e.path }));
     right.push('settings.json ' + (d.settingsError ? '⚠' : d.hasSettings ? '✓' : '—'));
     right.push(t(ctx.lang, 'form.model') + (d.model ?? '—'));
-    for (const problem of problems(d)) {
+    for (const problem of envProblems(d, ctx.lang)) {
       right.push(c(ANSI.dim, ctx.useColor) + problem + c(ANSI.reset, ctx.useColor));
     }
     detailSection(t(ctx.lang, 'envs.tools'), d.tools, right, ctx.L.rightWidth, ctx.lang);
@@ -402,6 +404,7 @@ export function renderEnvList(envs: Environment[], state: AppState, ctx: Ctx, tr
     detailSection(t(ctx.lang, 'envs.extensions'), d.packages.map((s) => s.replace(/^npm:/, '')), right, ctx.L.rightWidth, ctx.lang);
     detailSection(t(ctx.lang, 'envs.mcp'), d.mcp, right, ctx.L.rightWidth, ctx.lang);
     right.push(c(ANSI.dim, ctx.useColor) + t(ctx.lang, 'envs.hint.edit') + c(ANSI.reset, ctx.useColor));
+    right.push(c(ANSI.dim, ctx.useColor) + t(ctx.lang, 'envs.hint.clone') + c(ANSI.reset, ctx.useColor));
   } else {
     right.push(c(ANSI.dim, ctx.useColor) + t(ctx.lang, 'envs.pick') + c(ANSI.reset, ctx.useColor));
   }
@@ -446,6 +449,43 @@ export function renderTrashTab(tr: TrashState, entries: TrashEntry[], ctx: Ctx):
   }
   const cursorRow = entries.length === 0 ? -1 : 1 + Math.min(tr.cursor, entries.length - 1);
   return { left, right, cursorRow };
+}
+
+/**
+ * Суб-экран «Клонирование окружения»: имя копии слева, инфо-панель источника справа.
+ * Содержимое источника показывается как есть (оно и копируется как есть), списки
+ * обрезаны по 4 позиции — как в детализации окружения.
+ */
+export function renderCloneTab(cl: CloneState, source: Environment | undefined, ctx: Ctx): Section {
+  const left: string[] = [];
+  const right: string[] = [];
+  const dim = (s: string): string => c(ANSI.dim, ctx.useColor) + s + c(ANSI.reset, ctx.useColor);
+  const bold = (s: string): string => c(ANSI.bold, ctx.useColor) + s + c(ANSI.reset, ctx.useColor);
+  const caret = cl.caret < cl.name.length
+    ? cl.name.slice(0, cl.caret) + '▌' + cl.name.slice(cl.caret)
+    : cl.name + '▌';
+  left.push(dim(t(ctx.lang, 'clone.title')));
+  left.push(dim(t(ctx.lang, 'clone.from', { name: cl.srcName })));
+  left.push(dim('─'.repeat(ctx.L.leftWidth - 2)));
+  left.push(listRow(0, 0, t(ctx.lang, 'form.name') + caret, ctx.L.leftWidth, ctx.useColor));
+  if (cl.error !== null) left.push(dim('⚠ ' + cl.error));
+
+  if (source !== undefined) {
+    const d = source.details;
+    right.push(bold(source.name));
+    right.push(t(ctx.lang, 'envs.path', { v: source.path }));
+    right.push('settings.json ' + (d.settingsError ? '⚠' : d.hasSettings ? '✓' : '—'));
+    right.push(t(ctx.lang, 'form.model') + (d.model ?? '—'));
+    for (const problem of envProblems(d, ctx.lang)) right.push(dim(problem));
+    detailSection(t(ctx.lang, 'envs.tools'), d.tools, right, ctx.L.rightWidth, ctx.lang);
+    detailSection(t(ctx.lang, 'envs.skills'), d.skills, right, ctx.L.rightWidth, ctx.lang);
+    detailSection(t(ctx.lang, 'envs.extensions'), d.packages.map((s) => s.replace(/^npm:/, '')), right, ctx.L.rightWidth, ctx.lang);
+    detailSection(t(ctx.lang, 'envs.mcp'), d.mcp, right, ctx.L.rightWidth, ctx.lang);
+  }
+  right.push(dim(t(ctx.lang, 'clone.info')));
+  right.push(dim(t(ctx.lang, 'clone.hint.enter')));
+  right.push(dim(t(ctx.lang, 'hint.cancel')));
+  return { left, right, cursorRow: 3 };
 }
 
 /** Вкладка «Расширения»: диспетчер по состоянию ext. */
