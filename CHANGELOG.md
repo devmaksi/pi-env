@@ -3,6 +3,50 @@
 Format: new features and bug fixes as separate blocks. Versions below 0.1.2 are in the git history.
 Russian text: [CHANGELOG.ru.md](CHANGELOG.ru.md).
 
+## [Unreleased]
+
+### Responsiveness of long operations
+
+- **A long `pi` command is no longer a frozen screen.** `pi install`/`update`/`remove`,
+  `pi mcp add` and `pi mcp list` run in the background while the interface keeps responding: the
+  screen that owns the operation shows an elapsed counter «⏳ N s» (`src/ticker.ts` ticks once a
+  second, `run.ts` converts `opStartedAt` into whole seconds as `AppState.opSeconds`, `render` and
+  `sections` only print it and stay pure). `⏳` is in `WIDE_CHARS`, so the column borders stay put
+  on both 1-cell and 2-cell terminals.
+- **`Esc` interrupts the process that owns the current screen.** The set of such screens is
+  `busyProcessView`/`PROCESS_VIEWS` (installing/updating/removing in the “Extensions” tab and in the
+  environment form, submitting an MCP addition, removing an MCP server); the hint on those screens
+  changed from «Esc — back» to «Esc — cancel» (`hint.kill`). Cancellation travels as an
+  `AbortSignal` through `runCmd`, so the child is really killed: processes are launched
+  `detached` and the whole process group is signalled, which also takes the grandchildren with it.
+  Filesystem operations (copying an MCP entry, moving an environment to the trash) are not affected.
+- **`Ctrl+C` still exits, but never leaves orphans.** Before breaking the loop, the cycle aborts
+  every unfinished process of the run (`cancelAll`). The live MCP check (`pi mcp list`) keeps its
+  counter but is deliberately not `Esc`-cancelable.
+- **A timeout is no longer an anonymous failure.** `CmdResult` distinguishes `cancelled`,
+  `timedOut` and the `timeoutMs` the command was started with, and `cmdFailureText` turns them into
+  a status line: «Cancelled: <package>», «<package> did not finish within 300 s — stopped» or the
+  command's own `stderr`.
+- Tests: `test/cmd.test.ts` (abort → `cancelled`, a timeout that is distinguishable from a
+  cancellation, the whole process tree killed), `test/pi-actions.test.ts` (the signal reaches every
+  wrapper, failure texts), `test/ticker.test.ts` (the timer chain), `test/app-cancel.test.ts` (the
+  real `run()` loop: `Esc` cancels `pi mcp add`, the status says «Cancelled», the frame shows
+  «⏳ 0 s», `Ctrl+C` leaves with the process aborted).
+
+### Environment snapshot cache
+
+- **`scan()` and `listTrash()` run once per action.** The environment list, its details and the
+  trash used to be re-read several times per key press (in `applyKey`, in the repaint, in the
+  reducer context). `src/env-cache.ts` keeps one snapshot guarded by a stat signature — the root
+  mtime, every environment directory, its `settings.json`, `mcp.json`, `extensions/` and `skills/`,
+  plus the `.trash` directory; the snapshot is re-read when that signature changes or when pi-env
+  invalidates it itself. Every mutation invalidates: creating, saving or renaming an environment,
+  trash operations, MCP edits, the return of the child `pi`, and the end of any external command
+  (success, failure, cancellation or timeout). An unreadable root is never cached.
+  Measured on 50 environments: `scan()` 1.425 ms → `cache.get()` 0.429 ms, one scan per 20 `get()`.
+- Tests: `test/env-cache.test.ts` (signature of a real tree, cache hit, invalidation, an unavailable
+  root not sticking), `test/run-side.test.ts` (every mutation calls `invalidate`).
+
 ## [0.2.5] — 2026-11-10
 
 ### pi.dev package catalog
