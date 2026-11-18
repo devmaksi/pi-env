@@ -108,6 +108,16 @@ test('доки: корзина окружений — новые модули в
     '`.gitignore` больше не исключает docs/superpowers/ — текст документа про это разошёлся с фактом');
 });
 
+test('доки: клонирование окружения — новый модуль в перечне файлов', () => {
+  for (const file of ['docs/development.md', 'docs/development.ru.md']) {
+    const text = repo(file);
+    assert.ok(text.includes('src/state-clone.ts'), `${file}: нет src/state-clone.ts в перечне файлов`);
+    assert.ok(text.includes('docs/superpowers/specs/2026-11-19-env-clone-design.md'),
+      `${file}: нет упоминания спецификации «Клонирование окружения»`);
+    assert.ok(!text.includes('](superpowers/'), `${file}: ссылка в gitignored-каталог docs/superpowers/`);
+  }
+});
+
 test('чейнджлог: en и ru описывают один набор версий', () => {
   const en = parseChangelog(repo('CHANGELOG.md'));
   const ru = parseChangelog(repo('CHANGELOG.ru.md'));

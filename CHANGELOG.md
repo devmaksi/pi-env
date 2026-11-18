@@ -47,6 +47,26 @@ Russian text: [CHANGELOG.ru.md](CHANGELOG.ru.md).
 - Tests: `test/env-cache.test.ts` (signature of a real tree, cache hit, invalidation, an unavailable
   root not sticking), `test/run-side.test.ts` (every mutation calls `invalidate`).
 
+### Environment cloning (`C`)
+
+- **A variation of an existing environment no longer starts from scratch.** `C` on an
+  environment row opens a «Clone environment» sub-screen with a prefilled name
+  (`⟨name⟩-copy`): printable keys and Backspace edit it, `←`/`→` move the caret, `Enter`
+  copies, `Esc` cancels, and `TAB` does not leave the screen. `Enter` copies the environment
+  directory verbatim — `settings.json`, `mcp.json`, `extensions/`, `skills/`, the model files
+  and any file the environment owns that is not in the main agent's catalog; nothing is
+  rebuilt from the main agent, so custom files survive.
+- On success the cursor moves onto the copy and the status line shows
+  `status.env-cloned`; an invalid, empty or already-taken name keeps the sub-screen open
+  with `⚠` and the text, and touches no files. A copy that fails halfway is deleted, so no
+  partial environment is left behind (`cloneEnvironment` in `src/create.ts`).
+- The env details panel gained the `envs.hint.clone` hint. Tests:
+  `test/create.test.ts` (`cloneEnvironment`: whole tree copied, taken/invalid names, a
+  failed copy leaves nothing), `test/state-clone.test.ts` (sub-screen machine),
+  `test/render-clone.test.ts` (frame and column borders on both width models),
+  `test/app-clone.test.ts` (end-to-end `run()`: `C` → `Enter` → copy on disk; `C` on
+  «Create»/«Trash» and on other tabs does nothing; a taken name reports in the status line).
+
 ## [0.2.5] — 2026-11-10
 
 ### pi.dev package catalog
