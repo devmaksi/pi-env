@@ -85,6 +85,11 @@ different purpose.
   restarts itself; the check is one background request per launch and is
   switched off by `PI_ENV_NO_UPDATE_CHECK=1` (and is never made when pi-env
   runs from a source checkout).
+- a long operation is not a frozen screen: installs, updates, removals and MCP checks show an
+  `⏳ N s` counter, `Esc` interrupts the running process (the hint on such a screen reads
+  “Esc — cancel”), and a timeout is reported as a timeout, not as a generic failure;
+- the environment list is cached (`src/env-cache.ts`): the disk is re-read only when the tree
+  actually changed or when pi-env itself changed it;
 - a broken configuration is visible, not silent: an environment whose `settings.json` or
   `mcp.json` cannot be read gets a `⚠` in the list and the error text in its info panel;
   `PI_ENV_DEBUG=1` appends such problems (and other failures that used to disappear in
@@ -104,8 +109,8 @@ different purpose.
 | Enter on a command row     | copy the update command to the clipboard (“Update” tab)  |
 | X                            | remove the selected extension (with confirmation)                       |
 | printable characters / Backspace | entering a name (creation form)                                           |
-| ESC                          | back from a sub-screen / exit                                           |
-| Ctrl+C                       | emergency exit                                                       |
+| ESC                          | back from a sub-screen / exit; on a busy screen — interrupt the process |
+| Ctrl+C                       | exit (running processes are killed first)                          |
 
 ## Installation
 

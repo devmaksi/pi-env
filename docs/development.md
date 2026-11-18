@@ -34,6 +34,9 @@ npm run start          # run the built CLI (node dist/index.js)
 | `src/sections.ts`     | tab sections: forms, “Extensions”, environments + details (pure)      |
 | `src/appsettings.ts`  | application settings (`<root>/.pi-env.json`)                               |
 | `src/run.ts`          | application loop, `pi`/`npm` invocations, child process launch              |
+| `src/env-cache.ts`    | cached environment/trash snapshot: stat signature + invalidation (pure)   |
+| `src/ticker.ts`       | one-shot timer chain behind the «⏳ N s» counter (pure)                    |
+| `src/diff.ts`         | per-frame row diff: `diffFrames`/`paintFrame` (pure)                      |
 | `test/*.test.ts`      | pure core tests (`node:test`)                                           |
 
 ## Conventions
@@ -46,6 +49,20 @@ npm run start          # run the built CLI (node dist/index.js)
   files; the repository has no `.en.md` files.
 - Layout/key-behavior changes — only together with updating `render`/`state`
   tests and `AGENTS.md`.
+
+## Responsiveness
+
+- Long external commands (`pi install`/`update`/`remove`, `pi mcp add`, `pi mcp list`) run in the
+  background: the screen stays responsive and shows «⏳ N s». `Esc` on such a screen aborts the
+  process that owns it; `Ctrl+C` exits pi-env after aborting every running process. A timeout is
+  distinguishable from a cancellation and from an ordinary failure — `CmdResult.cancelled`,
+  `CmdResult.timedOut`, `CmdResult.timeoutMs` — and the status line says which one it was.
+- Time lives in the effect layer: `run.ts` keeps `opStartedAt` and puts whole seconds into the
+  state as `opSeconds`, so `render`/`sections` stay pure. `⏳` is listed in `WIDE_CHARS`, otherwise
+  the column borders break on 2-cell terminals.
+- The environment snapshot is cached by a stat signature (`src/env-cache.ts`). Your own mutation —
+  create/save/rename, trash, MCP edit, a finished external command, the return of the child `pi` —
+  must invalidate it, otherwise the UI shows a stale list.
 
 ## Development cycle
 

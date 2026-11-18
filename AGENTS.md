@@ -16,7 +16,7 @@
 - Запуск окружения (этап 2): процесс `pi` с `PI_CODING_AGENT_DIR=<путь окружения>`
   в текущей рабочей директории.
 
-## Текущий статус (этап 2 готов; этап 3: живой статус MCP + вкладка «Обновление» готовы)
+## Текущий статус (этап 2 готов; этап 3: живой статус MCP, вкладка «Обновление» и отзывчивость долгих операций готовы)
 
 - Работает: список окружений, таб-бар `Окружения | Расширения | MCP | Настройки | О программе`,
   клавиши ↑↓←→/TAB/Enter/Space/ESC + печатные символы/Backspace, адаптивные
@@ -57,6 +57,16 @@
   в список и по клавише `R`; далее при каждом входе — только с настройкой
   «Перепроверять MCP» (по умолчанию выкл). Во время проверки список доступен
   для навигации; индикатор «Проверка MCP…».
+- Отзывчивость долгих операций: `pi install`/`update`/`remove`, `pi mcp add`, `pi mcp list` идут в фоне,
+  на их экранах счётчик «⏳ N с» (`AppState.opSeconds`, тикер `src/ticker.ts` раз в секунду), подсказка
+  «Esc — прервать» (`hint.kill`), `Esc` снимает процесс этого экрана (`busyProcessView` + `AbortController`
+  → `runCmd`), `Ctrl+C` выходит, сняв все незавершённые процессы (`cancelAll`). `CmdResult` различает
+  `cancelled`/`timedOut`/`timeoutMs`, текст строит `cmdFailureText` (`status.cancelled*`, `status.timeout*`).
+- Кэш снимка окружений (`src/env-cache.ts`): `scan()` и `listTrash()` вызываются раз на действие —
+  `run.ts` держит `cache`, подпись = mtime корня, каталогов окружений и `settings.json`/`mcp.json`/`extensions/`/`skills/`;
+  инвалидация — после создания/сохранения/переименования, корзины, MCP-операций, возврата из дочернего `pi`
+  и окончания любой внешней команды (в `finally` у `startOp`). Нечитаемый корень не кэшируется.
+  Замер (50 окружений): `scan` 1,425 мс → `cache.get()` 0,429 мс.
 - Отладчивость конфигурации: `scan()` отдаёт диагностику окружения (`EnvDetails.settingsError`,
   `mcpError`, `mcpSkipped` — из `readJsonFileDetailed`/`readMcpServersDetailed`), окружение с
   проблемой помечено `⚠` в списке, инфо-панель показывает `settings.json ⚠` (битый файл больше
@@ -270,7 +280,8 @@
   `pending`), `freshTrash`, `trashMachine` (↑↓/Enter/X/Esc/TAB), `applyTrashResult`
   (результат restore/delete навсегда; список пуст → курсор 0) (чистые)
 - `src/state.ts` — ядро состояния: `AppState` (+ `pkgCheck`, `pkgLatest`, `ext`,
-  `mcp`, `trash`), `Action`, `ReducerCtx` (`envNames`, `trashNames`, `twoColumns`),
+  `mcp`, `trash`, `opSeconds`), `Action`, `ReducerCtx` (`envNames`, `trashNames`, `twoColumns`),
+  `busyProcessView(state)`/`PROCESS_VIEWS` — какие экраны принадлежат процессу (его снимает Esc),
   `reducer` — диспетчер (`applyResults` → `createReducer` → `extMachine` →
   `mcpMachine` → `trashMachine` → `reducerMain`: esc/tab/↑↓/←→/Enter/Space/X);
   список вкладка «Окружения» = окружения + «Создать» + «Корзина (N)»,
@@ -303,19 +314,28 @@
   сохранение настроек), обёртки команд (`checkUpdates`, `doUpdateAll`,
   `doUpdateOne`, `doRemove`, `doInstall`, `doMcpAdd`, `loadPackageCatalog`)
   поверх `pi-actions.ts`/`cmd.ts`, объект `Loop` для побочных эффектов
-  (`prevFrame` + `paintFrame` — дифф-репок; `makeProgressPainter`/`PROGRESS_THROTTLE_MS` — throttle прогресса каталога; `rctx` передаёт `trashNames`, кадр получает `listTrash(root)`)
-- `src/cmd.ts` — `runCmd` (spawn с таймаутами `PI_TIMEOUT_MS`/`NPM_TIMEOUT_MS`/`MCP_TIMEOUT_MS`),
+  (`prevFrame` + `paintFrame` — дифф-репок; `makeProgressPainter`/`PROGRESS_THROTTLE_MS` — throttle прогресса каталога; `cache` — снимок окружений из `env-cache.ts`, `startOp`/`cancelBusy`/`cancelAll` — отмена процессов, `opTicker` — секунды, `Loop` отдаёт `invalidate`/`trashNames`)
+- `src/env-cache.ts` — кэш снимка окружений и корзины (чистый): `scanSignature` (mtime корня, каталогов
+  окружений, `settings.json`/`mcp.json`/`extensions/`/`skills/`), `createScanCache(root, deps)` →
+  `get()`/`invalidate()`; нечитаемый корень не кэшируется
+- `src/ticker.ts` — `createTicker(onTick, deps)`: цепочка таймеров, пока `onTick()` возвращает true
+  (повторный `start()` не заводит вторую) (чистая, таймеры инжектятся)
+- `src/cmd.ts` — `runCmd` (spawn с таймаутами `PI_TIMEOUT_MS`/`NPM_TIMEOUT_MS`/`MCP_TIMEOUT_MS` и
+  `AbortSignal`; `detached` + kill группы процессов; результат `CmdResult` различает
+  `cancelled`/`timedOut`/`timeoutMs`), `RunFn = typeof runCmd` — тип для инжекции слоя запуска,
   `piEnv(dir)` — окружение процесса с `PI_CODING_AGENT_DIR` (чистая сборка аргументов)
 - `src/pi-actions.ts` — `piUpdateAll`/`piUpdateOne`/`piRemove`/`piInstall`/
-  `piMcpAdd(dir, form)`, `piMcpList(dir)` (`MCP_TIMEOUT_MS`), `npmOutdated`,
+  `piMcpAdd(dir, form)`, `piMcpList(dir)` (`MCP_TIMEOUT_MS`), `npmOutdated` — все принимают
+  необязательный `signal` и `run: RunFn`; `cmdFailureText` (отмена/таймаут/stderr),
   `buildCreateRequest` (CreateState → `CreateRequest`) (чистые сборки, тонкие
   обёртки spawn)
 - `src/run-side.ts` — `runSideEffects(loop, envs, prev)`: хуки переходов
   (`hooksCreate`/`hooksExt`/`hooksMcp`/`hooksMcpCheck`/`hooksTrash`, recheck вкладок «Расширения» и «MCP»),
   sync-копирование/удаление MCP (`copyMcpEntry`/`removeMcpEntry`),
   `doSubmit`/`doRun` (create.js, launchPi) и `doDelete` — окружение переносится
-  в корзину (`moveToTrash`), не `rm -rf`; интерфейс `Loop` —
-  окно в цикл (state/setState/status/обёртки команд)
+  в корзину (`moveToTrash`), не `rm -rf`; каждая мутация зовёт `loop.invalidate()` (кэш снимка),
+  `prev.cancelRequested` → `loop.cancelBusy()`; интерфейс `Loop` —
+  окно в цикл (state/setState/status/обёртки команд/`invalidate`/`trashNames`)
 - `src/pirun.ts` — `launchPi` (дочерний `pi` с передачей терминала, возврат в
   TUI по exit) и `runPassthrough(envPath, args, lang)` — неинтерактивный проброс
   (код выхода пробрасывается)
@@ -326,7 +346,12 @@
 - `test/*.test.ts` — тесты чистого ядра (включая `mcp.test.ts`,
   `state-mcp.test.ts`, `state-create-mcp.test.ts`, `render-mcp.test.ts`, `shutdown.test.ts`, `terminal.test.ts` — гарантия терминала, `paint.test.ts` — `paint`/`screenKnown`, `diff.test.ts` — построчный дифф, `throttle.test.ts` — схлопывание прогресс-репоков, `app-paint.test.ts` — реальный цикл `run()` на фейковом терминале (сколько байт ушло на репок), `trash.test.ts`/`state-trash.test.ts`/`render-trash.test.ts` — корзина (переносы, машина суб-экрана, кадра), `app-trash.test.ts` — сквозной прогон `run()`: удаление → «Корзина (1)» → восстановить → удалить совсем, `ci.test.ts` — согласие `engines`/матрицы CI/документов и гейт `needs: test` перед публикацией,
   `selfupdate.test.ts`/`selfupdate-net.test.ts` — версия, способ установки, парсер и диапазон чейнджлога, фолбэк языка; `state-update.test.ts` — динамические вкладки и клавиши вкладки;
-  `render-update.test.ts` — `wrapVisible`, план таб-бара и invariant кадра; `app-update.test.ts` — сквозной `run()` с вкладкой и копированием; `debuglog.test.ts` — формат строки журнала, дедуп и writer; `app-debug.test.ts` — сквозной `run()` с `debugLog` (ровно одна строка на проблему при двойном `scan()`); `render-envs.test.ts` — маркер `⚠`, тексты проблемы и кадры с ним)
+  `render-update.test.ts` — `wrapVisible`, план таб-бара и invariant кадра; `app-update.test.ts` — сквозной `run()` с вкладкой и копированием; `debuglog.test.ts` — формат строки журнала, дедуп и writer; `app-debug.test.ts` — сквозной `run()` с `debugLog` (ровно одна строка на проблему при двойном `scan()`); `render-envs.test.ts` — маркер `⚠`, тексты проблемы и кадры с ним;
+  `cmd.test.ts` — отмена по `AbortSignal`, отличимый таймаут (`cancelled`/`timedOut`/`timeoutMs`),
+  `pi-actions.test.ts` — проброс сигнала и тексты `cmdFailureText`, `ticker.test.ts` — цепочка таймеров,
+  `env-cache.test.ts` — подпись дерева, кэш и инвалидация, `state.test.ts` — `busyProcessView`,
+  `run-side.test.ts` — `cancelBusy` и вызовы `invalidate` по мутациям, `app-cancel.test.ts` — сквозной
+  `run()`: Esc снимает `pi mcp add`, в статусе «Прервано», `⏳ 0 с` в кадре, Ctrl+C уходит с abort)
 - `demo/ptycast.py` — PTY-стенд съёмки: `openpty` + reader-поток, запись asciinema
   cast v2, `alt_fix` (первый кадр после `\x1b[?1049h`), `Step` (клавиши, маркер,
   пауза до клавиш), рендер через `agg` (чистые функции, тесты `demo/test_ptycast.py`)
@@ -390,6 +415,19 @@
 - Обрезка стилизованной строки под резерв не должна срезать завершающий SGR-сброс
   (`ESC[0m` после инверсии курсорной строки): потерянный сброс уводит активный стиль
   в правую колонку и в строки ниже (`padRight` — SGR-безопасная обрезка).
+- Время операции живёт в слое эффектов: `run.ts` считает `opStartedAt` и кладёт в состояние целые
+  секунды как `AppState.opSeconds`; `render`/`sections` только печатают `busy.elapsed` («⏳ N с») и
+  остаются чистыми. `⏳` обязан быть в `WIDE_CHARS` — иначе граница рамки ломается на 2-клеточных
+  терминалах (`test/render.test.ts` проверяет кадр с счётчиком на обеих моделях).
+- Отмена процесса — `AbortSignal` сквозь `runCmd` (не отдельный «kill-хендл»): обёртки `pi-actions.ts`
+  принимают необязательный `signal` и `run: RunFn`, слой запуска подставляется в тестах через
+  `RunDeps.cmd`. `Esc` снимает только процесс текущего busy-экрана (`busyProcessView`), `Ctrl+C` —
+  все процессы (`cancelAll`); живая проверка MCP в `Esc` не входит.
+- `scan()`/`listTrash()` кэшируются (`src/env-cache.ts`): своя мутация (создание, сохранение,
+  переименование, корзина, MCP-операции) и окончание любой внешней команды обязаны звать
+  `invalidate()` (в `run.ts` — через `Loop.invalidate`, в `startOp` — в `finally`). Разрешение имени
+  окружения и список корзины берутся из того же снимка (`envNames`/`trashNames`), повторного обхода
+  диска в `rctx()` быть не должно.
 - `npm outdated --json` заканчивается кодом 1, когда найдены устаревшие пакеты —
   это нормальный случай. Успех проверки определяется по содержимому stdout
   (`interpretOutdated`: JSON-объект без поля `error`), а не по коду выхода —
@@ -430,8 +468,9 @@
   сменить значение со циклом по списку, без Enter-режима; на текстовой строке формы — двигать caret
 - Печатные символы / Backspace — ввод имени (строка «Имя» формы), поиска
   (строка «Поиск» в окне установки) и полей формы добавления MCP
-- ESC — назад из суб-экрана / выход
-- Ctrl+C — аварийный выход
+- ESC — назад из суб-экрана / выход; на экране долгой команды (установка/обновление/удаление,
+  добавление MCP, проверка MCP) — прервать процесс (`busyProcessView`, подсказка `hint.kill`)
+- Ctrl+C — выход из pi-env; перед выходом снимаются все незавершённые процессы (`cancelAll`)
 
 ## Дорожная карта
 
@@ -449,6 +488,9 @@
   автопроверка при первом входе + `R` + настройка «Перепроверять MCP».
 - Этап 3 (готов для самого pi-env): вкладка «Обновление» — номер доступной версии, способ установки и команды под него, чейнджлог
   пропущенных релизов (en/ru), копирование команды по Enter, `R` для перечитывания; само-обновления нет по замыслу.
+- Этап 3 (готов): отзывчивость долгих операций — фоновые `pi install`/`update`/`remove`/`mcp add`/`mcp list`,
+  отмена по `Esc` (процесс убивается), остановка всех процессов при выходе, счётчик «⏳ N с»,
+  различимый таймаут; кэш снимка окружений (`src/env-cache.ts`) — один `scan()` на действие.
 - Ограничения MCP (осознанно): `headers`/oauth/`timeout` — только в ручном
   `mcp.json`; правка существующего сервера — удалить + добавить; значения env/args
   в форме — без пробелов (разбор по пробелам); `pi mcp login`/`logout` из TUI не

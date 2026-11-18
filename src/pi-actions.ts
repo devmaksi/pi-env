@@ -52,7 +52,7 @@ export async function npmOutdated(
 }
 
 /**
- * Текст сбоя pi-команды: отмена и таймаут различимы и не прячут stderr ordinary
+ * Текст сбоя pi-команды: отмена и таймаут различимы и не прячут stderr обычной
  * ошибки. `name === null` — у команды нет имени пакета (`pi update --extensions`).
  */
 export function cmdFailureText(r: CmdResult, lang: string, fallbackKey: StrKey, name: string | null): string {
