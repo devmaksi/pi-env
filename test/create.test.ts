@@ -1,9 +1,10 @@
 import { test } from 'node:test';
 import assert from 'node:assert';
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync, readFileSync, readdirSync, existsSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync, readFileSync, readdirSync, existsSync, chmodSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { validateName, createEnvironment, readSettings, updateEnvironment } from '../src/create.js';
+import { validateName, createEnvironment, readSettings, updateEnvironment, cloneEnvironment } from '../src/create.js';
+import { t } from '../src/i18n.js';
 import { listSkills } from '../src/catalog.js';
 
 function tmpDir(): string {
@@ -439,5 +440,97 @@ test('validateName: ошибки на английском', () => {
   assert.equal(validateName('', [], 'en'), 'Enter an environment name');
   assert.equal(validateName('a b', [], 'en'), 'Name: Latin letters, digits, "_" and "-" only');
   assert.equal(validateName('prod', ['prod'], 'en'), 'An environment with this name already exists');
+});
+
+/** Относительный набор путей и содержимое дерева: копия обязана совпасть побайтово. */
+function tree(dir: string, rel = ''): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const e of readdirSync(dir, { withFileTypes: true })) {
+    const r = rel === '' ? e.name : rel + '/' + e.name;
+    if (e.isDirectory()) Object.assign(out, tree(join(dir, e.name), r));
+    else out[r] = readFileSync(join(dir, e.name), 'utf8');
+  }
+  return out;
+}
+
+/** Окружение-источник с файлами, которых нет в каталоге main-агента. */
+function makeSource(root: string, name: string): string {
+  const dir = join(root, name);
+  mkdirSync(join(dir, 'extensions'), { recursive: true });
+  mkdirSync(join(dir, 'skills', 'one'), { recursive: true });
+  mkdirSync(join(dir, 'own'), { recursive: true });
+  writeFileSync(join(dir, 'settings.json'), JSON.stringify({ defaultModel: 'm' }));
+  writeFileSync(join(dir, 'mcp.json'), JSON.stringify({ servers: { a: { type: 'stdio', command: 'x' } } }));
+  writeFileSync(join(dir, 'models.json'), '{}');
+  writeFileSync(join(dir, 'extensions', 'a.ts'), '// tool');
+  writeFileSync(join(dir, 'skills', 'one', 'SKILL.md'), '# skill');
+  writeFileSync(join(dir, 'own', 'notes.txt'), 'mine');
+  return dir;
+}
+
+test('cloneEnvironment: копирует дерево как есть, включая свои файлы', () => {
+  const root = tmpDir();
+  try {
+    const src = makeSource(root, 'src');
+    const res = cloneEnvironment(root, 'src', 'dst', ['src'], 'ru');
+    assert.equal(res.ok, true);
+    assert.equal(res.ok && res.path, join(root, 'dst'));
+    assert.deepEqual(tree(join(root, 'dst')), tree(src));
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('cloneEnvironment: занятое имя — ошибка, существующее окружение не тронуто', () => {
+  const root = tmpDir();
+  try {
+    makeSource(root, 'src');
+    makeSource(root, 'dst');
+    writeFileSync(join(root, 'dst', 'settings.json'), 'ORIGINAL');
+    const res = cloneEnvironment(root, 'src', 'dst', ['src', 'dst'], 'ru');
+    assert.equal(res.ok, false);
+    assert.equal(res.ok ? '' : res.error, t('ru', 'err.name-exists'));
+    assert.equal(readFileSync(join(root, 'dst', 'settings.json'), 'utf8'), 'ORIGINAL');
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('cloneEnvironment: невалидное и пустое имя — ошибка validateName', () => {
+  const root = tmpDir();
+  try {
+    makeSource(root, 'src');
+    assert.equal(cloneEnvironment(root, 'src', 'пло хое', ['src'], 'ru').ok, false);
+    assert.equal(cloneEnvironment(root, 'src', '', ['src'], 'ru').ok, false);
+    assert.equal(existsSync(join(root, 'dst')), false);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('cloneEnvironment: источника нет — err.not-found', () => {
+  const root = tmpDir();
+  try {
+    const res = cloneEnvironment(root, 'nope', 'dst', [], 'ru');
+    assert.equal(res.ok, false);
+    assert.equal(res.ok ? '' : res.error, t('ru', 'err.not-found'));
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('cloneEnvironment: сбой копирования не оставляет неполной копии', () => {
+  const root = tmpDir();
+  try {
+    const src = makeSource(root, 'src');
+    chmodSync(join(src, 'own'), 0o000); // каталог источника невозможно прочитать
+    const res = cloneEnvironment(root, 'src', 'dst', ['src'], 'ru');
+    assert.equal(res.ok, false);
+    assert.equal(res.ok ? '' : res.error, t('ru', 'err.clone', { name: 'dst' }));
+    assert.equal(existsSync(join(root, 'dst')), false);
+  } finally {
+    chmodSync(join(root, 'src', 'own'), 0o755); // чтобы удаление tmp-каталога прошло
+    rmSync(root, { recursive: true, force: true });
+  }
 });
 

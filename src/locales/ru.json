@@ -137,6 +137,7 @@
   "err.trash-restore": "Не удалось восстановить «{name}»",
   "err.trash-delete": "Не удалось удалить «{name}» совсем",
   "err.trash-bad-name": "Запись корзины «{name}» небезопасна",
+  "err.clone": "Не удалось скопировать окружение «{name}»",
   "status.env-trashed": "Окружение «{name}» перемещено в корзину",
   "status.trash-restored": "Окружение «{name}» восстановлено",
   "status.trash-deleted": "Окружение «{name}» удалено совсем",

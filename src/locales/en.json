@@ -137,6 +137,7 @@
   "err.trash-restore": "Failed to restore \"{name}\"",
   "err.trash-delete": "Failed to delete \"{name}\" forever",
   "err.trash-bad-name": "Trash entry \"{name}\" is unsafe",
+  "err.clone": "Failed to copy environment \"{name}\"",
   "status.env-trashed": "Env \"{name}\" moved to trash",
   "status.trash-restored": "Env \"{name}\" restored",
   "status.trash-deleted": "Env \"{name}\" deleted forever",

@@ -190,6 +190,35 @@ export function updateEnvironment(
   return { ok: true, path: envDir };
 }
 
+/**
+ * Клонирует окружение `<root>/<srcName>` в `<root>/<newName>`: копирует дерево каталога
+ * как есть (settings.json, mcp.json, extensions/, skills/, каталог моделей и любые свои
+ * файлы), ничего не пересобирая из каталога main-агента. Сбой копирования — неполная
+ * копия удаляется, ошибка в тексте.
+ */
+export function cloneEnvironment(
+  root: string,
+  srcName: string,
+  newName: string,
+  existing: string[],
+  lang: string = 'ru',
+): CreateResult {
+  const invalid = validateName(newName, existing, lang);
+  if (invalid !== null) return { ok: false, error: invalid };
+  const src = join(root, srcName);
+  if (!existsSync(src)) return { ok: false, error: t(lang, 'err.not-found') };
+  const dst = join(root, newName);
+  if (existsSync(dst)) return { ok: false, error: t(lang, 'err.name-exists') };
+  try {
+    mkdirSync(dst);
+    copyRecursive(src, dst);
+  } catch {
+    rmSync(dst, { recursive: true, force: true });
+    return { ok: false, error: t(lang, 'err.clone', { name: newName }) };
+  }
+  return { ok: true, path: dst };
+}
+
 /** Имя каталога скилла в окружении: имя из каталога main-агента, слэш → дефис. */
 // ponytail: не инъективно (own-скилл `pkg-x-dup` и пакетный `pkg-x/dup` дают один каталог) —
 // кейс редкий; симптом хуже, чем кажется: create сдвигает имена через uniqueName, update маппит
