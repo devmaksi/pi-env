@@ -7,6 +7,8 @@ import { extMachine, freshExt } from './state-ext.js';
 import { createReducer } from './state-create.js';
 import { freshTrash, applyTrashResult, trashMachine } from './state-trash.js';
 import type { TrashState } from './state-trash.js';
+import { cloneMachine, applyCloneResult, freshClone } from './state-clone.js';
+import type { CloneState } from './state-clone.js';
 import { freshCreate, freshEdit } from './state-form.js';
 import { applyChangelogResult, applySelfUpdateResult, onRefreshUpdate, tabsOf, updateListLength, updateMachine } from './state-update.js';
 import type { UpdateCheck, UpdateUi } from './state-update.js';
@@ -23,6 +25,8 @@ export type { McpFormAdd, McpTabView, McpTab, McpFormStep, McpExposure } from '.
 export { freshExt } from './state-ext.js';
 export { freshTrash, applyTrashResult, trashMachine } from './state-trash.js';
 export type { TrashPending, TrashState } from './state-trash.js';
+export { freshClone, cloneMachine, applyCloneResult } from './state-clone.js';
+export type { CloneState } from './state-clone.js';
 export { freshUpdateUi, tabsOf, updateMachine, applySelfUpdateResult, applyChangelogResult, onRefreshUpdate, selectedCommand, updateListLength, UPDATE_ROW_COMMANDS } from './state-update.js';
 export type { UpdateCheck, UpdateUi } from './state-update.js';
 export type { SelfUpdate } from './selfupdate-net.js';
@@ -72,6 +76,8 @@ export interface AppState {
   catalogProgress: { loaded: number; total: number } | null;
   /** Секунды идущего процесса/проверки для индикатора «⏳ N с»; null — индикатора нет. */
   opSeconds: number | null;
+  /** Суб-экран «Клонирование окружения» на вкладке «Окружения» (null — суб-экрана нет). */
+  clone: CloneState | null;
   pkgCheck: PkgCheck;
   pkgLatest: Record<string, string>;
 }
@@ -83,7 +89,7 @@ export const LANGUAGE_ROW = 4; // «Язык» — последняя строк
 export function initialState(catalog: Catalog = emptyCatalog()): AppState {
   return {
     tab: 'envs', focus: 'left', selected: 0, sub: null, colorToggle: true, recheckUpdates: false, recheckMcp: false, quit: false, language: 'ru',
-    catalog, create: null, ext: null, mcp: null, trash: null, catalogProgress: null, opSeconds: null, pkgCheck: 'idle', pkgLatest: {}, mcpCheck: 'idle', mcpLive: null, selfUpdate: null, updateUi: null, selfCheck: 'idle',
+    catalog, create: null, ext: null, mcp: null, trash: null, clone: null, catalogProgress: null, opSeconds: null, pkgCheck: 'idle', pkgLatest: {}, mcpCheck: 'idle', mcpLive: null, selfUpdate: null, updateUi: null, selfCheck: 'idle',
   };
 }
 
@@ -105,6 +111,8 @@ export type Action =
   | { type: 'mcp-result'; ok: boolean; message: string; scope: 'main' | 'create'; list?: McpServer[] }
   | { type: 'mcp-live-result'; ok: boolean; message: string; scope: 'main' | 'create'; report: McpLiveReport | null }
   | { type: 'trash-result'; ok: boolean; message: string }
+  | { type: 'clone-start'; name: string }
+  | { type: 'clone-result'; ok: boolean; message: string; name?: string }
   | { type: 'self-update-result'; info: SelfUpdate | null }
   | { type: 'changelog-result'; ok: boolean; rows: ChangelogRow[] };
 
@@ -177,6 +185,10 @@ export function reducer(state: AppState, action: Action, ctx: ReducerCtx): AppSt
     const next = trashMachine(state, action, ctx);
     if (next !== null) return next;
   }
+  if (state.tab === 'envs' && state.clone !== null) {
+    const next = cloneMachine(state, action, ctx);
+    if (next !== null) return next;
+  }
   if (state.tab === 'update' && state.updateUi !== null) {
     const next = updateMachine(state, action);
     if (next !== null) return next;
@@ -196,6 +208,11 @@ function applyResults(state: AppState, action: Action, ctx: ReducerCtx): AppStat
   if (action.type === 'mcp-result' && action.scope === 'main') return applyMcpResultMain(state, action);
   if (action.type === 'mcp-live-result' && action.scope === 'main') return applyMcpLiveMain(state, action);
   if (action.type === 'trash-result') return applyTrashResult(state, action, ctx);
+  if (action.type === 'clone-start') {
+    if (state.tab !== 'envs' || state.sub !== null || state.trash !== null || state.clone !== null) return state;
+    return { ...state, clone: freshClone(action.name, state.language) };
+  }
+  if (action.type === 'clone-result') return applyCloneResult(state, action, ctx);
   if (action.type === 'self-update-result') return applySelfUpdateResult(state, action.info);
   if (action.type === 'changelog-result') return applyChangelogResult(state, action.ok, action.rows);
   // scope 'create' — проходит в createReducer
@@ -263,7 +280,7 @@ function onEsc(state: AppState): AppState {
 function onTab(state: AppState): AppState {
   const tabs = tabsOf(state);
   const next = tabs[(tabs.indexOf(state.tab) + 1) % tabs.length];
-  return { ...state, tab: next, focus: 'left', selected: 0, sub: null, ext: null, mcp: null, trash: null };
+  return { ...state, tab: next, focus: 'left', selected: 0, sub: null, ext: null, mcp: null, trash: null, clone: null };
 }
 
 function onUpDown(state: AppState, delta: number, ctx: ReducerCtx): AppState {

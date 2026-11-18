@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert';
 import {
-  initialState, reducer, listLength, emptyCatalog, freshCreate, freshExt, freshMcpTab, busyProcessView,
+  initialState, reducer, listLength, emptyCatalog, freshCreate, freshExt, freshMcpTab, freshClone, busyProcessView,
   SETTINGS_COUNT, LANGUAGE_ROW, type AppState, type ReducerCtx, type Catalog, type CatalogPkg, type ExtState } from '../src/state.js';
 
 /** Контекст reducer: имена окружений + раскладка. */
@@ -12,7 +12,7 @@ const envs = (n: number) => Array.from({ length: n }, (_, i) => `env${i}`);
 test('initialState', () => {
   assert.deepEqual(initialState(), {
     tab: 'envs', focus: 'left', selected: 0, sub: null, colorToggle: true, recheckUpdates: false, recheckMcp: false, quit: false, language: 'ru',
-    catalog: emptyCatalog(), create: null, ext: null, mcp: null, trash: null, catalogProgress: null, opSeconds: null, pkgCheck: 'idle', pkgLatest: {}, mcpCheck: 'idle', mcpLive: null, selfUpdate: null, updateUi: null, selfCheck: 'idle',
+    catalog: emptyCatalog(), create: null, ext: null, mcp: null, trash: null, clone: null, catalogProgress: null, opSeconds: null, pkgCheck: 'idle', pkgLatest: {}, mcpCheck: 'idle', mcpLive: null, selfUpdate: null, updateUi: null, selfCheck: 'idle',
   });
 });
 
@@ -428,4 +428,8 @@ test('busyProcessView: файловые экраны формы и подтве�
     assert.equal(busyProcessView({ ...initialState(), tab: 'mcp', mcp: freshMcpTab({ view }) }), false, `mcp ${view}`);
   }
   assert.equal(busyProcessView(initialState()), false);
+});
+
+test('busyProcessView: клонирование окружения — не процесс (Esc не снимает процесс)', () => {
+  assert.equal(busyProcessView({ ...initialState(), clone: { ...freshClone('one', 'ru'), pending: true } }), false);
 });
