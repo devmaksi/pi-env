@@ -1,7 +1,7 @@
 import { join } from 'node:path';
 import { createEnvironment, updateEnvironment } from './create.js';
 import { copyMcpEntry, removeMcpEntry, readMcpServers } from './mcp.js';
-import { deleteTrashForever, listTrash, moveToTrash, restoreTrash } from './trash.js';
+import { deleteTrashForever, moveToTrash, restoreTrash } from './trash.js';
 import { t } from './i18n.js';
 import { reducer, makeCtx } from './state.js';
 import { buildCreateRequest } from './pi-actions.js';
@@ -47,13 +47,17 @@ export interface Loop {
   doMcpCheck(dir: string, scope: 'main' | 'create'): void;
   /** Снять процесс, которому принадлежит текущий busy-экран (Esc). */
   cancelBusy(): void;
+  /** Имена записей корзины из кэша снимка (без повторного обхода диска). */
+  trashNames(): string[];
+  /** Сбросить кэш снимка окружений (после любой мутации конфигов). */
+  invalidate(): void;
   runSelfUpdate(): void;
   loadChangelog(): void;
 }
 
 /** Контекст reducer для side-effect-хуков (имена записей корзины — для суб-экрана «Корзина»). */
 function rctx(loop: Loop, envNames: string[]): ReducerCtx {
-  return makeCtx(envNames, loop.twoColumns(), listTrash(loop.root).map((e) => e.dirName));
+  return makeCtx(envNames, loop.twoColumns(), loop.trashNames());
 }
 
 /** Хуки переходов после reducer — 1-в-1 с телом прежнего dispatch. */
@@ -88,6 +92,7 @@ function hooksTrash(loop: Loop): void {
   const r = pending.kind === 'restore'
     ? restoreTrash(loop.root, pending.dirName, lang)
     : deleteTrashForever(loop.root, pending.dirName, lang);
+  loop.invalidate(); // корзина меняет и окружения, и список записей
   const message = r.ok
     ? t(lang, pending.kind === 'restore' ? 'status.trash-restored' : 'status.trash-deleted', { name })
     : r.error;
@@ -130,6 +135,7 @@ function mcpOpSync(loop: Loop, op: { name: string; kind: 'copy' | 'remove' }, na
   const cr = loop.state().create!;
   const envDir = join(loop.root, cr.origName ?? cr.name);
   const r = op.kind === 'copy' ? copyMcpEntry(loop.agentDir, envDir, op.name) : removeMcpEntry(envDir, op.name);
+  loop.invalidate(); // mcp.json окружения — часть снимка
   const list = readMcpServers(envDir);
   const okMsg = op.kind === 'copy'
     ? t(loop.state().language, 'status.mcp-copied', { name: op.name })
@@ -171,6 +177,7 @@ function hooksMcp(loop: Loop, prevMcp: McpTab | null, names: string[]): void {
     const msg = r.ok ? t(loop.state().language, 'status.mcp-removed', { name: m.removing }) : t(loop.state().language, 'status.mcp-remove-error');
     loop.status(msg);
     if (r.ok) loop.reloadCatalog();
+    loop.invalidate();
     loop.setState(reducer(loop.state(), { type: 'mcp-result', ok: r.ok, message: msg, scope: 'main' }, rctx(loop, names)));
     loop.repaint();
   }
@@ -218,6 +225,7 @@ function doSubmit(loop: Loop, names: string[]): void {
     ? updateEnvironment(loop.root, cr.origName ?? cr.name, req, { allTools: cat.tools, allSkills: cat.skills, agentDir: loop.agentDir }, loop.state().language)
     : createEnvironment(loop.root, req, loop.agentDir, loop.state().language);
   const message = res.ok ? res.path : res.error;
+  loop.invalidate(); // создано/переименовано/обновлено окружение
   loop.setState(reducer(loop.state(), { type: 'create-result', ok: res.ok, message }, rctx(loop, names)));
 }
 
@@ -226,6 +234,7 @@ function doDelete(loop: Loop, names: string[]): void {
   if (cr === null || cr.view !== 'deleting') return;
   const name = cr.name;
   const res = moveToTrash(loop.root, name, Date.now(), loop.state().language);
+  loop.invalidate(); // окружение переехало в корзину
   if (res.ok) loop.status(t(loop.state().language, 'status.env-trashed', { name }));
   loop.setState(reducer(loop.state(), { type: 'delete-result', ok: res.ok, message: res.ok ? name : res.error }, rctx(loop, names)));
   if (res.ok) {
@@ -239,6 +248,7 @@ async function doRun(loop: Loop, envs: Environment[]): Promise<void> {
   const st = loop.state();
   if (!(st.sub === 'run' && st.tab === 'envs' && st.selected < envs.length)) return;
   const res = await launchPi(loop.term, envs[st.selected]);
+  loop.invalidate(); // дочерний `pi` мог поменять конфиг окружения
   loop.setState(reducer(loop.state(), { type: 'run-result', ok: res.ok }, rctx(loop, envs.map((e) => e.name))));
   if (!res.ok) loop.status(t(loop.state().language, 'status.pi-launch', { err: res.message }));
 }

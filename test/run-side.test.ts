@@ -42,6 +42,8 @@ function makeLoop(initial: AppState, root = '/root', agentDir = '/agent') {
     doMcpAdd: (d, f, s) => { log.push(`doMcpAdd:${d}:${f.name}:${s}`); },
     doMcpCheck: (d, s) => { log.push(`doMcpCheck:${d}:${s}`); },
     cancelBusy: () => { log.push('cancelBusy'); },
+    trashNames: () => [],
+    invalidate: () => { log.push('invalidate'); },
   };
   return { loop, log, get state() { return state; } };
 }
@@ -297,4 +299,50 @@ test('отмена не порождает новых команд', async () =>
   );
   assert.equal(h.log.filter((l) => l.startsWith('doUpdateAll')).length, 0);
   assert.equal(h.log.filter((l) => l === 'cancelBusy').length, 1);
+});
+
+// --- Инвалидация кэша снимка окружений (src/env-cache.ts): каждая мутация обязана её позвать ---
+
+test('мутации формы инвалидируют кэш: создание и удаление в корзину', async () => {
+  const root = tmp(); const agentDir = tmp();
+  const made = await run(cr({ view: 'submitting', name: 'new' }), { view: 'form' }, root, agentDir);
+  assert.ok(existsSync(join(root, 'new')));
+  assert.ok(made.log.includes('invalidate'), made.log.join(','));
+
+  mkdirSync(join(root, 'e1'));
+  const del = await run(cr({ view: 'deleting', mode: 'edit', name: 'e1', origName: 'e1' }), { view: 'form' }, root, agentDir);
+  assert.equal(listTrash(root).length, 1);
+  assert.ok(del.log.includes('invalidate'), del.log.join(','));
+});
+
+test('корзина: restore и «удалить совсем» инвалидируют кэш', async () => {
+  const r1 = tmp();
+  mkdirSync(join(r1, '.trash', 'e1@1000'), { recursive: true });
+  const h1 = await run(tr({ pending: { kind: 'restore', dirName: 'e1@1000' } }), {}, r1);
+  assert.ok(h1.log.includes('invalidate'), h1.log.join(','));
+
+  const r2 = tmp();
+  mkdirSync(join(r2, '.trash', 'e2@2000'), { recursive: true });
+  const h2 = await run(tr({ pending: { kind: 'delete', dirName: 'e2@2000' } }), {}, r2);
+  assert.ok(h2.log.includes('invalidate'), h2.log.join(','));
+});
+
+test('MCP-операции инвалидируют кэш: copy/remove в форме и удаление на вкладке', async () => {
+  const root = tmp(); const agentDir = tmp();
+  writeMcpFile(agentDir, [srvDocs]);
+  const copy = await run(cr({ view: 'mcp-op', name: 'e1', mcpOp: { name: 'docs', kind: 'copy' } }), { view: 'mcp' }, root, agentDir);
+  assert.ok(copy.log.includes('invalidate'), copy.log.join(','));
+
+  const rm = await run(cr({ view: 'mcp-op', name: 'e1', mode: 'edit', origName: 'e1', mcpOp: { name: 'docs', kind: 'remove' } }), { view: 'mcp' }, root, agentDir);
+  assert.ok(rm.log.includes('invalidate'), rm.log.join(','));
+
+  const agent2 = tmp();
+  writeMcpFile(agent2, [srvDocs]);
+  const tab = await run({ ...initialState(CATALOG), tab: 'mcp', mcp: freshMcpTab({ view: 'removing', removing: 'docs' }) }, { tab: 'mcp', mcp: freshMcpTab({ view: 'confirm-remove' }) }, '/root', agent2);
+  assert.ok(tab.log.includes('invalidate'), tab.log.join(','));
+});
+
+test('без мутаций инвалидация не зовётся', async () => {
+  const h = await run(cr({ view: 'form' }), { view: 'form' });
+  assert.ok(!h.log.includes('invalidate'));
 });

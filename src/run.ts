@@ -2,7 +2,8 @@ import { existsSync, writeSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { withShutdown } from './shutdown.js';
-import { scan, Environment } from './environments.js';
+import { type Environment } from './environments.js';
+import { createScanCache } from './env-cache.js';
 import { loadAppSettings, saveAppSettings } from './appsettings.js';
 import { loadCatalog, fetchPackageCatalog, normalizePkgSource, type CatalogPkg } from './catalog.js';
 import { computeLayout } from './layout.js';
@@ -11,7 +12,6 @@ import { createThrottle, type Throttle, type ThrottleDeps } from './throttle.js'
 import { createTicker } from './ticker.js';
 import { render } from './render.js';
 import { readSettings } from './create.js';
-import { listTrash } from './trash.js';
 import { parseMcpList, readMcpServers } from './mcp.js';
 import { AppState, busyProcessView, initialState, Key, reducer, type Action, type McpFormAdd, makeCtx, type ReducerCtx } from './state.js';
 import { createTerm, Term } from './terminal.js';
@@ -84,6 +84,8 @@ export async function run(root: string, term: Term = createTerm(), deps: RunDeps
   const lang0 = app.language ?? defaultLang(localeCodes());
   let state: AppState = { ...initialState(catalog), colorToggle: app.color, recheckUpdates: app.recheckUpdates, recheckMcp: app.recheckMcp, language: lang0 };
   let statusMsg: string | null = null;
+  /** Снимок окружений и корзины: перечитывается при смене подписи дерева или после инвалидации. */
+  const cache = createScanCache(root);
 
   /**
    * Активные внешние процессы. `cancelOp` — тот, которому принадлежит busy-экран (его снимает
@@ -137,6 +139,8 @@ export async function run(root: string, term: Term = createTerm(), deps: RunDeps
       inflight.delete(controller);
       if (kind === 'busy' && cancelOp === controller) cancelOp = null;
       opCount--;
+      // Любая внешняя команда (успех, провал, отмена, таймаут) могла тронуть конфиги — снимок невалиден.
+      cache.invalidate();
       if (opCount === 0) {
         opStartedAt = null;
         setOpSeconds(null);
@@ -159,7 +163,7 @@ export async function run(root: string, term: Term = createTerm(), deps: RunDeps
   const errText = (e: unknown): string => (e instanceof Error ? e.message : String(e));
 
   function load(): { envs: Environment[]; status: string | null } {
-    const scanned = scan(root);
+    const scanned = cache.get().envs;
     if (scanned === null) {
       log('scan', `корень ${root} не существует или не читается`);
       return { envs: [], status: t(state.language, 'status.not-found', { root }) };
@@ -183,7 +187,7 @@ export async function run(root: string, term: Term = createTerm(), deps: RunDeps
 
   /** Контекст reducer: свежие имена окружений, записи корзины + раскладка. */
   function trashNames(): string[] {
-    return listTrash(root).map((e) => e.dirName);
+    return cache.get().trash.map((e) => e.dirName);
   }
 
   function rctx(names?: string[], tnames?: string[]): ReducerCtx {
@@ -399,6 +403,8 @@ export async function run(root: string, term: Term = createTerm(), deps: RunDeps
     doMcpAdd: (dir, form, scope) => { void doMcpAdd(dir, form, scope); },
     doMcpCheck: (dir, scope) => { void doMcpCheck(dir, scope); },
     cancelBusy: () => cancelBusy(),
+    invalidate: () => cache.invalidate(),
+    trashNames: () => trashNames(),
     runSelfUpdate: () => { void runSelfUpdate(); },
     loadChangelog: () => { void loadChangelog(); },
   };
@@ -439,7 +445,7 @@ export async function run(root: string, term: Term = createTerm(), deps: RunDeps
       height: h,
       useColor: state.colorToggle && !term.noColor,
       status: statusMsg ?? status,
-      trashEntries: listTrash(root),
+      trashEntries: cache.get().trash,
     }).split('\n');
     const key = frameKey(w, h, computeLayout({ width: w, height: h }).twoColumns);
     // Экран неизвестен (первый кадр, resize, возврат из дочернего pi) → prevFrame не используется.
