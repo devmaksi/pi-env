@@ -17,7 +17,7 @@ const CATALOG: Catalog = { ...emptyCatalog(), packages: [PKG_A] };
 const ENV0: Environment = { name: 'e0', path: '/root/e0', details: { hasSettings: true, model: null, tools: [], skills: [], packages: [], mcp: [], settingsError: null, mcpError: null, mcpSkipped: [] } };
 
 /** Фиксированный снимок до обработки клавиши. */
-const prev = (p: Partial<PrevSnap>): PrevSnap => ({ view: null, ext: null, mcp: null, tab: 'envs', mcpCheck: 'idle', createMcpCheck: 'idle', ...p });
+const prev = (p: Partial<PrevSnap>): PrevSnap => ({ view: null, ext: null, mcp: null, tab: 'envs', mcpCheck: 'idle', createMcpCheck: 'idle', cancelRequested: false, ...p });
 
 function makeLoop(initial: AppState, root = '/root', agentDir = '/agent') {
   let state = initial;
@@ -41,6 +41,7 @@ function makeLoop(initial: AppState, root = '/root', agentDir = '/agent') {
     doInstall: (d, src, env) => { log.push(`doInstall:${d}:${src}:${env}`); },
     doMcpAdd: (d, f, s) => { log.push(`doMcpAdd:${d}:${f.name}:${s}`); },
     doMcpCheck: (d, s) => { log.push(`doMcpCheck:${d}:${s}`); },
+    cancelBusy: () => { log.push('cancelBusy'); },
   };
   return { loop, log, get state() { return state; } };
 }
@@ -271,4 +272,29 @@ test('trash: без pending — никаких файловых операций
   const h = await run(tr({}), {}, root);
   assert.deepEqual(h.log, []);
   assert.equal(listTrash(root).length, 1);
+});
+
+test('Esc в busy-вью: cancelBusy вызван ровно один раз', async () => {
+  const h = await run(
+    { ...initialState(CATALOG), tab: 'extensions', ext: freshExt({ view: 'updating' }) },
+    { tab: 'extensions', ext: freshExt({ view: 'updating' }), cancelRequested: true },
+  );
+  assert.equal(h.log.filter((l) => l === 'cancelBusy').length, 1);
+});
+
+test('cancelRequested false — cancelBusy не вызван', async () => {
+  const h = await run(
+    { ...initialState(CATALOG), tab: 'extensions', ext: freshExt({ view: 'updating' }) },
+    { tab: 'extensions', ext: freshExt({ view: 'updating' }) },
+  );
+  assert.equal(h.log.filter((l) => l === 'cancelBusy').length, 0);
+});
+
+test('отмена не порождает новых команд', async () => {
+  const h = await run(
+    { ...initialState(CATALOG), tab: 'extensions', ext: freshExt({ view: 'updating' }) },
+    { tab: 'extensions', ext: freshExt({ view: 'updating' }), cancelRequested: true },
+  );
+  assert.equal(h.log.filter((l) => l.startsWith('doUpdateAll')).length, 0);
+  assert.equal(h.log.filter((l) => l === 'cancelBusy').length, 1);
 });

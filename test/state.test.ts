@@ -1,6 +1,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert';
-import { initialState, reducer, listLength, emptyCatalog, freshCreate, SETTINGS_COUNT, LANGUAGE_ROW, type AppState, type ReducerCtx, type Catalog, type CatalogPkg, type ExtState } from '../src/state.js';
+import {
+  initialState, reducer, listLength, emptyCatalog, freshCreate, freshExt, freshMcpTab, busyProcessView,
+  SETTINGS_COUNT, LANGUAGE_ROW, type AppState, type ReducerCtx, type Catalog, type CatalogPkg, type ExtState } from '../src/state.js';
 
 /** Контекст reducer: имена окружений + раскладка. */
 const rc = (names: string[], two = true): ReducerCtx => ({ envNames: names, twoColumns: two });
@@ -401,4 +403,29 @@ test('Space: пункт 3 вкладки settings — «Перепроверят
 test('Space на строке «Язык» — recheckMcp не меняется', () => {
   const s = { ...initialState(), tab: 'settings' as const, selected: LANGUAGE_ROW };
   assert.equal(reducer(s, 'space', rc(envs(1))).recheckMcp, false);
+});
+
+test('busyProcessView: экран, за которым стоит процесс', () => {
+  for (const view of ['installing', 'updating', 'removing'] as const) {
+    assert.equal(busyProcessView({ ...initialState(), tab: 'extensions', ext: freshExt({ view }) }), true, `ext ${view}`);
+  }
+  for (const view of ['installing', 'updating', 'removing', 'mcp-submitting'] as const) {
+    assert.equal(busyProcessView({ ...initialState(), sub: 'create', create: { ...freshCreate(), view } }), true, `create ${view}`);
+  }
+  for (const view of ['submitting', 'removing'] as const) {
+    assert.equal(busyProcessView({ ...initialState(), tab: 'mcp', mcp: freshMcpTab({ view }) }), true, `mcp ${view}`);
+  }
+});
+
+test('busyProcessView: файловые экраны формы и подтверждения — false', () => {
+  for (const view of ['submitting', 'deleting', 'confirm-delete', 'confirm-remove', 'mcp-confirm-remove', 'form', 'packages'] as const) {
+    assert.equal(busyProcessView({ ...initialState(), sub: 'create', create: { ...freshCreate(), view } }), false, `create ${view}`);
+  }
+  for (const view of ['catalog', 'confirm-remove'] as const) {
+    assert.equal(busyProcessView({ ...initialState(), tab: 'extensions', ext: freshExt({ view }) }), false, `ext ${view}`);
+  }
+  for (const view of ['add', 'confirm-remove'] as const) {
+    assert.equal(busyProcessView({ ...initialState(), tab: 'mcp', mcp: freshMcpTab({ view }) }), false, `mcp ${view}`);
+  }
+  assert.equal(busyProcessView(initialState()), false);
 });

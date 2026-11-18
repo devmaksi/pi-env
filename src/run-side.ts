@@ -13,6 +13,8 @@ import type { Term } from './terminal.js';
 
 /** Снимок суб-экранов и вкладки до обработки клавиши. */
 export interface PrevSnap {
+  /** Esc на экране процесса: процесс надо снять (заявку считает `run.ts` по `busyProcessView`). */
+  cancelRequested: boolean;
   view: CreateView | null;
   ext: ExtState | null;
   mcp: McpTab | null;
@@ -43,6 +45,8 @@ export interface Loop {
   doInstall(installDir: string, source: string, envName: string | null): void;
   doMcpAdd(dir: string, form: McpFormAdd, scope: 'main' | 'create'): void;
   doMcpCheck(dir: string, scope: 'main' | 'create'): void;
+  /** Снять процесс, которому принадлежит текущий busy-экран (Esc). */
+  cancelBusy(): void;
   runSelfUpdate(): void;
   loadChangelog(): void;
 }
@@ -54,6 +58,7 @@ function rctx(loop: Loop, envNames: string[]): ReducerCtx {
 
 /** Хуки переходов после reducer — 1-в-1 с телом прежнего dispatch. */
 export async function runSideEffects(loop: Loop, envs: Environment[], prev: PrevSnap): Promise<void> {
+  if (prev.cancelRequested) loop.cancelBusy();
   const names = envs.map((e) => e.name);
   hooksCreate(loop, prev.view, names);
   hooksExt(loop, prev.ext);

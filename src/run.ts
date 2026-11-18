@@ -12,10 +12,11 @@ import { render } from './render.js';
 import { readSettings } from './create.js';
 import { listTrash } from './trash.js';
 import { parseMcpList, readMcpServers } from './mcp.js';
-import { AppState, initialState, Key, reducer, type Action, type McpFormAdd, makeCtx, type ReducerCtx } from './state.js';
+import { AppState, busyProcessView, initialState, Key, reducer, type Action, type McpFormAdd, makeCtx, type ReducerCtx } from './state.js';
 import { createTerm, Term } from './terminal.js';
 import { defaultLang, localeCodes, t } from './i18n.js';
-import { piUpdateAll, piUpdateOne, piRemove, piInstall, piMcpAdd, piMcpList, npmOutdated } from './pi-actions.js';
+import { piUpdateAll, piUpdateOne, piRemove, piInstall, piMcpAdd, piMcpList, npmOutdated, cmdFailureText } from './pi-actions.js';
+import { runCmd, type RunFn } from './cmd.js';
 import { runSideEffects, type Loop, type PrevSnap } from './run-side.js';
 import { changelogRows, type ChangelogEntry } from './selfupdate.js';
 import type { SelfUpdate, VersionRange } from './selfupdate-net.js';
@@ -69,6 +70,8 @@ export interface RunDeps {
    * не пишется, поэтому сквозные тесты `run()` не оставляют файлов.
    */
   debugLog?: DebugLogFn;
+  /** Слой запуска внешних процессов; по умолчанию настоящий `runCmd`, тесты подставляют фейк. */
+  cmd?: RunFn;
 }
 
 export async function run(root: string, term: Term = createTerm(), deps: RunDeps = {}): Promise<void> {
@@ -81,6 +84,35 @@ export async function run(root: string, term: Term = createTerm(), deps: RunDeps
   let state: AppState = { ...initialState(catalog), colorToggle: app.color, recheckUpdates: app.recheckUpdates, recheckMcp: app.recheckMcp, language: lang0 };
   let statusMsg: string | null = null;
 
+  /**
+   * Активные внешние процессы. `cancelOp` — тот, которому принадлежит busy-экран (его снимает
+   * Esc), `inflight` — все процессы цикла (их снимает выход).
+   */
+  const runCmdFn: RunFn = deps.cmd ?? runCmd;
+  const inflight = new Set<AbortController>();
+  let cancelOp: AbortController | null = null;
+  /** Загрузка каталога pi.dev (не pi-процесс, но тоже снимается при выходе). */
+  let catalogFetch: AbortController | null = null;
+
+  async function startOp<T>(make: (signal: AbortSignal) => Promise<T>, kind: 'busy' | 'bg'): Promise<T> {
+    const controller = new AbortController();
+    inflight.add(controller);
+    if (kind === 'busy') cancelOp = controller;
+    try {
+      return await make(controller.signal);
+    } finally {
+      inflight.delete(controller);
+      if (kind === 'busy' && cancelOp === controller) cancelOp = null;
+    }
+  }
+
+  function cancelBusy(): void {
+    cancelOp?.abort();
+  }
+
+  function cancelAll(): void {
+    for (const c of inflight) c.abort();
+  }
   /**
    * Журнал отладки: строки о сбоях, которые иначе исчезают в `catch {}`. Дедуп обязателен —
    * `load()` (а значит и `scan()`) вызывается дважды на каждое нажатие клавиши.
@@ -164,30 +196,30 @@ export async function run(root: string, term: Term = createTerm(), deps: RunDeps
       return;
     }
     setChecking();
-    const r = await npmOutdated(npmDir);
+    const r = await startOp((signal) => npmOutdated(npmDir, signal, runCmdFn), 'bg');
     finish(r.ok, r.latest);
   }
 
   async function doUpdateAll(targetDir: string, scope: 'main' | 'create'): Promise<void> {
-    const r = await piUpdateAll(targetDir);
+    const r = await startOp((signal) => piUpdateAll(targetDir, signal, runCmdFn), 'busy');
     if (r.ok) statusMsg = t(state.language, 'status.ext-updated');
-    afterPiCommand(r, { type: 'update-result', ok: r.ok, message: r.ok ? t(state.language, 'status.ext-updated') : r.stderr || t(state.language, 'status.update-error') }, targetDir, scope);
+    afterPiCommand(r, { type: 'update-result', ok: r.ok, message: r.ok ? t(state.language, 'status.ext-updated') : cmdFailureText(r, state.language, 'status.update-error', null) }, targetDir, scope);
   }
 
   async function doRemove(source: string): Promise<void> {
-    const r = await piRemove(agentDir, source);
+    const r = await startOp((signal) => piRemove(agentDir, source, signal, runCmdFn), 'busy');
     if (r.ok) statusMsg = t(state.language, 'status.ext-removed', { name: source });
-    afterPiCommand(r, { type: 'remove-result', ok: r.ok, message: r.ok ? source : r.stderr || t(state.language, 'status.remove-error') }, agentDir, 'main');
+    afterPiCommand(r, { type: 'remove-result', ok: r.ok, message: r.ok ? source : cmdFailureText(r, state.language, 'status.remove-error', source) }, agentDir, 'main');
   }
 
   async function doUpdateOne(source: string): Promise<void> {
-    const r = await piUpdateOne(agentDir, source);
+    const r = await startOp((signal) => piUpdateOne(agentDir, source, signal, runCmdFn), 'busy');
     if (r.ok) statusMsg = t(state.language, 'status.updated', { name: source });
-    afterPiCommand(r, { type: 'update-result', ok: r.ok, message: r.ok ? source : r.stderr || t(state.language, 'status.update-error') }, agentDir, 'main');
+    afterPiCommand(r, { type: 'update-result', ok: r.ok, message: r.ok ? source : cmdFailureText(r, state.language, 'status.update-error', source) }, agentDir, 'main');
   }
 
   async function doInstall(installDir: string, source: string, envName: string | null): Promise<void> {
-    const r = await piInstall(installDir, source);
+    const r = await startOp((signal) => piInstall(installDir, source, signal, runCmdFn), 'busy');
     if (r.ok) statusMsg = t(state.language, 'status.installed', { name: source });
     let sources: string[] | undefined;
     if (r.ok) {
@@ -199,7 +231,7 @@ export async function run(root: string, term: Term = createTerm(), deps: RunDeps
         void checkUpdates(agentDir, 'main');
       }
     }
-    state = reducer(state, { type: 'install-result', ok: r.ok, message: r.ok ? source : r.stderr || t(state.language, 'status.install-error'), sources }, rctx());
+    state = reducer(state, { type: 'install-result', ok: r.ok, message: r.ok ? source : cmdFailureText(r, state.language, 'status.install-error', source), sources }, rctx());
     repaint();
   }
 
@@ -208,15 +240,15 @@ export async function run(root: string, term: Term = createTerm(), deps: RunDeps
    * Успех — по содержимому stdout: код 1 — норма при неподключённых серверах.
    */
   async function doMcpCheck(dir: string, scope: 'main' | 'create'): Promise<void> {
-    const r = await piMcpList(dir);
+    const r = await startOp((signal) => piMcpList(dir, signal, runCmdFn), 'bg');
     const report = parseMcpList(r.stdout);
     state = reducer(state, { type: 'mcp-live-result', ok: r.ok, message: r.stderr.trim(), scope, report }, rctx());
     repaint();
   }
 
   async function doMcpAdd(dir: string, form: McpFormAdd, scope: 'main' | 'create'): Promise<void> {
-    const r = await piMcpAdd(dir, form);
-    const msg = r.ok ? t(state.language, 'status.mcp-added', { name: form.name }) : (r.stderr.trim() || t(state.language, 'status.mcp-add-error'));
+    const r = await startOp((signal) => piMcpAdd(dir, form, signal, runCmdFn), 'busy');
+    const msg = r.ok ? t(state.language, 'status.mcp-added', { name: form.name }) : cmdFailureText(r, state.language, 'status.mcp-add-error', form.name);
     statusMsg = msg;
     state = reducer(state, { type: 'mcp-result', ok: r.ok, message: msg, scope, list: scope === 'create' ? readMcpServers(dir) : undefined }, rctx());
     if (r.ok && scope === 'main') reloadCatalog();
@@ -232,6 +264,11 @@ export async function run(root: string, term: Term = createTerm(), deps: RunDeps
    */
   async function loadPackageCatalog(): Promise<void> {
     const id = ++catalogLoadId;
+    // Новая загрузка снимает предыдущую: оборванный пикер не должен докачивать страницы.
+    catalogFetch?.abort();
+    const fetch1 = new AbortController();
+    catalogFetch = fetch1;
+    inflight.add(fetch1);
     const paintProgress = makeProgressPainter(repaint, PROGRESS_THROTTLE_MS, () => Date.now(), (ms, cb) => {
       const h = setTimeout(cb, ms);
       h.unref(); // прогресс-таймер не держит процесс
@@ -243,10 +280,13 @@ export async function run(root: string, term: Term = createTerm(), deps: RunDeps
         if (id !== catalogLoadId) return;
         state = { ...state, catalogProgress: { loaded, total } };
         paintProgress.call();
-      });
+      }, fetch1.signal);
     } catch (err) {
-      log('catalog', `pi.dev/packages: ${errText(err)}`);
+      if (!fetch1.signal.aborted) log('catalog', `pi.dev/packages: ${errText(err)}`);
       pkgs = null;
+    } finally {
+      inflight.delete(fetch1);
+      if (catalogFetch === fetch1) catalogFetch = null;
     }
     if (id !== catalogLoadId) { paintProgress.cancel(); return; }
     state = { ...state, catalogProgress: null };
@@ -320,6 +360,7 @@ export async function run(root: string, term: Term = createTerm(), deps: RunDeps
     doInstall: (dir, source, envName) => { void doInstall(dir, source, envName); },
     doMcpAdd: (dir, form, scope) => { void doMcpAdd(dir, form, scope); },
     doMcpCheck: (dir, scope) => { void doMcpCheck(dir, scope); },
+    cancelBusy: () => cancelBusy(),
     runSelfUpdate: () => { void runSelfUpdate(); },
     loadChangelog: () => { void loadChangelog(); },
   };
@@ -333,13 +374,15 @@ export async function run(root: string, term: Term = createTerm(), deps: RunDeps
     const { envs } = load();
     const names = envs.map((e) => e.name);
     const tnames = trashNames();
-    const prev: PrevSnap = { view: state.create?.view ?? null, ext: state.ext, mcp: state.mcp, tab: state.tab, mcpCheck: state.mcpCheck, createMcpCheck: state.create?.mcpCheck ?? 'idle', selfCheck: state.selfCheck };
+    const prev: PrevSnap = { cancelRequested: false, view: state.create?.view ?? null, ext: state.ext, mcp: state.mcp, tab: state.tab, mcpCheck: state.mcpCheck, createMcpCheck: state.create?.mcpCheck ?? 'idle', selfCheck: state.selfCheck };
     if (key === 'e' && state.tab === 'envs' && state.sub === null && state.trash === null && state.selected < envs.length) {
       const settings = readSettings(envs[state.selected].path) ?? {};
       state = reducer(state, { type: 'edit-start', name: envs[state.selected].name, settings, mcp: readMcpServers(envs[state.selected].path) }, rctx(names, tnames));
     } else {
       state = reducer(state, key, rctx(names, tnames));
     }
+    // Заявка на отмену считается после reducer: экран процесса — тот, что стал текущим.
+    prev.cancelRequested = key === 'esc' && busyProcessView(state);
     if (state.colorToggle !== prevColor || state.recheckUpdates !== prevRecheck || state.recheckMcp !== prevRecheckMcp || state.language !== prevLang) {
       saveAppSettings(root, { color: state.colorToggle, recheckUpdates: state.recheckUpdates, recheckMcp: state.recheckMcp, language: state.language });
     }
@@ -382,7 +425,7 @@ export async function run(root: string, term: Term = createTerm(), deps: RunDeps
         const key = await term.key();
         const { envs, prev } = applyKey(key as Key);
         await runSideEffects(loop, envs, prev);
-        if (state.quit) break;
+        if (state.quit) { cancelAll(); break; }
         repaint();
       }
     },

@@ -282,8 +282,9 @@ export function lastCatalogPage(html: string): number | null {
 export async function fetchPackageCatalog(
   url: string = PACKAGE_CATALOG_URL,
   onProgress?: (loaded: number, total: number) => void,
+  signal?: AbortSignal,
 ): Promise<CatalogPkg[]> {
-  const firstHtml = await fetchPageHtml(url);
+  const firstHtml = await fetchPageHtml(url, signal);
   const all = parsePackageCatalog(firstHtml);
   const total = lastCatalogPage(firstHtml);
   if (total === null) return all;
@@ -298,7 +299,7 @@ export async function fetchPackageCatalog(
     for (;;) {
       const i = next++;
       if (i >= rest.length) return;
-      all.push(...parsePackageCatalog(await fetchPageHtml(rest[i])));
+      all.push(...parsePackageCatalog(await fetchPageHtml(rest[i], signal)));
       loaded++;
       onProgress?.(loaded, total);
     }
@@ -310,8 +311,9 @@ export async function fetchPackageCatalog(
   return [...seen.values()].sort((a, b) => b.downloads - a.downloads || a.name.localeCompare(b.name));
 }
 
-async function fetchPageHtml(url: string): Promise<string> {
-  const res = await fetch(url, { signal: AbortSignal.timeout(20_000) });
+async function fetchPageHtml(url: string, signal?: AbortSignal): Promise<string> {
+  const timeout = AbortSignal.timeout(20_000);
+  const res = await fetch(url, { signal: signal ? AbortSignal.any([timeout, signal]) : timeout });
   if (!res.ok) throw new Error('HTTP ' + res.status);
   return res.text();
 }

@@ -128,6 +128,21 @@ export interface ReducerCtx {
   trashNames?: string[];
 }
 
+/** View, за которыми стоит дочерний процесс (его и отменяет Esc); файловые view формы — вне списка. */
+const PROCESS_VIEWS: Record<'ext' | 'create' | 'mcp', readonly string[]> = {
+  ext: ['installing', 'updating', 'removing'],
+  create: ['installing', 'updating', 'removing', 'mcp-submitting'],
+  mcp: ['submitting', 'removing'],
+};
+
+/** Показан ли экран процесса: единственный источник правды для заявки на отмену. */
+export function busyProcessView(state: AppState): boolean {
+  if (state.ext !== null && PROCESS_VIEWS.ext.includes(state.ext.view)) return true;
+  if (state.create !== null && PROCESS_VIEWS.create.includes(state.create.view)) return true;
+  if (state.mcp !== null && PROCESS_VIEWS.mcp.includes(state.mcp.view)) return true;
+  return false;
+}
+
 /** Общий конструктор контекста для run.ts и run-side.ts. */
 export function makeCtx(envNames: string[], twoColumns: boolean, trashNames: string[] = []): ReducerCtx {
   return { envNames, twoColumns, trashNames };

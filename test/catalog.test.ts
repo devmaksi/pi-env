@@ -436,6 +436,32 @@ test('fetchPackageCatalog: дубликат имени на разных стр�
   }
 });
 
+test('fetchPackageCatalog: снятый сигнал обрывает докачку страниц', async () => {
+  const server: Server = createServer((req, res) => {
+    const u = new URL(req.url ?? '/', 'http://localhost');
+    const n = Number(u.searchParams.get('page') ?? '1');
+    if (n === 1) {
+      res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
+      res.end('<html><a href="/packages?page=2"></a><a href="/packages?page=3"></a>' + card('p1', 1) + '</html>');
+      return;
+    }
+    setTimeout(() => {
+      res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
+      res.end(card('late' + n, 1));
+    }, 5_000);
+  });
+  await new Promise<void>((r) => server.listen(0, '127.0.0.1', () => r()));
+  const { port } = server.address() as AddressInfo;
+  const c = new AbortController();
+  try {
+    const p = fetchPackageCatalog(`http://127.0.0.1:${port}/packages`, () => c.abort(), c.signal);
+    await assert.rejects(p);
+  } finally {
+    server.closeAllConnections();
+    await new Promise<void>((r) => server.close(() => r()));
+  }
+});
+
 test('fetchPackageCatalog: без пагинации — только одна страница (старое поведение)', async () => {
   const pages = ['<html>' + card('solo', 10) + card('solo2', 5) + '</html>'];
   const srv = await startCatalogServer(pages);
