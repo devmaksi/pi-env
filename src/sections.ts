@@ -300,14 +300,14 @@ const CREATE_BUSY: Record<string, { text: (cr: CreateState, lang: string) => str
   'deleting': { text: (_cr, lang) => t(lang, 'busy.deleting'), hints: ['hint.cancel'] },
   'submitting': { text: (_cr, lang) => t(lang, 'busy.creating'), hints: ['hint.cancel'] },
   'confirm-remove': { text: (cr, lang) => t(lang, 'busy.delete-ext', { name: cr.removing ?? '' }), bold: true, hints: ['hint.confirm', 'hint.cancel'] },
-  'removing': { text: (_cr, lang) => t(lang, 'busy.deleting'), hints: ['hint.back'] },
-  'updating': { text: (_cr, lang) => t(lang, 'busy.updating'), hints: ['hint.back'] },
-  'installing': { text: (cr, lang) => t(lang, 'busy.installing', { name: cr.installing ?? '' }), hints: ['hint.back'] },
+  'removing': { text: (_cr, lang) => t(lang, 'busy.deleting'), hints: ['hint.kill'] },
+  'updating': { text: (_cr, lang) => t(lang, 'busy.updating'), hints: ['hint.kill'] },
+  'installing': { text: (cr, lang) => t(lang, 'busy.installing', { name: cr.installing ?? '' }), hints: ['hint.kill'] },
   'mcp-op': {
     text: (cr, lang) => (cr.mcpOp?.kind === 'remove' ? t(lang, 'busy.mcp-deleting') : t(lang, 'busy.mcp-add', { name: cr.mcpOp?.name ?? '' })),
     hints: ['hint.back'],
   },
-  'mcp-submitting': { text: (cr, lang) => t(lang, 'busy.mcp-add', { name: cr.mcpAdd?.name ?? '' }), hints: ['hint.back'] },
+  'mcp-submitting': { text: (cr, lang) => t(lang, 'busy.mcp-add', { name: cr.mcpAdd?.name ?? '' }), hints: ['hint.kill'] },
   'mcp-confirm-remove': { text: (cr, lang) => t(lang, 'busy.mcp-remove', { name: cr.removingMcp ?? '' }), bold: true, hints: ['hint.confirm', 'hint.cancel'] },
 };
 
@@ -497,8 +497,8 @@ function mcpList(ctx: Ctx): Section {
 
 // Вкладка «MCP»: состояния добавления/удаления
 const MCP_TAB_BUSY: Record<string, { text: (mt: McpTab, lang: string) => string; bold?: boolean; hints: StrKey[] }> = {
-  'submitting': { text: (mt, lang) => t(lang, 'busy.mcp-add', { name: mt.form?.name ?? '' }), hints: ['hint.back'] },
-  'removing': { text: (_mt, lang) => t(lang, 'busy.mcp-deleting'), hints: ['hint.back'] },
+  'submitting': { text: (mt, lang) => t(lang, 'busy.mcp-add', { name: mt.form?.name ?? '' }), hints: ['hint.kill'] },
+  'removing': { text: (_mt, lang) => t(lang, 'busy.mcp-deleting'), hints: ['hint.kill'] },
   'confirm-remove': { text: (mt, lang) => t(lang, 'busy.mcp-remove', { name: mt.removing ?? '' }), bold: true, hints: ['hint.confirm', 'hint.cancel'] },
 };
 
@@ -556,9 +556,9 @@ function extCatalogView(ext: ExtState, ctx: Ctx): Section {
 
 // Вкладка «Расширения»: состояния установки/обновления/удаления
 const EXT_BUSY: Record<string, { text: (ext: ExtState, lang: string) => string; bold?: boolean; hints: StrKey[] }> = {
-  'installing': { text: (ext, lang) => t(lang, 'busy.installing', { name: ext.installing ?? '' }), hints: ['hint.back'] },
-  'updating': { text: (ext, lang) => ext.updating === null ? t(lang, 'busy.updating') : t(lang, 'busy.updating.named', { name: ext.updating }), hints: ['hint.back'] },
-  'removing': { text: (_ext, lang) => t(lang, 'busy.deleting'), hints: ['hint.back'] },
+  'installing': { text: (ext, lang) => t(lang, 'busy.installing', { name: ext.installing ?? '' }), hints: ['hint.kill'] },
+  'updating': { text: (ext, lang) => ext.updating === null ? t(lang, 'busy.updating') : t(lang, 'busy.updating.named', { name: ext.updating }), hints: ['hint.kill'] },
+  'removing': { text: (_ext, lang) => t(lang, 'busy.deleting'), hints: ['hint.kill'] },
   'confirm-remove': { text: (ext, lang) => t(lang, 'busy.delete-ext', { name: ext.removing ?? '' }), bold: true, hints: ['hint.confirm', 'hint.cancel'] },
 };
 

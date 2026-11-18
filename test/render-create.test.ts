@@ -3,6 +3,7 @@ import assert from 'node:assert';
 import { render } from '../src/render.js';
 import { initialState, freshCreate, type AppState, type Catalog } from '../src/state.js';
 import type { Environment } from '../src/environments.js';
+import { t } from '../src/i18n.js';
 
 const catalog: Catalog = {
   providers: [
@@ -259,4 +260,20 @@ test('форма на английском', () => {
   assert.ok(s.includes('Model:'));
   assert.ok(s.includes('Custom tools: 0'));
   assert.ok(s.includes('Create'));
+});
+
+test('create: экраны процесса подсказывают «Esc — прервать»', () => {
+  for (const view of ['installing', 'updating', 'removing', 'mcp-submitting'] as const) {
+    const s = render({ state: editState({ view }), envs, width: 100, height: 12, root: '/root', useColor: false, status: null });
+    assert.ok(s.includes(t('ru', 'hint.kill')), view);
+    assert.ok(!s.includes(t('ru', 'hint.back')), view);
+  }
+});
+
+test('create: файловые submitting/deleting остаются с «Esc — отмена»', () => {
+  for (const view of ['submitting', 'deleting'] as const) {
+    const s = render({ state: createState({ view }), envs, width: 100, height: 12, root: '/root', useColor: false, status: null });
+    assert.ok(s.includes(t('ru', 'hint.cancel')), view);
+    assert.ok(!s.includes(t('ru', 'hint.kill')), view);
+  }
 });

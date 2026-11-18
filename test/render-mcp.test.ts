@@ -4,6 +4,7 @@ import { render } from '../src/render.js';
 import { initialState, freshMcpForm, freshCreate, freshEdit, type AppState, type Catalog } from '../src/state.js';
 import { Environment } from '../src/environments.js';
 import type { McpServer } from '../src/mcp.js';
+import { t } from '../src/i18n.js';
 
 // Колонка, где нарисован последний символ строки (все символы по 1 клетке).
 function lastCol(line: string, cells: (ch: string) => number, width: number): number {
@@ -87,6 +88,17 @@ test('Вкладка: busy — submitting и confirm-remove', () => {
   assert.ok(render({ state: submitting, envs, width: 100, height: 14, ...base }).includes('Добавление:'));
   const confirm = mcpState({ mcp: { view: 'confirm-remove', form: null, removing: 'docs' } });
   assert.ok(render({ state: confirm, envs, width: 100, height: 14, ...base }).includes('Удалить MCP «docs»?'));
+});
+
+test('Вкладка MCP: экраны процесса подсказывают «Esc — прервать»', () => {
+  for (const view of ['submitting', 'removing'] as const) {
+    const s = render({ state: mcpState({ mcp: { view, form: freshMcpForm(), removing: null } }), envs, width: 100, height: 14, ...base });
+    assert.ok(s.includes(t('ru', 'hint.kill')), view);
+    assert.ok(!s.includes(t('ru', 'hint.back')), view);
+  }
+  const confirm = render({ state: mcpState({ mcp: { view: 'confirm-remove', form: null, removing: 'docs' } }), envs, width: 100, height: 14, ...base });
+  assert.ok(confirm.includes(t('ru', 'hint.cancel')));
+  assert.ok(!confirm.includes(t('ru', 'hint.kill')));
 });
 
 test('Форма stdio: строки, caret', () => {

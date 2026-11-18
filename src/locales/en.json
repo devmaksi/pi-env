@@ -91,6 +91,7 @@
   "hint.select": "Space/Enter — select",
   "hint.delete": "X — delete",
   "hint.back": "Esc — back",
+  "hint.kill": "Esc — cancel",
   "hint.confirm": "Enter — confirm",
   "hint.cancel": "Esc — cancel",
   "sel.providers": "Provider",

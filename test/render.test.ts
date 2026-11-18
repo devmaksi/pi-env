@@ -5,6 +5,7 @@ import { render, scrollTop, catalogPickerLines, visibleWidth, truncateVisible, p
 import { computeLayout } from '../src/layout.js';
 import { initialState, freshExt, freshCreate, type AppState, type Catalog } from '../src/state.js';
 import { Environment } from '../src/environments.js';
+import { t } from '../src/i18n.js';
 // Симуляция терминала: колонка, в которой нарисован последний символ строки.
 // cells(ch) — сколько клеток занимает символ; CUP (\x1b[<row>;<col>H) — прыжок.
 function lastCol(line: string, cells: (ch: string) => number, width: number): number {
@@ -260,6 +261,17 @@ test('вкладка «Расширения»: пометки процессов
   const conf = render({ state: { ...initialState(extCatalog), tab: 'extensions' as const, ext: freshExt({ view: 'confirm-remove', removing: 'pkg-a' }) }, envs, width: 100, height: 10, ...base });
   assert.ok(conf.includes('Удалить расширение «pkg-a»?'));
   assert.ok(conf.includes('Enter — подтвердить'));
+});
+
+test('вкладка «Расширения»: busy-вью процесса подсказывает «Esc — прервать»', () => {
+  for (const view of ['installing', 'updating', 'removing'] as const) {
+    const s = render({ state: { ...initialState(extCatalog), tab: 'extensions' as const, ext: freshExt({ view }) }, envs, width: 100, height: 10, ...base });
+    assert.ok(s.includes(t('ru', 'hint.kill')), view);
+    assert.ok(!s.includes(t('ru', 'hint.back')), view);
+  }
+  const confirm = render({ state: { ...initialState(extCatalog), tab: 'extensions' as const, ext: freshExt({ view: 'confirm-remove', removing: 'pkg-a' }) }, envs, width: 100, height: 10, ...base });
+  assert.ok(confirm.includes(t('ru', 'hint.cancel')));
+  assert.ok(!confirm.includes(t('ru', 'hint.kill')));
 });
 
 test('пустой список окружений: без разделителя, «Создать» на нуле', () => {

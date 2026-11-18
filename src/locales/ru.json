@@ -91,6 +91,7 @@
   "hint.select": "Space/Enter — выбрать",
   "hint.delete": "X — удалить",
   "hint.back": "Esc — назад",
+  "hint.kill": "Esc — прервать",
   "hint.confirm": "Enter — подтвердить",
   "hint.cancel": "Esc — отмена",
   "sel.providers": "Провайдер",
