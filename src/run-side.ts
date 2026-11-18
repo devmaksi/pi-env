@@ -1,5 +1,5 @@
 import { join } from 'node:path';
-import { createEnvironment, updateEnvironment } from './create.js';
+import { cloneEnvironment, createEnvironment, updateEnvironment } from './create.js';
 import { copyMcpEntry, removeMcpEntry, readMcpServers } from './mcp.js';
 import { deleteTrashForever, moveToTrash, restoreTrash } from './trash.js';
 import { t } from './i18n.js';
@@ -70,6 +70,7 @@ export async function runSideEffects(loop: Loop, envs: Environment[], prev: Prev
   hooksMcpCheck(loop, prev);
   hooksUpdate(loop, prev);
   hooksTrash(loop);
+  hooksClone(loop);
   hooksCopy(loop);
   if (prev.tab !== 'extensions' && loop.state().tab === 'extensions' && loop.state().ext === null &&
       (loop.state().pkgCheck === 'idle' || loop.state().recheckUpdates)) {
@@ -99,6 +100,23 @@ function hooksTrash(loop: Loop): void {
   loop.status(message);
   // Имена окружений — свежие (после восстановления их стало больше): по ним reducer держит курсор на «Корзина».
   loop.setState(reducer(loop.state(), { type: 'trash-result', ok: r.ok, message }, rctx(loop, loop.envs().map((e) => e.name))));
+  loop.repaint();
+}
+
+/**
+ * Клонирование окружения: суб-экран ждёт Enter (`clone.pending`) — копирование каталога
+ * выполняется синхронно (как операции корзины) и снимается результатом `clone-result`.
+ */
+function hooksClone(loop: Loop): void {
+  const cl = loop.state().clone;
+  if (cl === null || !cl.pending) return;
+  const lang = loop.state().language;
+  const res = cloneEnvironment(loop.root, cl.srcName, cl.name, loop.envs().map((e) => e.name), lang);
+  loop.invalidate(); // в списке окружений появился клон
+  const message = res.ok ? t(lang, 'status.env-cloned', { name: cl.name }) : res.error;
+  loop.status(message);
+  // Имена окружений — свежие (после инвалидации их стало больше): по ним reducer ставит курсор на копию.
+  loop.setState(reducer(loop.state(), { type: 'clone-result', ok: res.ok, message, name: cl.name }, rctx(loop, loop.envs().map((e) => e.name))));
   loop.repaint();
 }
 

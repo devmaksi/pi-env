@@ -10,6 +10,7 @@ import {
   type AppState, type Catalog, type CreateState, type Environment, type McpServer,
 } from '../src/state.js';
 import { writeMcpFile } from '../src/mcp.js';
+import { t } from '../src/i18n.js';
 import { listTrash } from '../src/trash.js';
 
 const PKG_A = { source: 'npm:pkg-a', name: 'pkg-a', path: '/p', version: null, description: null, extensions: [], skills: [] };
@@ -19,7 +20,7 @@ const ENV0: Environment = { name: 'e0', path: '/root/e0', details: { hasSettings
 /** Фиксированный снимок до обработки клавиши. */
 const prev = (p: Partial<PrevSnap>): PrevSnap => ({ view: null, ext: null, mcp: null, tab: 'envs', mcpCheck: 'idle', createMcpCheck: 'idle', cancelRequested: false, ...p });
 
-function makeLoop(initial: AppState, root = '/root', agentDir = '/agent') {
+function makeLoop(initial: AppState, root = '/root', agentDir = '/agent', envs: Environment[] = [ENV0]) {
   let state = initial;
   const log: string[] = [];
   const loop: Loop = {
@@ -30,7 +31,7 @@ function makeLoop(initial: AppState, root = '/root', agentDir = '/agent') {
     catalog: () => CATALOG,
     status: (m) => { log.push('status:' + (m ?? 'null')); },
     twoColumns: () => true,
-    envs: () => [ENV0],
+    envs: () => envs,
     repaint: () => { log.push('repaint'); },
     reloadCatalog: () => { log.push('reloadCatalog'); },
     checkUpdates: (d, s) => { log.push(`checkUpdates:${d}:${s}`); },
@@ -51,9 +52,9 @@ function makeLoop(initial: AppState, root = '/root', agentDir = '/agent') {
 const cr = (p: Partial<CreateState>): AppState => ({ ...initialState(CATALOG), sub: 'create', create: { ...freshCreate(), ...p } });
 const srvDocs: McpServer = { name: 'docs', type: 'stdio', command: 'c', args: [], env: {}, headers: {} };
 
-async function run(initial: AppState, p: Partial<PrevSnap>, root = '/root', agentDir = '/agent') {
-  const h = makeLoop(initial, root, agentDir);
-  await runSideEffects(h.loop, [ENV0], prev(p));
+async function run(initial: AppState, p: Partial<PrevSnap>, root = '/root', agentDir = '/agent', envs: Environment[] = [ENV0]) {
+  const h = makeLoop(initial, root, agentDir, envs);
+  await runSideEffects(h.loop, envs, prev(p));
   return h;
 }
 
@@ -345,4 +346,51 @@ test('MCP-операции инвалидируют кэш: copy/remove в фо�
 test('без мутаций инвалидация не зовётся', async () => {
   const h = await run(cr({ view: 'form' }), { view: 'form' });
   assert.ok(!h.log.includes('invalidate'));
+});
+
+test('клон: pending — копирование каталога, инвалидация кэша и курсор на копии', async () => {
+  const root = tmp();
+  const src = join(root, 'e0');
+  mkdirSync(join(src, 'own'), { recursive: true });
+  writeFileSync(join(src, 'settings.json'), '{}');
+  writeFileSync(join(src, 'own', 'notes.txt'), 'mine');
+  const env = (name: string): Environment => ({ ...ENV0, name, path: join(root, name) });
+  // снимок окружений «как после перечитки»: копия появляется после копирования
+  const snapshot = (): Environment[] => [env('e0'), ...(existsSync(join(root, 'e0-copy')) ? [env('e0-copy')] : [])];
+  const st: AppState = { ...initialState(CATALOG), clone: { srcName: 'e0', name: 'e0-copy', caret: 7, pending: true, error: null } };
+  const h = await run(st, {}, root, '/agent', snapshot());
+  assert.equal(readFileSync(join(root, 'e0-copy', 'own', 'notes.txt'), 'utf8'), 'mine');
+  assert.ok(h.log.includes('invalidate'));
+});
+
+test('клон: занятое имя — ошибка в суб-экране и в статусе, копирования нет', async () => {
+  const root = tmp();
+  mkdirSync(join(root, 'e0'), { recursive: true });
+  mkdirSync(join(root, 'e0-copy'), { recursive: true });
+  writeFileSync(join(root, 'e0-copy', 'marker.txt'), 'KEEP');
+  const env = (name: string): Environment => ({ ...ENV0, name, path: join(root, name) });
+  const st: AppState = { ...initialState(CATALOG), clone: { srcName: 'e0', name: 'e0-copy', caret: 7, pending: true, error: null } };
+  const h = await run(st, {}, root, '/agent', [env('e0'), env('e0-copy')]);
+  assert.ok(h.state.clone !== null);
+  assert.equal(h.state.clone!.error, t('ru', 'err.name-exists'));
+  assert.ok(h.log.some((l) => l.includes(t('ru', 'err.name-exists'))), h.log.join('|'));
+  assert.equal(readFileSync(join(root, 'e0-copy', 'marker.txt'), 'utf8'), 'KEEP');
+});
+
+test('клон: курсор после успеха — на копии (снимок перечитан)', async () => {
+  const root = tmp();
+  mkdirSync(join(root, 'e0'), { recursive: true });
+  writeFileSync(join(root, 'e0', 'settings.json'), '{}');
+  const env = (name: string): Environment => ({ ...ENV0, name, path: join(root, name) });
+  let copied = false;
+  const st: AppState = { ...initialState(CATALOG), clone: { srcName: 'e0', name: 'e0-copy', caret: 7, pending: true, error: null } };
+  const h = makeLoop(st, root, '/agent', []);
+  // снимок пересчитывается после инвалидации: так живёт реальный `Loop.envs()`
+  const origInvalidate = h.loop.invalidate;
+  h.loop.invalidate = () => { origInvalidate(); copied = existsSync(join(root, 'e0-copy')); };
+  (h.loop as unknown as { envs: () => Environment[] }).envs = () =>
+    (copied ? [env('e0'), env('e0-copy')] : [env('e0')]);
+  await runSideEffects(h.loop, [env('e0')], prev({}));
+  assert.equal(h.state.clone, null);
+  assert.equal(h.state.selected, 1);
 });

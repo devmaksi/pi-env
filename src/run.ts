@@ -419,7 +419,9 @@ export async function run(root: string, term: Term = createTerm(), deps: RunDeps
     const names = envs.map((e) => e.name);
     const tnames = trashNames();
     const prev: PrevSnap = { cancelRequested: false, view: state.create?.view ?? null, ext: state.ext, mcp: state.mcp, tab: state.tab, mcpCheck: state.mcpCheck, createMcpCheck: state.create?.mcpCheck ?? 'idle', selfCheck: state.selfCheck };
-    if (key === 'e' && state.tab === 'envs' && state.sub === null && state.trash === null && state.selected < envs.length) {
+    if (key === 'c' && state.tab === 'envs' && state.sub === null && state.trash === null && state.clone === null && state.selected < envs.length) {
+      state = reducer(state, { type: 'clone-start', name: envs[state.selected].name }, rctx(names, tnames));
+    } else if (key === 'e' && state.tab === 'envs' && state.sub === null && state.trash === null && state.selected < envs.length) {
       const settings = readSettings(envs[state.selected].path) ?? {};
       state = reducer(state, { type: 'edit-start', name: envs[state.selected].name, settings, mcp: readMcpServers(envs[state.selected].path) }, rctx(names, tnames));
     } else {
