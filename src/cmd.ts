@@ -20,7 +20,12 @@ export interface CmdResult {
   cancelled: boolean;
   /** Процесс убит по таймауту — таймаут отличим и от отмены, и от ordinary провала. */
   timedOut: boolean;
+  /** Таймаут, с которым запускался процесс — из него считают секунды в сообщении. */
+  timeoutMs: number;
 }
+
+/** Слой запуска внешних процессов: тесты подставляют фейк вместо настоящего `runCmd`. */
+export type RunFn = typeof runCmd;
 
 /** Запускает команду, собирает stdout/stderr; таймаут и сигнал — убийство процесса. */
 export function runCmd(
@@ -41,7 +46,7 @@ export function runCmd(
       if (timer) clearTimeout(timer);
       const signal = opts.signal;
       if (signal) signal.removeEventListener('abort', onAbort);
-      resolve({ ok, stdout, stderr, cancelled: why === 'cancelled', timedOut: why === 'timedOut' });
+      resolve({ ok, stdout, stderr, cancelled: why === 'cancelled', timedOut: why === 'timedOut', timeoutMs });
     };
     function onAbort() {
       if (kill) kill();
@@ -49,7 +54,7 @@ export function runCmd(
     }
     // Сигнал уже снят до запуска — процесс не должен запуститься вовсе.
     if (opts.signal?.aborted) {
-      resolve({ ok: false, stdout: '', stderr: '', cancelled: true, timedOut: false });
+      resolve({ ok: false, stdout: '', stderr: '', cancelled: true, timedOut: false, timeoutMs });
       return;
     }
     // detached: процесс возглавляет группу — иначе kill() снимает только оболочку,
