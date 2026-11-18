@@ -56,6 +56,9 @@ Russian text: [CHANGELOG.ru.md](CHANGELOG.ru.md).
   directory verbatim — `settings.json`, `mcp.json`, `extensions/`, `skills/`, the model files
   and any file the environment owns that is not in the main agent's catalog; nothing is
   rebuilt from the main agent, so custom files survive.
+- While the copy runs the screen shows `clone.copying` instead of the Enter hint: an
+  environment directory can be hundreds of megabytes and the copy is a blocking file
+  operation of its own (not a child process), so the frame is painted before it starts.
 - On success the cursor moves onto the copy and the status line shows
   `status.env-cloned`; an invalid, empty or already-taken name keeps the sub-screen open
   with `⚠` and the text, and touches no files. A copy that fails halfway is deleted, so no

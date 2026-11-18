@@ -128,6 +128,14 @@ test('клонирование в занятое имя: текст ошибки
   assert.ok(frame.includes(t('ru', 'err.name-exists')), frame);
 });
 
+test('момент копирования показан в кадре до блокирующего копирования', async () => {
+  const root = tmpRootRu();
+  makeEnv(root, 'src');
+  const painted = await drive(root, ['c', 'enter', 'ctrlc']);
+  const frame = painted.join('\n');
+  assert.ok(frame.includes(t('ru', 'clone.copying')), frame);
+});
+
 test('имя копии набирается печатными клавишами, включая `c` и `e`', async () => {
   const root = tmpRootRu();
   makeEnv(root, 'src');

@@ -144,6 +144,7 @@
   "clone.from": "Из: {name}",
   "clone.info": "Копируются все файлы окружения как есть",
   "clone.hint.enter": "Enter — создать копию",
+  "clone.copying": "Копирование…",
   "status.env-trashed": "Окружение «{name}» перемещено в корзину",
   "status.env-cloned": "Скопировано окружение «{name}»",
   "status.trash-restored": "Окружение «{name}» восстановлено",

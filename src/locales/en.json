@@ -144,6 +144,7 @@
   "clone.from": "From: {name}",
   "clone.info": "Every file of the environment is copied verbatim",
   "clone.hint.enter": "Enter — create the copy",
+  "clone.copying": "Copying…",
   "status.env-trashed": "Env \"{name}\" moved to trash",
   "status.env-cloned": "Environment \"{name}\" copied",
   "status.trash-restored": "Env \"{name}\" restored",

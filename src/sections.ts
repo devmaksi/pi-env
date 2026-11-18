@@ -483,7 +483,7 @@ export function renderCloneTab(cl: CloneState, source: Environment | undefined, 
     detailSection(t(ctx.lang, 'envs.mcp'), d.mcp, right, ctx.L.rightWidth, ctx.lang);
   }
   right.push(dim(t(ctx.lang, 'clone.info')));
-  right.push(dim(t(ctx.lang, 'clone.hint.enter')));
+  right.push(dim(t(ctx.lang, cl.pending ? 'clone.copying' : 'clone.hint.enter')));
   right.push(dim(t(ctx.lang, 'hint.cancel')));
   return { left, right, cursorRow: 3 };
 }

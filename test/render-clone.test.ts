@@ -101,6 +101,12 @@ test('суб-экран клонирования: подсказки Enter/Esc �
   assert.ok(bad.includes(t('ru', 'envs.problem.settings', { v: 'битый JSON' })), bad);
 });
 
+test('суб-экран клонирования в момент копирования: подсказка Enter заменена на «Копирование…»', () => {
+  const s = frame(opened({ pending: true }), ENVS, 100, 20).join('\n');
+  assert.ok(s.includes(t('ru', 'clone.copying')), s);
+  assert.ok(!s.includes(t('ru', 'clone.hint.enter')), s);
+});
+
 test('суб-экран клонирования: ошибка имени попадает в кадр', () => {
   const s = frame(opened({ error: 'Окружение с таким именем уже есть' }), ENVS, 100, 16).join('\n');
   assert.ok(s.includes('⚠'), s);

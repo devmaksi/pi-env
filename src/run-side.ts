@@ -110,6 +110,9 @@ function hooksTrash(loop: Loop): void {
 function hooksClone(loop: Loop): void {
   const cl = loop.state().clone;
   if (cl === null || !cl.pending) return;
+  // Копирование каталога блокирует цикл (своя файловая операция, не дочерний процесс),
+  // а окружение может весить сотни мегабайт: кадр с «Копирование…» показываем до него.
+  loop.repaint();
   const lang = loop.state().language;
   const res = cloneEnvironment(loop.root, cl.srcName, cl.name, loop.envs().map((e) => e.name), lang);
   loop.invalidate(); // в списке окружений появился клон
