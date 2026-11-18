@@ -127,3 +127,11 @@ test('клонирование в занятое имя: текст ошибки
   const frame = painted.join('\n');
   assert.ok(frame.includes(t('ru', 'err.name-exists')), frame);
 });
+
+test('имя копии набирается печатными клавишами, включая `c` и `e`', async () => {
+  const root = tmpRootRu();
+  makeEnv(root, 'src');
+  const erase = Array<string>(8).fill('backspace'); // дефолтное имя «src-copy»
+  await drive(root, ['c', ...erase, 'e', 'c', 'h', 'o', 'enter', 'ctrlc']);
+  assert.deepEqual(names(root), ['echo', 'src']);
+});
