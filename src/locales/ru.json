@@ -206,6 +206,7 @@
   "mcp.info.override": "Проектная перезапись: {v}",
   "mcp.config.error": "Ошибка конфигурации: {v}",
   "mcp.live.checking": "Проверка MCP…",
+  "busy.elapsed": "⏳ {sec} с",
   "mcp.live.error": "Проверка MCP не удалась",
   "mcp.hint.refresh": "R — обновить статус",
   "mcp.form.title-main": "Добавление в основной агент",

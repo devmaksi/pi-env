@@ -70,6 +70,8 @@ export interface AppState {
   selfCheck: UpdateCheck;
   /** Прогресс загрузки каталога pi.dev (страницы); null — не грузится. */
   catalogProgress: { loaded: number; total: number } | null;
+  /** Секунды идущего процесса/проверки для индикатора «⏳ N с»; null — индикатора нет. */
+  opSeconds: number | null;
   pkgCheck: PkgCheck;
   pkgLatest: Record<string, string>;
 }
@@ -81,7 +83,7 @@ export const LANGUAGE_ROW = 4; // «Язык» — последняя строк
 export function initialState(catalog: Catalog = emptyCatalog()): AppState {
   return {
     tab: 'envs', focus: 'left', selected: 0, sub: null, colorToggle: true, recheckUpdates: false, recheckMcp: false, quit: false, language: 'ru',
-    catalog, create: null, ext: null, mcp: null, trash: null, catalogProgress: null, pkgCheck: 'idle', pkgLatest: {}, mcpCheck: 'idle', mcpLive: null, selfUpdate: null, updateUi: null, selfCheck: 'idle',
+    catalog, create: null, ext: null, mcp: null, trash: null, catalogProgress: null, opSeconds: null, pkgCheck: 'idle', pkgLatest: {}, mcpCheck: 'idle', mcpLive: null, selfUpdate: null, updateUi: null, selfCheck: 'idle',
   };
 }
 

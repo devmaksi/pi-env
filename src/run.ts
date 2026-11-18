@@ -8,6 +8,7 @@ import { loadCatalog, fetchPackageCatalog, normalizePkgSource, type CatalogPkg }
 import { computeLayout } from './layout.js';
 import { frameKey, paintFrame, type PrevFrame } from './diff.js';
 import { createThrottle, type Throttle, type ThrottleDeps } from './throttle.js';
+import { createTicker } from './ticker.js';
 import { render } from './render.js';
 import { readSettings } from './create.js';
 import { listTrash } from './trash.js';
@@ -94,15 +95,52 @@ export async function run(root: string, term: Term = createTerm(), deps: RunDeps
   /** Загрузка каталога pi.dev (не pi-процесс, но тоже снимается при выходе). */
   let catalogFetch: AbortController | null = null;
 
+  /** Время старта последней видимой операции и число операций — для счётчика «⏳ N с». */
+  let opStartedAt: number | null = null;
+  let opCount = 0;
+
+  function setOpSeconds(sec: number | null): void {
+    if (state.opSeconds !== sec) state = { ...state, opSeconds: sec };
+  }
+
+  const opTicker = createTicker(() => {
+    if (opStartedAt === null) {
+      setOpSeconds(null);
+      return false;
+    }
+    const sec = Math.floor((Date.now() - opStartedAt) / 1000);
+    if (state.opSeconds !== sec) {
+      setOpSeconds(sec);
+      repaint();
+    }
+    return true;
+  }, {
+    setTimer: (ms, cb) => {
+      const h = setTimeout(cb, ms);
+      h.unref(); // счётчик не держит процесс
+    },
+  });
+
   async function startOp<T>(make: (signal: AbortSignal) => Promise<T>, kind: 'busy' | 'bg'): Promise<T> {
     const controller = new AbortController();
     inflight.add(controller);
-    if (kind === 'busy') cancelOp = controller;
+    opCount++;
+    if (kind === 'busy') {
+      cancelOp = controller;
+      opStartedAt = Date.now();
+      setOpSeconds(0);
+    }
+    opTicker.start();
     try {
       return await make(controller.signal);
     } finally {
       inflight.delete(controller);
       if (kind === 'busy' && cancelOp === controller) cancelOp = null;
+      opCount--;
+      if (opCount === 0) {
+        opStartedAt = null;
+        setOpSeconds(null);
+      }
     }
   }
 

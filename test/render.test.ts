@@ -546,3 +546,36 @@ test('вкладка настроек: строка «Перепроверять
   assert.ok(s.includes('Перепроверять MCP: [x]'), s);
   assert.ok(s.includes('> Перепроверять MCP'), s);
 });
+
+const busyInstalling = (opSeconds: number | null) => ({
+  ...initialState(extCatalog), tab: 'extensions' as const, opSeconds,
+  ext: freshExt({ view: 'installing', installing: 'pi-a' }),
+});
+
+test('busy-вью показывает счётчик секунд', () => {
+  const s = render({ state: busyInstalling(7), envs, width: 100, height: 10, ...base });
+  assert.ok(s.includes('⏳ 7 с'), s);
+});
+
+test('opSeconds null — счётчика в кадре нет', () => {
+  const s = render({ state: busyInstalling(null), envs, width: 100, height: 10, ...base });
+  assert.ok(s.includes('Установка: pi-a…'));
+  assert.ok(!s.includes('⏳'), s);
+});
+
+test('wideCount: ⏳ считается широким символом', () => {
+  assert.equal(wideCount('⏳ 7 с'), 1);
+});
+
+test('рамка со счётчиком секунд: граница цела на 1- и 2-клеточном терминале', () => {
+  const wide = (ch: string) => ['↑', '↓', '←', '→', '—', '…', '✓', '⚠', '▌', '＋', '⏳'].includes(ch) ? 2 : 1;
+  for (const width of [62, 100]) {
+    const s = render({ state: busyInstalling(12), envs, width, height: 14, ...base });
+    const lines = s.split('\n');
+    assert.equal(lines.length, 14);
+    for (const line of lines) {
+      assert.equal(lastCol(line, () => 1, width), width, `1-клеточный: ${JSON.stringify(line)}`);
+      assert.equal(lastCol(line, wide, width), width, `2-клеточный: ${JSON.stringify(line)}`);
+    }
+  }
+});

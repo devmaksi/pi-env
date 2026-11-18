@@ -206,6 +206,7 @@
   "mcp.info.override": "Project override: {v}",
   "mcp.config.error": "Config error: {v}",
   "mcp.live.checking": "Checking MCP…",
+  "busy.elapsed": "⏳ {sec} s",
   "mcp.live.error": "MCP check failed",
   "mcp.hint.refresh": "R — refresh status",
   "mcp.form.title-main": "Add to main agent",

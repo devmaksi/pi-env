@@ -188,7 +188,7 @@ function createMcp(cr: CreateState, ctx: Ctx): Section {
   if (curName === undefined && cr.mode === 'edit' && cr.cursor === names.length) {
     right.push(t(ctx.lang, 'mcp.hint.add'));
   }
-  if (cr.mcpCheck === 'checking') right.push(c(ANSI.dim, ctx.useColor) + t(ctx.lang, 'mcp.live.checking') + c(ANSI.reset, ctx.useColor));
+  if (cr.mcpCheck === 'checking') right.push(c(ANSI.dim, ctx.useColor) + t(ctx.lang, 'mcp.live.checking') + elapsedSuffix(ctx) + c(ANSI.reset, ctx.useColor));
   if (cr.mcpCheck === 'error') right.push(c(ANSI.dim, ctx.useColor) + t(ctx.lang, 'mcp.live.error') + c(ANSI.reset, ctx.useColor));
   right.push(c(ANSI.dim, ctx.useColor) + t(ctx.lang, 'hint.select') + c(ANSI.reset, ctx.useColor));
   if (cr.mode === 'edit') right.push(c(ANSI.dim, ctx.useColor) + t(ctx.lang, 'hint.delete') + c(ANSI.reset, ctx.useColor));
@@ -294,6 +294,13 @@ function createSelects(cr: CreateState, ctx: Ctx): Section {
   return { left, right, cursorRow: 1 + cr.cursor };
 }
 
+/** Суффикс «⏳ N с» для индикаторов процесса; пусто, когда секунд в состоянии нет. */
+function elapsedSuffix(ctx: Ctx): string {
+  return ctx.state.opSeconds === null
+    ? ''
+    : ' ' + t(ctx.lang, 'busy.elapsed', { sec: ctx.state.opSeconds });
+}
+
 // Заглушки и подтверждения создания: view → [текст, bold?, подсказки]
 const CREATE_BUSY: Record<string, { text: (cr: CreateState, lang: string) => string; bold?: boolean; hints: StrKey[] }> = {
   'confirm-delete': { text: (cr, lang) => t(lang, 'busy.delete-env', { name: cr.name }), bold: true, hints: ['hint.confirm', 'hint.cancel'] },
@@ -318,7 +325,7 @@ function busySection<S>(
   ctx: Ctx,
 ): Section {
   const b = busy[view];
-  const left = [c(b.bold ? ANSI.bold : ANSI.dim, ctx.useColor) + b.text(s, ctx.lang) + c(ANSI.reset, ctx.useColor)];
+  const left = [c(b.bold ? ANSI.bold : ANSI.dim, ctx.useColor) + b.text(s, ctx.lang) + elapsedSuffix(ctx) + c(ANSI.reset, ctx.useColor)];
   const right = b.hints.map((h) => c(ANSI.dim, ctx.useColor) + t(ctx.lang, h) + c(ANSI.reset, ctx.useColor));
   return { left, right, cursorRow: -1 };
 }
@@ -482,7 +489,7 @@ function mcpList(ctx: Ctx): Section {
   } else {
     right.push(t(ctx.lang, 'mcp.hint.add'));
   }
-  if (state.mcpCheck === 'checking') right.push(c(ANSI.dim, ctx.useColor) + t(ctx.lang, 'mcp.live.checking') + c(ANSI.reset, ctx.useColor));
+  if (state.mcpCheck === 'checking') right.push(c(ANSI.dim, ctx.useColor) + t(ctx.lang, 'mcp.live.checking') + elapsedSuffix(ctx) + c(ANSI.reset, ctx.useColor));
   if (state.mcpCheck === 'error') right.push(c(ANSI.dim, ctx.useColor) + t(ctx.lang, 'mcp.live.error') + c(ANSI.reset, ctx.useColor));
   for (const err of state.mcpLive?.errors ?? []) {
     right.push(c(ANSI.dim, ctx.useColor) + t(ctx.lang, 'mcp.config.error', { v: err }) + c(ANSI.reset, ctx.useColor));
