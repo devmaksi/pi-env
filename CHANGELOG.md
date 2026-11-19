@@ -3,7 +3,7 @@
 Format: new features and bug fixes as separate blocks. Versions below 0.1.2 are in the git history.
 Russian text: [CHANGELOG.ru.md](CHANGELOG.ru.md).
 
-## [Unreleased]
+## [0.2.6] — 2026-11-19
 
 ### Responsiveness of long operations
 
@@ -56,6 +56,9 @@ Russian text: [CHANGELOG.ru.md](CHANGELOG.ru.md).
   directory verbatim — `settings.json`, `mcp.json`, `extensions/`, `skills/`, the model files
   and any file the environment owns that is not in the main agent's catalog; nothing is
   rebuilt from the main agent, so custom files survive.
+- Keys that collide with the tab hotkeys stay printable inside the name field: `e` types `e`
+  instead of opening the edit form, `c` types `c` instead of starting another clone — `C` and
+  `E` only act when the clone sub-screen is closed.
 - While the copy runs the screen shows `clone.copying` instead of the Enter hint: an
   environment directory can be hundreds of megabytes and the copy is a blocking file
   operation of its own (not a child process), so the frame is painted before it starts.
