@@ -9,10 +9,19 @@ import type { SelfUpdate } from '../src/selfupdate-net.js';
 import { t } from '../src/i18n.js';
 import { DEFAULT_APP_SETTINGS, saveAppSettings } from '../src/appsettings.js';
 import type { Term } from '../src/terminal.js';
+import type { CmdResult, RunFn } from '../src/cmd.js';
 
 const painted: string[] = [];
 const copied: string[] = [];
 const dirs: string[] = [];
+
+/**
+ * Фейковый слой внешних процессов. Вкладки «Расширения» и «MCP» дёргают `npm outdated`
+ * и `pi mcp list`; без `cmd` в deps сквозной прогон запускает настоящие команды, и в
+ * чистом контейнере `npm` на холодном кэше подвешивает процесс теста.
+ */
+const offlineCmd: RunFn = async (_cmd, _args, timeoutMs): Promise<CmdResult> =>
+  ({ ok: false, stdout: '', stderr: '', cancelled: false, timedOut: false, timeoutMs });
 
 function tmpRoot(): string {
   const dir = mkdtempSync(join(tmpdir(), 'pienv-'));
@@ -64,6 +73,7 @@ test('сквозной прогон: selfCheck → вкладка → Enter → 
     await run(tmpRootRu(), fakeTerm(['tab', 'tab', 'tab', 'tab', 'down', 'down', 'down', 'down', 'enter', 'ctrlc']), {
       selfCheck: async () => INFO,
       changelog: async () => parseChangelog('## [0.2.4] — 2026-11-01\n- new tab\n'),
+      cmd: offlineCmd,
     });
   } finally {
     if (prevAgentDir === undefined) delete process.env.PI_CODING_AGENT_DIR;
@@ -83,7 +93,7 @@ test('сквозной прогон без deps: вкладки «Обновле
   const prevAgentDir = process.env.PI_CODING_AGENT_DIR;
   process.env.PI_CODING_AGENT_DIR = agentDir;
   try {
-    await run(tmpRootRu(), fakeTerm(['tab', 'tab', 'tab', 'tab', 'tab', 'ctrlc']));
+    await run(tmpRootRu(), fakeTerm(['tab', 'tab', 'tab', 'tab', 'tab', 'ctrlc']), { cmd: offlineCmd });
   } finally {
     if (prevAgentDir === undefined) delete process.env.PI_CODING_AGENT_DIR;
     else process.env.PI_CODING_AGENT_DIR = prevAgentDir;

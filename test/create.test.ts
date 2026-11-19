@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert';
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync, readFileSync, readdirSync, existsSync, chmodSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync, readFileSync, readdirSync, existsSync, chmodSync, symlinkSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { validateName, createEnvironment, readSettings, updateEnvironment, cloneEnvironment } from '../src/create.js';
@@ -521,15 +521,19 @@ test('cloneEnvironment: источника нет — err.not-found', () => {
 
 test('cloneEnvironment: сбой копирования не оставляет неполной копии', () => {
   const root = tmpDir();
+  // Под root (контейнер, root-пользователь) права доступа не работают: chmod 0o000
+  // каталог не закрывает, поэтому сбой вызывает битый симлинк — statSync даёт ENOENT.
+  const asRoot = typeof process.getuid === 'function' && process.getuid() === 0;
   try {
     const src = makeSource(root, 'src');
-    chmodSync(join(src, 'own'), 0o000); // каталог источника невозможно прочитать
+    if (asRoot) symlinkSync(join(src, 'gone'), join(src, 'dangling'));
+    else chmodSync(join(src, 'own'), 0o000); // каталог источника невозможно прочитать
     const res = cloneEnvironment(root, 'src', 'dst', ['src'], 'ru');
     assert.equal(res.ok, false);
     assert.equal(res.ok ? '' : res.error, t('ru', 'err.clone', { name: 'dst' }));
     assert.equal(existsSync(join(root, 'dst')), false);
   } finally {
-    chmodSync(join(root, 'src', 'own'), 0o755); // чтобы удаление tmp-каталога прошло
+    if (!asRoot) chmodSync(join(root, 'src', 'own'), 0o755); // чтобы удаление tmp-каталога прошло
     rmSync(root, { recursive: true, force: true });
   }
 });

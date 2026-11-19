@@ -6,6 +6,8 @@ import { join } from 'node:path';
 import { run, type RunDeps } from '../src/run.js';
 import type { CmdResult, RunFn } from '../src/cmd.js';
 import type { Term } from '../src/terminal.js';
+import { saveAppSettings, DEFAULT_APP_SETTINGS } from '../src/appsettings.js';
+import { t } from '../src/i18n.js';
 
 const dirs: string[] = [];
 function tmpDir(): string {
@@ -13,9 +15,15 @@ function tmpDir(): string {
   dirs.push(dir);
   return dir;
 }
+/**
+ * Корень с закреплённым языком интерфейса. Сквозной прогон `run()` без настроек
+ * берёт язык из системной локали: у GitHub-раннера `LANG=C.UTF-8` → «en», и
+ * русские строки статуса/кадра перестают находиться тестом.
+ */
 function root(): string {
   const dir = tmpDir();
   mkdirSync(join(dir, 'e0'));
+  saveAppSettings(dir, { ...DEFAULT_APP_SETTINGS, language: 'ru' });
   return dir;
 }
 test.after(() => { for (const d of dirs) rmSync(d, { recursive: true, force: true }); });
@@ -88,13 +96,13 @@ test('app: Esc на экране процесса снимает процесс 
   assert.equal(add.length, 1);
   assert.equal(add[0].signal.aborted, true);
   const all = painted.join('\n');
-  assert.ok(all.includes('Добавление: docs…'), all);
-  assert.ok(all.includes('Прервано: docs'), all);
+  assert.ok(all.includes(t('ru', 'busy.mcp-add', { name: 'docs' })), all);
+  assert.ok(all.includes(t('ru', 'status.cancelled', { name: 'docs' })), all);
 });
 
 test('app: на экране процесса рисуется счётчик секунд', async () => {
   const { painted } = await drive([...MCP_ADD_KEYS, 'esc', 'ctrlc'], {});
-  assert.ok(painted.join('\n').includes('⏳ 0 с'), painted.join('\n'));
+  assert.ok(painted.join('\n').includes(t('ru', 'busy.elapsed', { sec: 0 })), painted.join('\n'));
 });
 
 test('app: Esc не запускает второй процесс — процесс ровно один', async () => {
