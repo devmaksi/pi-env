@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert';
 import {
-  initialState, reducer, listLength, makeCtx, emptyCatalog, freshCreate, freshExt, freshMcpTab, freshClone, busyProcessView,
+  initialState, reducer, listLength, makeCtx, realNamesOf, emptyCatalog, freshCreate, freshExt, freshMcpTab, freshClone, busyProcessView,
   SETTINGS_COUNT, LANGUAGE_ROW, type AppState, type ReducerCtx, type Catalog, type CatalogPkg, type ExtState } from '../src/state.js';
 import { ROW_ACTION, ROW_DELETE } from '../src/state.js';
 
@@ -64,6 +64,27 @@ test('Enter: окружение → run, последний пункт → creat
   const s = reducer({ ...initialState(), selected: 2 }, 'enter', rc(envs(2)));
   assert.equal(s.sub, 'create');
   assert.ok(s.create !== null && s.create.view === 'form');
+});
+
+/**
+ * Основной агент вне `<root>` — отдельная строка списка, поэтому курсор и Enter живут
+ * по строкам экрана: 0 «Основной», 1..N окружения, N+1 «Создать», N+2 «Корзина».
+ */
+test('envs: список с основной записью — ↓ доезжает до «Корзина», Enter по строкам экрана', () => {
+  const rows = ['agent', 'e0', 'e1']; // rc(rows) — строки целиком, как их рендерит экран
+  assert.equal(listLength('envs', rows.length), 5);
+  let s = initialState();
+  for (let i = 0; i < 6; i++) s = reducer(s, 'down', rc(rows));
+  assert.equal(s.selected, 4, 'курсор обязан встать на строку «Корзина»');
+  assert.equal(reducer({ ...initialState(), selected: 2 }, 'enter', rc(rows)).sub, 'run');
+  assert.equal(reducer({ ...initialState(), selected: 3 }, 'enter', rc(rows)).sub, 'create');
+  assert.notEqual(reducer({ ...initialState(), selected: 4 }, 'enter', rc(rows)).trash, null);
+});
+
+test('envs: уникальность имени — по realNames, курсор — по строкам списка целиком', () => {
+  const ctx = makeCtx(['agent', 'e0', 'e1'], true, [], ['e0', 'e1']);
+  assert.deepEqual(realNamesOf(ctx), ['e0', 'e1']);
+  assert.equal(listLength('envs', ctx.envNames.length), 5);
 });
 
 test('Enter внутри run-суб-экрана игнорируется', () => {

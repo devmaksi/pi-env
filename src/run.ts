@@ -187,17 +187,27 @@ export async function run(root: string, term: Term = createTerm(), deps: RunDeps
     return computeLayout({ width: term.width(), height: term.height() }).twoColumns;
   }
 
-  function envNames(): string[] {
-    return realEnvNames(load().envs);
+  /**
+   * Строки списка окружений в порядке экрана (основная запись включена) — это пространство
+   * индексов курсора: `renderEnvList` нумерует по нему и «Создать», и «Корзина».
+   */
+  function envRows(envs: Environment[] = load().envs): string[] {
+    return envs.map((e) => e.name);
   }
 
-  /** Контекст reducer: свежие имена окружений, записи корзины + раскладка. */
+  /** Имена обычных окружений (без основной записи) — проверка уникальности имён. */
+  function realNames(envs: Environment[] = load().envs): string[] {
+    return realEnvNames(envs);
+  }
+
+  /** Имена записей корзины (`dirName` из `.trash`). */
   function trashNames(): string[] {
     return cache.get().trash.map((e) => e.dirName);
   }
 
-  function rctx(names?: string[], tnames?: string[]): ReducerCtx {
-    return makeCtx(names ?? envNames(), twoColumns(), tnames ?? trashNames());
+  /** Контекст reducer: строки списка, имена для уникальности — свежие, корзина + раскладка. */
+  function rctx(rows?: string[], tnames?: string[], names?: string[]): ReducerCtx {
+    return makeCtx(rows ?? envRows(), twoColumns(), tnames ?? trashNames(), names ?? realNames());
   }
 
   /** Перечитывает каталог main-агента; ошибка — остаётся старый. */
@@ -423,7 +433,8 @@ export async function run(root: string, term: Term = createTerm(), deps: RunDeps
     const prevRecheckMcp = state.recheckMcp;
     const prevLang = state.language;
     const { envs } = load();
-    const names = realEnvNames(envs);
+    const rows = envRows(envs);
+    const names = realNames(envs);
     const tnames = trashNames();
     const prev: PrevSnap = { cancelRequested: false, view: state.create?.view ?? null, ext: state.ext, mcp: state.mcp, tab: state.tab, mcpCheck: state.mcpCheck, createMcpCheck: state.create?.mcpCheck ?? 'idle', selfCheck: state.selfCheck };
     const row = envs[state.selected];
@@ -431,8 +442,8 @@ export async function run(root: string, term: Term = createTerm(), deps: RunDeps
       // `C` на основной строке — форма создания из основного: дерево агентского каталога
       // (sessions/, install/releases, tmp/) не копируется.
       state = row.main === true
-        ? reducer(state, { type: 'create-open', fromMain: true }, rctx(names, tnames))
-        : reducer(state, { type: 'clone-start', name: row.name, path: row.path }, rctx(names, tnames));
+        ? reducer(state, { type: 'create-open', fromMain: true }, rctx(rows, tnames, names))
+        : reducer(state, { type: 'clone-start', name: row.name, path: row.path }, rctx(rows, tnames, names));
     } else if (key === 'e' && state.tab === 'envs' && state.sub === null && state.trash === null && state.clone === null && row !== undefined) {
       const settings = readSettings(row.path) ?? {};
       state = reducer(state, {
@@ -441,7 +452,7 @@ export async function run(root: string, term: Term = createTerm(), deps: RunDeps
         store: row.details.modelsLink === 'linked',
         enabledModels: settings.enabledModels ?? [],
         modelCatalog: listProviders(row.path),
-      }, rctx(names, tnames));
+      }, rctx(rows, tnames, names));
     } else if ((key === 'r' || key === 'R') && state.tab === 'envs' && state.sub === null && state.trash === null && state.clone === null && row !== undefined) {
       // `R` на вкладке окружений — починка связи с общим каталогом моделей (битый симлинк).
       const file = storeFile;
@@ -451,7 +462,7 @@ export async function run(root: string, term: Term = createTerm(), deps: RunDeps
         statusMsg = r.ok ? t(state.language, 'status.store-repaired') : r.error;
       }
     } else {
-      state = reducer(state, key, rctx(names, tnames));
+      state = reducer(state, key, rctx(rows, tnames, names));
     }
     // Заявка на отмену считается после reducer: экран процесса — тот, что стал текущим.
     prev.cancelRequested = key === 'esc' && busyProcessView(state);

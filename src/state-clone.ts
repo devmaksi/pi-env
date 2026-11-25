@@ -2,6 +2,7 @@ import { validateName } from './create.js';
 import { t } from './i18n.js';
 import { isPrintable } from './state-mcp.js';
 import { MAX_NAME } from './state-form.js';
+import { realNamesOf } from './state.js';
 import type { AppState, Action, ReducerCtx } from './state.js';
 
 /**
@@ -44,7 +45,7 @@ export function cloneMachine(state: AppState, action: Action, ctx: ReducerCtx): 
     return { ...state, clone: { ...cl, name, caret: cl.caret - 1, error: null } };
   }
   if (action === 'enter') {
-    const err = validateName(cl.name, ctx.envNames, state.language);
+    const err = validateName(cl.name, realNamesOf(ctx), state.language);
     return err !== null
       ? { ...state, clone: { ...cl, error: err } }
       : { ...state, clone: { ...cl, pending: true } };
@@ -68,6 +69,7 @@ export function applyCloneResult(
 ): AppState {
   if (state.clone === null) return state;
   if (!action.ok) return { ...state, clone: { ...state.clone, pending: false, error: action.message } };
+  // Индекс копии — по строкам списка целиком (`envNames`), как их нумерует экран.
   const at = action.name === undefined ? -1 : ctx.envNames.indexOf(action.name);
   const selected = at >= 0 ? at : Math.max(0, Math.min(state.selected, ctx.envNames.length - 1));
   return { ...state, clone: null, selected };

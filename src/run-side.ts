@@ -64,9 +64,15 @@ export interface Loop {
   loadChangelog(): void;
 }
 
-/** Контекст reducer для side-effect-хуков (имена записей корзины — для суб-экрана «Корзина»). */
-function rctx(loop: Loop, envNames: string[]): ReducerCtx {
-  return makeCtx(envNames, loop.twoColumns(), loop.trashNames());
+/**
+ * Контекст reducer для side-effect-хуков.
+ * `envNames` — список окружений целиком (с основной записью): именно так строки нумерует
+ * `renderEnvList`, и по ним живут курсор, «Создать» и «Корзина». `realNames` — имена обычных
+ * окружений (`names`), по ним проверяется уникальность имени.
+ */
+function rctx(loop: Loop, names: string[]): ReducerCtx {
+  const envs = loop.envs();
+  return makeCtx(envs.map((e) => e.name), loop.twoColumns(), loop.trashNames(), names);
 }
 
 /** Имена обычных окружений из снимка: основная запись в проверке имён не участвует. */

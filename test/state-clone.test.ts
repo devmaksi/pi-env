@@ -112,6 +112,26 @@ test('clone-result (успех) закрывает суб-экран и став
   assert.equal(s.selected, 2);
 });
 
+test('clone-result: курсор на копии — индекс по строкам экрана (основная запись — строка списка)', () => {
+  const s = applyCloneResult(
+    { ...open({ pending: true }), selected: 0 },
+    { type: 'clone-result', ok: true, message: '/root/two-copy', name: 'two-copy' },
+    makeCtx(['agent', 'one', 'two', 'two-copy'], true, [], ['one', 'two', 'two-copy']),
+  );
+  assert.equal(s.selected, 3);
+});
+
+test('клон: имя копии проверяется по realNames, а не по строкам списка', () => {
+  // основная запись вне `<root>` — её имя не занято, имя обычного окружения — занято
+  const c = makeCtx(['agent', 'one'], true, [], ['one']);
+  const free = reducer({ ...open({ name: 'agent', caret: 5 }) }, 'enter', c);
+  assert.equal(free.clone!.error, null);
+  assert.equal(free.clone!.pending, true);
+  const taken = reducer({ ...open({ name: 'one', caret: 3 }) }, 'enter', c);
+  assert.ok(taken.clone!.error !== null);
+  assert.equal(taken.clone!.pending, false);
+});
+
 test('clone-result (ошибка) оставляет суб-экран с текстом ошибки', () => {
   const err = 'Окружение с таким именем уже есть';
   const s = applyCloneResult(

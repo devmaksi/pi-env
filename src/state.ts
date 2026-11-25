@@ -137,12 +137,26 @@ function clampSelected(state: AppState, ctx: ReducerCtx): number {
   return Math.max(0, Math.min(state.selected, len - 1));
 }
 
-/** Контекст reducer: имена окружений + вариант раскладки. */
+/**
+ * Контекст reducer: список окружений + записи корзины + вариант раскладки.
+ *
+ * `envNames` — строки списка окружений в порядке экрана, включая основную запись:
+ * `renderEnvList` нумерует строки по `envs` целиком, поэтому это и есть пространство
+ * индексов курсора (`listLength`, Enter по «Создать»/«Корзина», курсор на копии).
+ * `realNames` — имена обычных окружений (без основной записи): по ним проверяется
+ * уникальность имени в форме и при клонировании. Без `realNames` берутся строки целиком.
+ */
 export interface ReducerCtx {
   envNames: string[];
+  realNames?: string[];
   twoColumns: boolean;
   /** Имена записей корзины (`dirName` из `.trash`) — Enter/X в суб-экране корзины. */
   trashNames?: string[];
+}
+
+/** Имена для проверки уникальности: обычное окружение, основная запись вне списка имён. */
+export function realNamesOf(ctx: ReducerCtx): string[] {
+  return ctx.realNames ?? ctx.envNames;
 }
 
 /** View, за которыми стоит дочерний процесс (его и отменяет Esc); файловые view формы — вне списка. */
@@ -160,9 +174,15 @@ export function busyProcessView(state: AppState): boolean {
   return false;
 }
 
-/** Общий конструктор контекста для run.ts и run-side.ts. */
-export function makeCtx(envNames: string[], twoColumns: boolean, trashNames: string[] = []): ReducerCtx {
-  return { envNames, twoColumns, trashNames };
+/**
+ * Общий конструктор контекста для run.ts и run-side.ts.
+ * `envNames` — строки списка окружений (с основной записью), `realNames` — имена обычных
+ * окружений для проверки уникальности; по умолчанию совпадают.
+ */
+export function makeCtx(
+  envNames: string[], twoColumns: boolean, trashNames: string[] = [], realNames: string[] = envNames,
+): ReducerCtx {
+  return { envNames, realNames, twoColumns, trashNames };
 }
 
 /** Действие — результат сервисной команды (не клавиша): явная проверка для createReducer. */
@@ -176,7 +196,7 @@ export function reducer(state: AppState, action: Action, ctx: ReducerCtx): AppSt
   const applied = applyResults(state, action, ctx);
   if (applied !== null) return applied;
   if (state.sub === 'create' && state.create !== null) {
-    const next = createReducer(state.create, action, state.catalog, ctx.envNames, state.language);
+    const next = createReducer(state.create, action, state.catalog, realNamesOf(ctx), state.language);
     if (next === null) return { ...state, sub: null, create: null };
     return { ...state, create: next };
   }

@@ -352,7 +352,9 @@
   с текстом)
 - `src/state.ts` — ядро состояния: `AppState` (+ `pkgCheck`, `pkgLatest`, `ext`,
   `mcp`, `trash`, `clone`, `opSeconds`), `Action` (`clone-start`/`clone-result`),
-  `ReducerCtx` (`envNames`, `trashNames`, `twoColumns`),
+  `ReducerCtx` (`envNames` — строки списка окружений целиком, с основной записью: по ним живут
+  курсор/`listLength`/Enter; `realNames` + `realNamesOf` — имена обычных окружений для уникальности;
+  `trashNames`, `twoColumns`),
   `busyProcessView(state)`/`PROCESS_VIEWS` — какие экраны принадлежат процессу (его снимает Esc),
   `reducer` — диспетчер (`applyResults` → `createReducer` → `extMachine` →
   `mcpMachine` → `trashMachine` → `reducerMain`: esc/tab/↑↓/←→/Enter/Space/X);
@@ -388,7 +390,8 @@
   сохранение настроек), обёртки команд (`checkUpdates`, `doUpdateAll`,
   `doUpdateOne`, `doRemove`, `doInstall`, `doMcpAdd`, `loadPackageCatalog`)
   поверх `pi-actions.ts`/`cmd.ts`, объект `Loop` для побочных эффектов
-  (`prevFrame` + `paintFrame` — дифф-репок; `makeProgressPainter`/`PROGRESS_THROTTLE_MS` — throttle прогресса каталога; `cache` — снимок окружений из `env-cache.ts`, `startOp`/`cancelBusy`/`cancelAll` — отмена процессов, `opTicker` — секунды, `Loop` отдаёт `invalidate`/`trashNames`)
+  (`prevFrame` + `paintFrame` — дифф-репок; `makeProgressPainter`/`PROGRESS_THROTTLE_MS` — throttle прогресса каталога; `cache` — снимок окружений из `env-cache.ts`, `startOp`/`cancelBusy`/`cancelAll` — отмена процессов, `opTicker` — секунды, `Loop` отдаёт `invalidate`/`trashNames`;
+  `envRows` — строки списка окружений для курсора, `realNames` — имена для уникальности)
 - `src/env-cache.ts` — кэш снимка окружений и корзины (чистый): `scanSignature(root, agentDir)`
   (mtime корня, каталогов окружений, `settings.json`/`mcp.json`/`extensions/`/`skills/`/`models.json` —
   и те же проверки для каталога основного агента), `createScanCache(root, agentDir, deps)` →
@@ -436,7 +439,10 @@
   копирования без неполной копии), `state-clone.test.ts` — машина суб-экрана (имя по
   умолчанию, каретка, Enter/Esc/TAB, `clone-result`), `render-clone.test.ts` — кадр
   суб-экрана и инвариант рамок, `app-clone.test.ts` — сквозной `run()`: `C` → Enter →
-  копия на диске, `C` не на окружении — ничего, занятое имя — ошибка в статусе
+  копия на диске, `C` не на окружении — ничего, занятое имя — ошибка в статусе,
+  `app-main-row.test.ts` — сквозной `run()` при основном агенте отдельной строкой списка: ↓ доезжает
+  до «Корзина (2)» и Enter открывает корзину, Enter по «Создать» открывает форму создания (язык
+  корня закреплён `saveAppSettings`, кадры сверяются через `t('ru', …)`)
 - `demo/ptycast.py` — PTY-стенд съёмки: `openpty` + reader-поток, запись asciinema
   cast v2, `alt_fix` (первый кадр после `\x1b[?1049h`), `Step` (клавиши, маркер,
   пауза до клавиш), рендер через `agg` (чистые функции, тесты `demo/test_ptycast.py`)
@@ -527,6 +533,13 @@
   принимают необязательный `signal` и `run: RunFn`, слой запуска подставляется в тестах через
   `RunDeps.cmd`. `Esc` снимает только процесс текущего busy-экрана (`busyProcessView`), `Ctrl+C` —
   все процессы (`cancelAll`); живая проверка MCP в `Esc` не входит.
+- Индексы списка окружений — одни на все слои: `ReducerCtx.envNames` = строки списка целиком
+  (`envs.map(e => e.name)`, основная запись — тоже строка), именно так их нумерует `renderEnvList`;
+  по ним считаются `listLength('envs')`, Enter по «Создать»/«Корзина», курсор после корзины
+  (`applyTrashResult`) и курсор на копии (`applyCloneResult`). Уникальность имени — по
+  `ReducerCtx.realNames` (`realNamesOf`, это `realEnvNames`). Два разных списка в этих местах =
+  сдвиг курсора: при основном агенте отдельной строкой «Корзина» становится недостижимой ↓, а Enter
+  открывает действие строкой раньше.
 - `scan()`/`listTrash()` кэшируются (`src/env-cache.ts`): своя мутация (создание, сохранение,
   переименование, корзина, MCP-операции) и окончание любой внешней команды обязаны звать
   `invalidate()` (в `run.ts` — через `Loop.invalidate`, в `startOp` — в `finally`). Разрешение имени

@@ -3,6 +3,22 @@
 Format: new features and bug fixes as separate blocks. Versions below 0.1.2 are in the git history.
 Russian text: [CHANGELOG.ru.md](CHANGELOG.ru.md).
 
+## [Unreleased]
+
+### Cursor of the environments list
+
+- **«Trash (N)» is reachable again.** The environments list numbers its rows by the whole list —
+  the main agent is one of them — while the reducer counted only the real environments
+  (`realEnvNames`). With the main agent as a separate row the screen had one row more than the
+  reducer knew about: ↓ stopped on «Create», «Trash» was unreachable, and Enter opened the action
+  one row above the cursor (the last environment opened the create form). `ReducerCtx.envNames` is
+  now the row space (main entry included) and `ReducerCtx.realNames` — the names for uniqueness
+  checks (`realNamesOf`), which is what `realEnvNames` had always been used for.
+- Tests: `test/app-main-row.test.ts` (a real `run()` cycle: ↓ reaches «Trash (2)» and Enter opens it,
+  Enter on «Create» opens the form and not the trash), `test/state.test.ts` (the row/Enter mapping
+  with a separate main row), `test/state-clone.test.ts` (the cursor lands on the copy by row, the
+  copy name is validated against `realNames`).
+
 ## [0.2.6] — 2026-11-19
 
 ### Responsiveness of long operations
