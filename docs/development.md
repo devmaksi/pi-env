@@ -103,6 +103,11 @@ mentioned by name here rather than linked.
   a deleted environment is moved into `<root>/.trash` instead of an irreversible
   `rm -rf`; the “Trash” sub-screen restores it or deletes it forever.
 
+- The main agent as an environment — `docs/superpowers/specs/2026-11-25-main-pi-as-environment-design.md`:
+  an environment is identified by a path (`Environment.path`), the main agent is the leading
+  entry of the list (`withMain`); editing it patches `settings.json` and leaves the agent
+  directory alone, deleting and renaming are disabled, and the CLI form is `pi-env main`.
+
 - Environment cloning — `docs/superpowers/specs/2026-11-19-env-clone-design.md`:
   `C` on an environment opens a name prompt and copies the environment directory
   verbatim (its own files included), instead of rebuilding it from the main agent.

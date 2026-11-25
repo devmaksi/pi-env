@@ -58,6 +58,10 @@ different purpose.
 - tabs: **Environments | Extensions | MCP | Settings | About**;
 - environment creation via a form: name, model, tools, extension packages,
   skills (catalog is taken from the main `pi` agent), MCP servers;
+- the main agent is the first entry in the environment list (its directory is
+  `PI_CODING_AGENT_DIR`, by default `~/.pi/agent`): it can be launched, edited
+  (model, packages, MCP) and used as the source of a new environment; it cannot
+  be deleted, trashed or renamed; in the CLI it is `pi-env main [pi args...]`;
 - launching an environment: a child `pi` process with
   `PI_CODING_AGENT_DIR=<environment path>`, back to the TUI on exit;
 - environment editing: change model, tools, packages, skills, MCP, rename,
