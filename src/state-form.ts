@@ -1,10 +1,10 @@
 import { validateName, envSkillDirName, type EnvSettings } from './create.js';
-import { normalizePkgSource, type Catalog, type CatalogPkg } from './catalog.js';
+import { normalizePkgSource, type Catalog, type CatalogPkg, type Provider } from './catalog.js';
 import { isPrintable, type McpFormAdd } from './state-mcp.js';
 import type { McpLiveReport, McpServer } from './mcp.js';
 import type { Action, PkgCheck } from './state.js';
 
-export type CreateView = 'form' | 'providers' | 'models' | 'tools' | 'packages' | 'skills' | 'submitting' | 'updating' | 'confirm-delete' | 'deleting' | 'confirm-remove' | 'removing' | 'install' | 'installing' | 'mcp' | 'mcp-op' | 'mcp-submitting' | 'mcp-confirm-remove';
+export type CreateView = 'form' | 'providers' | 'models' | 'model-list' | 'store-confirm' | 'store-op' | 'tools' | 'packages' | 'skills' | 'submitting' | 'updating' | 'confirm-delete' | 'deleting' | 'confirm-remove' | 'removing' | 'install' | 'installing' | 'mcp' | 'mcp-op' | 'mcp-submitting' | 'mcp-confirm-remove';
 
 /** Строка-кнопка в конце списка расширений. */
 export const UPDATE_ALL_ROW = 'Обновить все'; // внутренний ID, не отображается — подпись через i18n
@@ -39,6 +39,14 @@ export interface CreateState {
   envMcp: McpServer[];
   /** Имена MCP, отмеченные для окружения в режиме создания. */
   mcp: string[];
+  /** Ссылки `провайдер/модель`, доступные окружению ([] — все модели каталога). */
+  modelsSel: string[];
+  /** Каталог моделей правленного окружения: источник пикера. */
+  modelCatalog: Provider[];
+  /** Пользователь менял пикер — только тогда пишется `enabledModels`. */
+  modelsTouched: boolean;
+  /** Каталог моделей окружения лежит в хранилище (models.json — симлинк). */
+  store: boolean;
   mcpOp: { name: string; kind: 'copy' | 'remove' } | null;
   removingMcp: string | null;
   /** Проверка живого статуса MCP в списке формы и её результат. */
@@ -49,14 +57,16 @@ export interface CreateState {
 /** Индексы строк формы. */
 export const ROW_NAME = 0;
 export const ROW_MODEL = 1;
-export const ROW_TOOLS = 2;
-export const ROW_PACKAGES = 3;
-export const ROW_SKILLS = 4;
-export const ROW_MCP = 5;
-export const ROW_ACTION = 6;
-export const ROW_DELETE = 7;
+export const ROW_MODELS = 2;
+export const ROW_STORE = 3;
+export const ROW_TOOLS = 4;
+export const ROW_PACKAGES = 5;
+export const ROW_SKILLS = 6;
+export const ROW_MCP = 7;
+export const ROW_ACTION = 8;
+export const ROW_DELETE = 9;
 
-export const FORM_ROWS = 7; // имя, модель, инструменты, расширения, скиллы, MCP, действие
+export const FORM_ROWS = 9; // имя, модель, модели, хранилище, инструменты, расширения, скиллы, MCP, действие
 
 /** Число строк формы: в edit-режиме добавляется «Удалить», у основного агента — нет. */
 export function formRows(mode: 'create' | 'edit', main = false): number {
@@ -69,6 +79,7 @@ export function freshCreate(): CreateState {
     name: '', caret: 0, cursor: 0, provider: null, model: null,
     mode: 'create', origName: null, main: false,
     tools: [], packages: [], skills: [], view: 'form', error: null, done: null,
+    modelsSel: [], modelCatalog: [], modelsTouched: false, store: true,
     removing: null, installCatalog: [], installStatus: 'idle', installing: null, query: '',
     check: 'idle', latest: {},
     mcpAdd: null, envMcp: [], mcp: [], mcpOp: null, removingMcp: null, mcpCheck: 'idle', mcpLive: null,
@@ -82,6 +93,9 @@ export function freshEdit(
   catalog: Catalog,
   envMcp: McpServer[] = [],
   main = false,
+  store = false,
+  enabledModels: string[] = [],
+  modelCatalog: Provider[] = catalog.providers,
 ): CreateState {
   const ext = settings.extensions ?? [];
   const sk = settings.skills ?? [];
@@ -100,6 +114,7 @@ export function freshEdit(
     view: 'form',
     error: null,
     done: null,
+    modelsSel: [...enabledModels], modelCatalog, modelsTouched: false, store,
     removing: null, installCatalog: [], installStatus: 'idle', installing: null, query: '',
     check: 'idle', latest: {},
     mcpAdd: null, envMcp, mcp: [], mcpOp: null, removingMcp: null, mcpCheck: 'idle', mcpLive: null,
@@ -116,6 +131,20 @@ export function packageListSources(c: CreateState, catalog: Catalog): string[] {
   const sources = catalog.packages.map((p) => p.source);
   for (const s of c.packages) if (!sources.includes(s)) sources.push(s);
   return sources;
+}
+
+/** Строки пикера моделей: ссылки каталога + сохранённые ссылки, которых в каталоге нет. */
+export function modelRows(c: CreateState, providers: Provider[] = c.modelCatalog): Array<{ ref: string; missing: boolean }> {
+  const rows: Array<{ ref: string; missing: boolean }> = [];
+  for (const p of providers) for (const m of p.models) rows.push({ ref: `${p.name}/${m.id}`, missing: false });
+  for (const ref of c.modelsSel) if (!rows.some((r) => r.ref === ref)) rows.push({ ref, missing: true });
+  return rows;
+}
+
+/** Ссылка модели по умолчанию в форме (или null — модель не выбрана). */
+export function defaultModelRef(c: CreateState): string | null {
+  if (c.model === null) return null;
+  return c.provider !== null ? `${c.provider}/${c.model}` : c.model;
 }
 
 export function formReducer(c: CreateState, action: Action, envNames: string[], language: string): CreateState | null {
@@ -147,6 +176,10 @@ export function formReducer(c: CreateState, action: Action, envNames: string[], 
   if (action === 'enter') {
     if (c.done !== null) return null; // «Готово»
     if (c.cursor === ROW_MODEL) return { ...c, view: 'providers', cursor: ROW_NAME };
+    if (c.cursor === ROW_MODELS) return { ...c, view: 'model-list', cursor: 0 };
+    // Хранилище: включение — разрушительная операция (копия уходит в корзину), нужно
+    // подтверждение; выключение — обычная, делаем сразу.
+    if (c.cursor === ROW_STORE) return { ...c, view: c.store ? 'store-op' : 'store-confirm' };
     if (c.cursor === ROW_TOOLS) return { ...c, view: 'tools', cursor: ROW_NAME };
     if (c.cursor === ROW_PACKAGES) return { ...c, view: 'packages', cursor: ROW_NAME };
     if (c.cursor === ROW_MCP) return { ...c, view: 'mcp', cursor: 0 };

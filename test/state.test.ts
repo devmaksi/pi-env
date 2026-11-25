@@ -3,6 +3,7 @@ import assert from 'node:assert';
 import {
   initialState, reducer, listLength, makeCtx, emptyCatalog, freshCreate, freshExt, freshMcpTab, freshClone, busyProcessView,
   SETTINGS_COUNT, LANGUAGE_ROW, type AppState, type ReducerCtx, type Catalog, type CatalogPkg, type ExtState } from '../src/state.js';
+import { ROW_ACTION, ROW_DELETE } from '../src/state.js';
 
 /** Контекст reducer: имена окружений + раскладка. */
 const rc = (names: string[], two = true): ReducerCtx => ({ envNames: names, twoColumns: two });
@@ -165,7 +166,7 @@ function editState(name = 'env0', cursor = 5): AppState {
 }
 
 test('edit: сохранение с неизменённым именем — без коллизии с собой', () => {
-  const s = editState('env0', 6);
+  const s = editState('env0', ROW_ACTION);
   const next = reducer(s, 'enter', rc(envs(2)));
   assert.equal(next.create!.view, 'submitting');
 });
@@ -176,18 +177,18 @@ test('edit: переименование в занятое имя — ошибк
   const t = reducer(b, '1', rc(envs(2))); // env1
   assert.equal(t.create!.name, 'env1');
   let s2 = t;
-  for (let i = 0; i < 6; i++) s2 = reducer(s2, 'down', rc(envs(2)));
+  for (let i = 0; i < ROW_ACTION; i++) s2 = reducer(s2, 'down', rc(envs(2)));
   s2 = reducer(s2, 'enter', rc(envs(2)));
   assert.equal(s2.create!.error, 'Окружение с таким именем уже есть');
 });
 
-test('edit: курсор 7 — Удалить → confirm-delete, Esc — в форму, Enter → deleting', () => {
-  let s = editState('env0', 7);
+test('edit: курсор «Удалить» → confirm-delete, Esc — в форму, Enter → deleting', () => {
+  let s = editState('env0', ROW_DELETE);
   s = reducer(s, 'enter', rc(envs(2)));
   assert.equal(s.create!.view, 'confirm-delete');
   s = reducer(s, 'esc', rc(envs(2)));
   assert.equal(s.create!.view, 'form');
-  assert.equal(s.create!.cursor, 7);
+  assert.equal(s.create!.cursor, ROW_DELETE);
   s = reducer(s, 'enter', rc(envs(2)));
   assert.equal(s.create!.view, 'confirm-delete');
   s = reducer(s, 'enter', rc(envs(2)));
@@ -195,7 +196,7 @@ test('edit: курсор 7 — Удалить → confirm-delete, Esc — в ф�
 });
 
 test('delete-result: ok — форма закрывается, ошибка — в форму', () => {
-  const s = editState('env0', 7);
+  const s = editState('env0', ROW_DELETE);
   const del = reducer(reducer(s, 'enter', rc(envs(2))), 'enter', rc(envs(2)));
   assert.equal(del.create!.view, 'deleting');
   const ok = reducer(del, { type: 'delete-result', ok: true, message: 'env0' }, rc(envs(2)));
@@ -211,10 +212,10 @@ test('run-result: sub сбрасывается в null', () => {
   assert.equal(reducer(s, { type: 'run-result', ok: true }, rc(envs(2))).sub, null);
 });
 
-test('edit: курсор цикла на 8 строках', () => {
-  const s = editState('env0', 7);
+test('edit: курсор цикла на 10 строках', () => {
+  const s = editState('env0', ROW_DELETE);
   assert.equal(reducer(s, 'down', rc(envs(2))).create!.cursor, 0);
-  assert.equal(reducer(s, 'up', rc(envs(2))).create!.cursor, 6);
+  assert.equal(reducer(s, 'up', rc(envs(2))).create!.cursor, ROW_DELETE - 1);
 });
 
 function extCatalog(n: number): Catalog {

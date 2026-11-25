@@ -1,5 +1,5 @@
 import { type EnvSettings } from './create.js';
-import type { Catalog } from './catalog.js';
+import type { Catalog, Provider } from './catalog.js';
 import { localeCodes } from './i18n.js';
 import type { McpLiveReport, McpServer } from './mcp.js';
 import { mcpMachine, freshMcpForm, freshMcpTab, applyMcpLiveMain, onRefreshMcp } from './state-mcp.js';
@@ -18,7 +18,11 @@ import type { CreateState } from './state-form.js';
 import type { ExtState } from './state-ext.js';
 import type { McpTab } from './state-mcp.js';
 
-export { freshCreate, freshEdit, packageListSources, formRows, ROW_NAME, ROW_MODEL, ROW_TOOLS, ROW_PACKAGES, ROW_SKILLS, ROW_MCP, ROW_ACTION, ROW_DELETE, FORM_ROWS, MAX_NAME, UPDATE_ALL_ROW, INSTALL_ROW } from './state-form.js';
+export {
+  freshCreate, freshEdit, packageListSources, formRows, modelRows, defaultModelRef,
+  ROW_NAME, ROW_MODEL, ROW_MODELS, ROW_STORE, ROW_TOOLS, ROW_PACKAGES, ROW_SKILLS, ROW_MCP, ROW_ACTION, ROW_DELETE,
+  FORM_ROWS, MAX_NAME, UPDATE_ALL_ROW, INSTALL_ROW,
+} from './state-form.js';
 export type { CreateView, CreateState } from './state-form.js';
 export { mcpFormRows, mcpFormStep, mcpListNames, freshMcpForm, freshMcpTab, MCP_TYPES, MCP_EXPOSURES, MCP_ENUM_ROWS, enumValues, TEXT_ROWS } from './state-mcp.js';
 export type { McpFormAdd, McpTabView, McpTab, McpFormStep, McpExposure } from './state-mcp.js';
@@ -101,7 +105,9 @@ export function emptyCatalog(): Catalog {
 export type Action =
   | Key
   | { type: 'create-result'; ok: boolean; message: string }
-  | { type: 'edit-start'; name: string; path: string; main: boolean; settings: EnvSettings; mcp?: McpServer[] }
+  | { type: 'edit-start'; name: string; path: string; main: boolean; settings: EnvSettings; mcp?: McpServer[];
+      store?: boolean; enabledModels?: string[]; modelCatalog?: Provider[] }
+  | { type: 'store-result'; ok: boolean; message: string; store: boolean }
   | { type: 'run-result'; ok: boolean }
   | { type: 'delete-result'; ok: boolean; message: string }
   | { type: 'updates-result'; ok: boolean; latest: Record<string, string>; scope: 'main' | 'create' }
@@ -202,7 +208,14 @@ function applyResults(state: AppState, action: Action, ctx: ReducerCtx): AppStat
   if (typeof action !== 'object') return null;
   if (action.type === 'edit-start') {
     if (state.sub !== null || state.tab !== 'envs') return state;
-    return { ...state, sub: 'create', create: freshEdit(action.name, action.settings, state.catalog, action.mcp ?? [], action.main) };
+    return {
+      ...state,
+      sub: 'create',
+      create: freshEdit(
+        action.name, action.settings, state.catalog, action.mcp ?? [], action.main,
+        action.store ?? false, action.enabledModels ?? [], action.modelCatalog ?? state.catalog.providers,
+      ),
+    };
   }
   if (action.type === 'run-result') return { ...state, sub: null };
   if (action.type === 'updates-result') return applyUpdatesResult(state, action);

@@ -40,16 +40,16 @@ test('freshCreate/freshEdit: mcp-поля', () => {
   assert.equal(e.mcpAdd, null);
 });
 
-test('FORM_ROWS: create 7, edit 8; константы строк', () => {
-  assert.equal(formRows('create'), 7);
-  assert.equal(formRows('edit'), 8);
-  assert.equal(ROW_MCP, 5);
-  assert.equal(ROW_ACTION, 6);
-  assert.equal(ROW_DELETE, 7);
+test('FORM_ROWS: create 9, edit 10; константы строк', () => {
+  assert.equal(formRows('create'), 9);
+  assert.equal(formRows('edit'), 10);
+  assert.equal(ROW_MCP, 7);
+  assert.equal(ROW_ACTION, 8);
+  assert.equal(ROW_DELETE, 9);
 });
 
 test('Форма: Enter на ROW_MCP — список «mcp»', () => {
-  const s = reducer(createState({ cursor: 5 }), 'enter', rc(envs(1)));
+  const s = reducer(createState({ cursor: ROW_MCP }), 'enter', rc(envs(1)));
   assert.equal(s.create?.view, 'mcp');
   assert.equal(s.create?.cursor, 0);
 });

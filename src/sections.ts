@@ -2,6 +2,8 @@ import { dirname } from 'node:path';
 import type { Layout } from './layout.js';
 import {
   enumValues,
+  modelRows,
+  defaultModelRef,
   mcpFormRows,
   mcpListNames,
   packageListSources,
@@ -63,6 +65,7 @@ export function renderCreate(cr: CreateState, ctx: Ctx): Section {
     : cr.view === 'packages' ? createPackages(cr, ctx)
     : cr.view === 'mcp' ? createMcp(cr, ctx)
     : cr.view === 'install' ? createInstall(cr, ctx)
+    : cr.view === 'model-list' ? createModelList(cr, ctx)
     : cr.view === 'providers' || cr.view === 'models' || cr.view === 'tools' || cr.view === 'skills'
       ? createSelects(cr, ctx)
       : busySection(CREATE_BUSY, cr.view, cr, ctx);
@@ -81,6 +84,8 @@ function createForm(cr: CreateState, ctx: Ctx): Section {
   const rows = [
     t(ctx.lang, cr.main ? 'form.name-main' : 'form.name') + (cr.main ? cr.name : caret),
     t(ctx.lang, 'form.model') + model,
+    t(ctx.lang, 'form.models') + modelsSummary(cr, ctx.lang),
+    t(ctx.lang, 'form.store') + t(ctx.lang, cr.store ? 'form.store-on' : 'form.store-off'),
     t(ctx.lang, 'form.tools') + cr.tools.length,
     t(ctx.lang, 'form.packages') + cr.packages.length,
     t(ctx.lang, 'form.skills') + cr.skills.length,
@@ -265,6 +270,34 @@ export function renderMcpForm(f: McpFormAdd, ctx: Ctx, title: string): Section {
 }
 
 /** Списки выбора: провайдер / модель / инструменты / скиллы. */
+/** Значение строки «Модели»: пустой выбор — все модели каталога. */
+function modelsSummary(cr: CreateState, lang: string): string {
+  if (cr.modelsSel.length === 0) return t(lang, 'form.models-all');
+  return `${cr.modelsSel.length}/${modelRows(cr).length}`;
+}
+
+/** Пикер моделей, доступных окружению: галки, устаревшие ссылки помечены. */
+function createModelList(cr: CreateState, ctx: Ctx): Section {
+  const left: string[] = [];
+  const right: string[] = [];
+  const rows = modelRows(cr);
+  left.push(c(ANSI.bold, ctx.useColor) + t(ctx.lang, 'sel.models') + c(ANSI.reset, ctx.useColor));
+  if (rows.length === 0) left.push(c(ANSI.dim, ctx.useColor) + t(ctx.lang, 'empty') + c(ANSI.reset, ctx.useColor));
+  const def = defaultModelRef(cr);
+  rows.forEach((r, i) => {
+    const mark = cr.modelsSel.includes(r.ref) ? '✓ ' : '  ';
+    const note = r.missing ? '  ' + t(ctx.lang, 'form.models-missing') : r.ref === def ? '  ' + t(ctx.lang, 'form.models-default') : '';
+    left.push(listRow(i, cr.cursor, mark + r.ref + note, ctx.L.leftWidth, ctx.useColor));
+  });
+  right.push(c(ANSI.dim, ctx.useColor) + t(ctx.lang, 'hint.select') + c(ANSI.reset, ctx.useColor));
+  right.push(c(ANSI.dim, ctx.useColor) + t(ctx.lang, 'hint.back') + c(ANSI.reset, ctx.useColor));
+  right.push(c(ANSI.dim, ctx.useColor) + t(ctx.lang, 'sel.models.none') + c(ANSI.reset, ctx.useColor));
+  if (cr.modelsSel.length > 0) {
+    right.push(t(ctx.lang, 'sel.models.count', { n: cr.modelsSel.length, m: rows.length }));
+  }
+  return { left, right, cursorRow: 1 + cr.cursor };
+}
+
 function createSelects(cr: CreateState, ctx: Ctx): Section {
   // вызывается диспетчером только для четырёх списочных view
   if (cr.view !== 'providers' && cr.view !== 'models' && cr.view !== 'tools' && cr.view !== 'skills') {
@@ -305,6 +338,8 @@ function elapsedSuffix(ctx: Ctx): string {
 
 // Заглушки и подтверждения создания: view → [текст, bold?, подсказки]
 const CREATE_BUSY: Record<string, { text: (cr: CreateState, lang: string) => string; bold?: boolean; hints: StrKey[] }> = {
+  'store-confirm': { text: (_cr, lang) => t(lang, 'busy.store-confirm'), bold: true, hints: ['hint.confirm', 'hint.cancel'] },
+  'store-op': { text: (_cr, lang) => t(lang, 'busy.store-op'), hints: ['hint.kill'] },
   'confirm-delete': { text: (cr, lang) => t(lang, 'busy.delete-env', { name: cr.name }), bold: true, hints: ['hint.confirm', 'hint.cancel'] },
   'deleting': { text: (_cr, lang) => t(lang, 'busy.deleting'), hints: ['hint.cancel'] },
   'submitting': { text: (_cr, lang) => t(lang, 'busy.creating'), hints: ['hint.cancel'] },

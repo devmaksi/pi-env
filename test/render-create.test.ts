@@ -24,10 +24,12 @@ function createState(over: Partial<AppState['create']> = {}, app: Partial<AppSta
   return { ...initialState(catalog), ...app, sub: 'create', create: { ...freshCreate(), ...over } };
 }
 
-test('форма создания: все шесть пунктов + действие', () => {
-  const s = render({ state: createState({ tools: ['searxng-search.ts'], skills: ['own-skill'] }), envs, width: 62, height: 12, root: '/root', useColor: false, status: null });
+test('форма создания: все пункты + действие', () => {
+  const s = render({ state: createState({ tools: ['searxng-search.ts'], skills: ['own-skill'] }), envs, width: 62, height: 14, root: '/root', useColor: false, status: null });
   assert.ok(s.includes('Имя:'));
   assert.ok(s.includes('Модель:'));
+  assert.ok(s.includes('Модели: все из каталога'));
+  assert.ok(s.includes('Хранилище: общий каталог'));
   assert.ok(s.includes('Свои инструменты: 1'));
   assert.ok(s.includes('Расширения: 0'));
   assert.ok(s.includes('Скиллы: 1'));
@@ -51,7 +53,7 @@ test('форма: ошибка валидации видна', () => {
 });
 
 test('форма: после создания — Готово и сообщение', () => {
-  const s = render({ state: createState({ name: 'prod', done: '/root/prod' }), envs, width: 62, height: 12, root: '/root', useColor: false, status: null });
+  const s = render({ state: createState({ name: 'prod', done: '/root/prod' }), envs, width: 62, height: 14, root: '/root', useColor: false, status: null });
   assert.ok(s.includes('Готово'));
   assert.ok(s.includes('Создано: /root/prod'));
 });
@@ -87,9 +89,9 @@ test('submitting — пометка процесса', () => {
 });
 
 test('узкий режим: форма рендерится одной колонкой', () => {
-  const s = render({ state: createState({ name: 'prod', caret: 4 }), envs, width: 40, height: 12, root: '/root', useColor: false, status: null });
+  const s = render({ state: createState({ name: 'prod', caret: 4 }), envs, width: 40, height: 14, root: '/root', useColor: false, status: null });
   const lines = s.split('\n');
-  assert.equal(lines.length, 12);
+  assert.equal(lines.length, 14);
   assert.ok(lines[1].includes('─'));
   assert.ok(!lines[1].includes('┬'));
   assert.ok(s.includes('Имя: prod▌'));
@@ -100,15 +102,15 @@ function editState(over: Partial<AppState['create']> = {}, app: Partial<AppState
   return { ...initialState(catalog), ...app, sub: 'create', create: { ...freshCreate(), mode: 'edit' as const, origName: 'dev', name: 'dev', ...over } };
 }
 
-test('форма edit: 8 строк — Сохранить и Удалить', () => {
-  const s = render({ state: editState(), envs, width: 62, height: 12, root: '/root', useColor: false, status: null });
+test('форма edit: 10 строк — Сохранить и Удалить', () => {
+  const s = render({ state: editState(), envs, width: 62, height: 14, root: '/root', useColor: false, status: null });
   assert.ok(s.includes('Сохранить'));
   assert.ok(s.includes('Удалить'));
   assert.ok(!s.includes('Создать'));
 });
 
 test('форма create: строки Удалить/Сохранить нет', () => {
-  const s = render({ state: createState(), envs, width: 62, height: 12, root: '/root', useColor: false, status: null });
+  const s = render({ state: createState(), envs, width: 62, height: 14, root: '/root', useColor: false, status: null });
   assert.ok(!s.includes('Удалить'));
   assert.ok(!s.includes('Сохранить'));
   assert.ok(s.includes('Создать'));
@@ -255,16 +257,18 @@ test('install: список каталога, команда установки,
 });
 
 test('форма на английском', () => {
-  const s = render({ state: createState({}, { language: 'en' }), envs, width: 62, height: 12, root: '/root', useColor: false, status: null });
+  const s = render({ state: createState({}, { language: 'en' }), envs, width: 62, height: 14, root: '/root', useColor: false, status: null });
   assert.ok(s.includes('Name:'));
   assert.ok(s.includes('Model:'));
+  assert.ok(s.includes('Models: all from the catalog'));
+  assert.ok(s.includes('Storage: shared catalog'));
   assert.ok(s.includes('Custom tools: 0'));
   assert.ok(s.includes('Create'));
 });
 
 test('create: экраны процесса подсказывают «Esc — прервать»', () => {
   for (const view of ['installing', 'updating', 'removing', 'mcp-submitting'] as const) {
-    const s = render({ state: editState({ view }), envs, width: 100, height: 12, root: '/root', useColor: false, status: null });
+    const s = render({ state: editState({ view }), envs, width: 100, height: 14, root: '/root', useColor: false, status: null });
     assert.ok(s.includes(t('ru', 'hint.kill')), view);
     assert.ok(!s.includes(t('ru', 'hint.back')), view);
   }
@@ -276,4 +280,32 @@ test('create: файловые submitting/deleting остаются с «Esc —
     assert.ok(s.includes(t('ru', 'hint.cancel')), view);
     assert.ok(!s.includes(t('ru', 'hint.kill')), view);
   }
+});
+
+test('пикер моделей: галки, отметка «нет в каталоге» и счёт', () => {
+  const s = render({
+    state: createState({ view: 'model-list', cursor: 1, provider: 'cpp', model: 'Bonsai-2', modelsSel: ['cpp/Bonsai-2', 'gone/model-x'], modelCatalog: catalog.providers }),
+    envs, width: 100, height: 14, root: '/root', useColor: false, status: null,
+  });
+  assert.ok(s.includes('✓ cpp/Bonsai-2  по умолчанию'), s);
+  assert.ok(s.includes('  cpp/Zed-1'), s);
+  assert.ok(s.includes('gone/model-x  нет в каталоге'), s);
+  assert.ok(s.includes('Отмечено: 2 из 4'), s);
+});
+
+test('пикер моделей: пустой выбор — подсказка про все модели каталога', () => {
+  const s = render({
+    state: createState({ view: 'model-list', modelCatalog: catalog.providers }),
+    envs, width: 100, height: 14, root: '/root', useColor: false, status: null,
+  });
+  assert.ok(s.includes('Ничего не отмечено'), s);
+});
+
+test('«Хранилище»: подтверждение подключения и экран операции', () => {
+  const ask = render({ state: editState({ view: 'store-confirm' }), envs, width: 100, height: 14, root: '/root', useColor: false, status: null });
+  assert.ok(ask.includes('Подключить общий каталог моделей'), ask);
+  assert.ok(ask.includes('Enter — подтвердить'), ask);
+  const op = render({ state: editState({ view: 'store-op' }), envs, width: 100, height: 14, root: '/root', useColor: false, status: null });
+  assert.ok(op.includes('Переподключаем каталог моделей'), op);
+  assert.ok(op.includes('Esc — прервать'), op);
 });

@@ -1,9 +1,9 @@
 import { filterPackages, type Catalog } from './catalog.js';
 import { freshMcpForm, mcpFormStep, mcpListNames, isPrintable } from './state-mcp.js';
 import {
-  clampToLen, formRows, packageListSources, formReducer, listViewReducer,
+  clampToLen, formRows, packageListSources, formReducer, listViewReducer, modelRows, defaultModelRef,
   UPDATE_ALL_ROW, INSTALL_ROW,
-  ROW_NAME, ROW_MODEL, ROW_TOOLS, ROW_PACKAGES, ROW_SKILLS, ROW_MCP,
+  ROW_NAME, ROW_MODEL, ROW_MODELS, ROW_STORE, ROW_TOOLS, ROW_PACKAGES, ROW_SKILLS, ROW_MCP,
   type CreateState, type CreateView,
 } from './state-form.js';
 import { isResultAction, type Action } from './state.js';
@@ -56,6 +56,15 @@ function createResultReducer(c: CreateState, action: Action, catalog: Catalog): 
     };
   }
   // Живой статус: успех — по содержимому stdout (pi mcp list выходит 1 при неподключённых).
+  if (action.type === 'store-result') {
+    return {
+      ...c,
+      view: 'form',
+      cursor: ROW_STORE,
+      store: action.store,
+      error: action.ok ? null : action.message,
+    };
+  }
   if (action.type === 'mcp-live-result') {
     if (action.report === null) return { ...c, mcpCheck: 'error' };
     return { ...c, mcpCheck: 'done', mcpLive: action.report };
@@ -87,6 +96,35 @@ const viewToolsSkills: ViewHandler = (c, action, catalog) => {
     const next = sel.includes(name) ? sel.filter((x) => x !== name) : [...sel, name];
     return { ...c, [field]: next };
   });
+};
+
+/** Пикер доступных окружению моделей (галки; модель по умолчанию не снимается). */
+const viewModelList: ViewHandler = (c, action) => {
+  const rows = modelRows(c);
+  if (action === 'up' || action === 'down') {
+    if (rows.length === 0) return c;
+    const delta = action === 'up' ? -1 : 1;
+    return { ...c, cursor: (c.cursor + delta + rows.length) % rows.length };
+  }
+  if (action === 'esc') return { ...c, view: 'form', cursor: ROW_MODELS };
+  if (action === 'enter' || action === 'space') {
+    const row = rows[c.cursor];
+    if (row === undefined) return c;
+    const on = c.modelsSel.includes(row.ref);
+    if (on && row.ref === defaultModelRef(c)) return c;   // модель по умолчанию остаётся доступной
+    return {
+      ...c,
+      modelsSel: on ? c.modelsSel.filter((r) => r !== row.ref) : [...c.modelsSel, row.ref],
+      modelsTouched: true,
+    };
+  }
+  return c;
+};
+
+const viewStoreConfirm: ViewHandler = (c, action) => {
+  if (action === 'esc') return { ...c, view: 'form', cursor: ROW_STORE };
+  if (action === 'enter') return { ...c, view: 'store-op' };
+  return c;
 };
 
 const viewPackages: ViewHandler = (c, action, catalog) => {
@@ -170,6 +208,9 @@ const CREATE_VIEWS: Record<CreateView, ViewHandler> = {
   form: (c, action, _catalog, envNames, language) => formReducer(c, action, envNames, language),
   providers: viewProviders,
   models: viewModels,
+  'model-list': viewModelList,
+  'store-confirm': viewStoreConfirm,
+  'store-op': passThrough,
   tools: viewToolsSkills,
   skills: viewToolsSkills,
   packages: viewPackages,

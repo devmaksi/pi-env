@@ -1,10 +1,19 @@
 import { test } from 'node:test';
+import { ROW_MODELS, ROW_STORE, ROW_TOOLS, ROW_PACKAGES, ROW_SKILLS, ROW_MCP, ROW_ACTION, ROW_DELETE, FORM_ROWS, modelRows } from '../src/state.js';
 import assert from 'node:assert';
 import { initialState, reducer, freshCreate, freshEdit, type AppState, type ReducerCtx, type Catalog } from '../src/state.js';
 import type { CatalogPkg } from '../src/catalog.js';
 
 /** Контекст reducer: имена окружений + раскладка. */
 const rc = (names: string[], two = true): ReducerCtx => ({ envNames: names, twoColumns: two });
+
+/** Курсор на строку формы с индексом row (строки ходят по кругу, считаем от текущего). */
+function toRow(s: AppState, row: number): AppState {
+  for (let guard = 0; s.create !== null && s.create.cursor !== row && guard < 40; guard++) {
+    s = reducer(s, 'down', rc([]));
+  }
+  return s;
+}
 
 const catalog: Catalog = {
   providers: [
@@ -65,15 +74,15 @@ test('навигация по форме и переход в списки', () 
   s = reducer(s, 'esc', rc([]));
   assert.equal(s.create!.view, 'form');
   assert.equal(s.create!.cursor, 1);
-  s = reducer(s, 'down', rc([])); // tools
+  s = toRow(s, ROW_TOOLS);
   s = reducer(s, 'enter', rc([]));
   assert.equal(s.create!.view, 'tools');
   s = reducer(s, 'esc', rc([]));
-  s = reducer(s, 'down', rc([])); // packages
+  s = toRow(s, ROW_PACKAGES);
   s = reducer(s, 'enter', rc([]));
   assert.equal(s.create!.view, 'packages');
   s = reducer(s, 'esc', rc([]));
-  s = reducer(s, 'down', rc([])); // skills
+  s = toRow(s, ROW_SKILLS);
   s = reducer(s, 'enter', rc([]));
   assert.equal(s.create!.view, 'skills');
 });
@@ -109,9 +118,7 @@ test('повторный выбор провайдера сбрасывает м
 });
 
 test('toggle инструментов/пакетов/скиллов по Space и Enter', () => {
-  let s = withCreate();
-  s = reducer(s, 'down', rc([]));
-  s = reducer(s, 'down', rc([]));
+  let s = toRow(withCreate(), ROW_TOOLS);
   s = reducer(s, 'enter', rc([])); // tools
   s = reducer(s, 'space', rc([]));
   assert.deepEqual(s.create!.tools, ['searxng-search.ts']);
@@ -120,13 +127,13 @@ test('toggle инструментов/пакетов/скиллов по Space �
   s = reducer(s, 'enter', rc([]));
   assert.deepEqual(s.create!.tools, ['searxng-search.ts']);
   s = reducer(s, 'esc', rc([]));
-  s = reducer(s, 'down', rc([])); // packages
+  s = toRow(s, ROW_PACKAGES);
   s = reducer(s, 'enter', rc([]));
   s = reducer(s, 'down', rc([])); // pkg-b
   s = reducer(s, 'enter', rc([]));
   assert.deepEqual(s.create!.packages, ['npm:pkg-b']);
   s = reducer(s, 'esc', rc([]));
-  s = reducer(s, 'down', rc([])); // skills
+  s = toRow(s, ROW_SKILLS);
   s = reducer(s, 'enter', rc([]));
   s = reducer(s, 'space', rc([]));
   assert.deepEqual(s.create!.skills, ['own-skill']);
@@ -134,8 +141,7 @@ test('toggle инструментов/пакетов/скиллов по Space �
 
 test('списки пустые — Enter/Space ничего не делают', () => {
   const s = { ...initialState({ ...catalog, tools: [] }), sub: 'create' as const, create: freshCreate() };
-  let t = reducer(s, 'down', rc([]));
-  t = reducer(t, 'down', rc([]));
+  let t = toRow(s, ROW_TOOLS);
   t = reducer(t, 'enter', rc([])); // tools (пусто)
   assert.equal(t.create!.view, 'tools');
   t = reducer(t, 'enter', rc([]));
@@ -145,10 +151,7 @@ test('списки пустые — Enter/Space ничего не делают',
 });
 
 test('списки: курсор зациклен', () => {
-  let s = withCreate();
-  s = reducer(s, 'down', rc([]));
-  s = reducer(s, 'down', rc([]));
-  s = reducer(s, 'down', rc([])); // packages (строка 3)
+  let s = toRow(withCreate(), ROW_PACKAGES);
   s = reducer(s, 'enter', rc([]));
   s = reducer(s, 'up', rc([]));
   assert.equal(s.create!.cursor, 2); // заходит на строку «Обновить все»
@@ -166,7 +169,7 @@ test('отправка: валидное имя → submitting', () => {
 
 test('отправка: пустое имя → ошибка', () => {
   let s = withCreate();
-  for (const ch of [6, 5, 4, 3, 2, 1]) s = reducer(s, 'down', rc([]));
+  s = toRow(s, ROW_ACTION);
   s = reducer(s, 'enter', rc([]));
   assert.equal(s.create!.view, 'form');
   assert.match(s.create!.error!, /имя/i);
@@ -223,10 +226,7 @@ test('ввод имени не влияет при курсоре вне стр�
 });
 
 function openPackages(s: AppState): AppState {
-  let t = s;
-  t = reducer(t, 'down', rc([]));
-  t = reducer(t, 'down', rc([]));
-  t = reducer(t, 'down', rc([]));
+  let t = toRow(s, ROW_PACKAGES);
   t = reducer(t, 'enter', rc([]));
   assert.equal(t.create!.view, 'packages');
   return t;
@@ -458,10 +458,96 @@ test('форма основного агента: имя не редактиру
 });
 
 test('форма основного агента: Enter на «Сохранить» отправляет исходное имя', () => {
-  const c = { ...freshEdit('agent', {}, catalog, [], true), cursor: 6 };
+  const c = { ...freshEdit('agent', {}, catalog, [], true), cursor: ROW_ACTION };
   const st: AppState = { ...initialState(catalog), sub: 'create', create: c };
   const next = reducer(st, 'enter', rc(['agent']));
   assert.equal(next.create!.view, 'submitting');
   assert.equal(next.create!.name, 'agent');
   assert.equal(next.create!.error, null);
+});
+
+test('строки формы: «Модели» и «Хранилище» идут сразу за «Моделью»', () => {
+  assert.equal(ROW_MODELS, 2);
+  assert.equal(ROW_STORE, 3);
+  assert.equal(ROW_TOOLS, 4);
+  assert.equal(ROW_PACKAGES, 5);
+  assert.equal(ROW_SKILLS, 6);
+  assert.equal(ROW_MCP, 7);
+  assert.equal(ROW_ACTION, 8);
+  assert.equal(ROW_DELETE, 9);
+  assert.equal(FORM_ROWS, 9);
+});
+
+const editModels = () => ({
+  ...initialState(catalog), sub: 'create' as const,
+  create: freshEdit('e1', { defaultProvider: 'cpp', defaultModel: 'Bonsai-2' }, catalog, [], false, true, ['cpp/Bonsai-2']),
+});
+
+test('пикер моделей: Enter на «Модели» открывает список, Space отмечает ссылку', () => {
+  let s = editModels();
+  for (let i = 0; i < ROW_MODELS; i++) s = reducer(s, 'down', rc([]));
+  assert.equal(s.create!.cursor, ROW_MODELS);
+  s = reducer(s, 'enter', rc([]));
+  assert.equal(s.create!.view, 'model-list');
+  s = reducer(s, 'down', rc([]));                     // cpp/Zed-1
+  s = reducer(s, 'space', rc([]));
+  assert.deepEqual(s.create!.modelsSel, ['cpp/Bonsai-2', 'cpp/Zed-1']);
+  assert.equal(s.create!.modelsTouched, true);
+  s = reducer(s, 'esc', rc([]));
+  assert.equal(s.create!.view, 'form');
+  assert.equal(s.create!.cursor, ROW_MODELS);
+  assert.deepEqual(s.create!.modelsSel, ['cpp/Bonsai-2', 'cpp/Zed-1']);
+});
+
+
+test('пикер моделей: модель по умолчанию не снимается', () => {
+  let s = editModels();
+  for (let i = 0; i < ROW_MODELS; i++) s = reducer(s, 'down', rc([]));
+  s = reducer(s, 'enter', rc([]));                     // курсор на cpp/Bonsai-2 (модель по умолчанию)
+  assert.equal(s.create!.view, 'model-list');
+  s = reducer(s, 'space', rc([]));
+  assert.deepEqual(s.create!.modelsSel, ['cpp/Bonsai-2']);
+});
+
+test('пикер моделей: сохранённая ссылка вне каталога помечена и снимается', () => {
+  const s0 = {
+    ...initialState(catalog), sub: 'create' as const,
+    create: freshEdit('e1', { defaultProvider: 'cpp', defaultModel: 'Bonsai-2' }, catalog, [], false, true, ['cpp/Bonsai-2', 'gone/model-x']),
+  };
+  const rows = modelRows(s0.create!, catalog.providers);
+  assert.deepEqual(rows.map((r) => [r.ref, r.missing]), [
+    ['cpp/Bonsai-2', false], ['cpp/Zed-1', false], ['openai/gpt-4o', false], ['gone/model-x', true],
+  ]);
+  let s = toRow(s0, ROW_MODELS);
+  s = reducer(s, 'enter', rc([]));
+  for (let i = 0; i < 3; i++) s = reducer(s, 'down', rc([]));   // к ссылке вне каталога
+  s = reducer(s, 'space', rc([]));
+  assert.deepEqual(s.create!.modelsSel, ['cpp/Bonsai-2']);
+});
+
+test('строка «Хранилище»: Enter при выключенном — подтверждение, Enter в подтверждении — операция', () => {
+  let s = { ...initialState(catalog), sub: 'create' as const, create: freshEdit('e1', {}, catalog, [], false, false) };
+  for (let i = 0; i < ROW_STORE; i++) s = reducer(s, 'down', rc([]));
+  s = reducer(s, 'enter', rc([]));
+  assert.equal(s.create!.view, 'store-confirm');
+  assert.equal(s.create!.store, false);
+  s = reducer(s, 'enter', rc([]));
+  assert.equal(s.create!.view, 'store-op');
+  s = reducer(s, 'esc', rc([]));                       // процесс не отменяется клавишами формы
+  assert.equal(s.create!.view, 'store-op');
+});
+
+test('строка «Хранилище»: Enter при включённом — сразу операция выключения', () => {
+  let s = { ...initialState(catalog), sub: 'create' as const, create: freshEdit('e1', {}, catalog, [], false, true) };
+  for (let i = 0; i < ROW_STORE; i++) s = reducer(s, 'down', rc([]));
+  s = reducer(s, 'enter', rc([]));
+  assert.equal(s.create!.view, 'store-op');
+  assert.equal(s.create!.store, true);
+});
+
+test('создание окружения: хранилище включено по умолчанию, выбор моделей пуст', () => {
+  const c = freshCreate();
+  assert.equal(c.store, true);
+  assert.deepEqual(c.modelsSel, []);
+  assert.equal(c.modelsTouched, false);
 });

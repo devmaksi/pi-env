@@ -4,6 +4,7 @@ import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { run } from '../src/run.js';
+import { ROW_DELETE } from '../src/state.js';
 import { listTrash } from '../src/trash.js';
 import type { Term } from '../src/terminal.js';
 
@@ -51,7 +52,7 @@ async function drive(root: string, keys: string[]): Promise<void> {
  * ↓ на окружение (первой строкой списка стоит основной агент) → E → вниз до строки «Удалить» (7)
  * → Enter (вопрос) → Enter (в корзину).
  */
-const KEYS_DELETE = ['down', 'e', 'down', 'down', 'down', 'down', 'down', 'down', 'down', 'enter', 'enter'];
+const KEYS_DELETE = ['down', 'e', ...Array(ROW_DELETE).fill('down'), 'enter', 'enter'];
 
 test('app: удаление окружения переносит его в .trash, «Корзина (1)» без самой корзины в списке', async () => {
   const root = tmpRoot();
