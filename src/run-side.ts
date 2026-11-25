@@ -75,8 +75,8 @@ function rctx(loop: Loop, names: string[]): ReducerCtx {
   return makeCtx(envs.map((e) => e.name), loop.twoColumns(), loop.trashNames(), names);
 }
 
-/** Имена обычных окружений из снимка: основная запись в проверке имён не участвует. */
-function envNames(loop: Loop): string[] {
+/** Имена обычных окружений (без основной записи) из снимка — для проверки уникальности имён. */
+function realNames(loop: Loop): string[] {
   return realEnvNames(loop.envs());
 }
 
@@ -120,8 +120,9 @@ function hooksTrash(loop: Loop): void {
     ? t(lang, pending.kind === 'restore' ? 'status.trash-restored' : 'status.trash-deleted', { name })
     : r.error;
   loop.status(message);
-  // Имена окружений — свежие (после восстановления их стало больше): по ним reducer держит курсор на «Корзина».
-  loop.setState(reducer(loop.state(), { type: 'trash-result', ok: r.ok, message }, rctx(loop, envNames(loop))));
+  // Снимок свежий (после инвалидации): reducer по строкам `ctx.envNames` держит курсор на «Корзина»,
+  // а `realNames` нужны ему только на проверку имён.
+  loop.setState(reducer(loop.state(), { type: 'trash-result', ok: r.ok, message }, rctx(loop, realNames(loop))));
   loop.repaint();
 }
 
@@ -136,12 +137,12 @@ function hooksClone(loop: Loop): void {
   // а окружение может весить сотни мегабайт: кадр с «Копирование…» показываем до него.
   loop.repaint();
   const lang = loop.state().language;
-  const res = cloneEnvironment(loop.root, cl.srcPath, cl.name, envNames(loop), lang);
+  const res = cloneEnvironment(loop.root, cl.srcPath, cl.name, realNames(loop), lang);
   loop.invalidate(); // в списке окружений появился клон
   const message = res.ok ? t(lang, 'status.env-cloned', { name: cl.name }) : res.error;
   loop.status(message);
-  // Имена окружений — свежие (после инвалидации их стало больше): по ним reducer ставит курсор на копию.
-  loop.setState(reducer(loop.state(), { type: 'clone-result', ok: res.ok, message, name: cl.name }, rctx(loop, envNames(loop))));
+  // Снимок свежий (после инвалидации): reducer по строкам `ctx.envNames` ставит курсор на копию.
+  loop.setState(reducer(loop.state(), { type: 'clone-result', ok: res.ok, message, name: cl.name }, rctx(loop, realNames(loop))));
   loop.repaint();
 }
 
@@ -396,7 +397,7 @@ async function doRun(loop: Loop, envs: Environment[]): Promise<void> {
   if (!(st.sub === 'run' && st.tab === 'envs' && st.selected < envs.length)) return;
   const res = await launchPi(loop.term, envs[st.selected]);
   loop.invalidate(); // дочерний `pi` мог поменять конфиг окружения
-  loop.setState(reducer(loop.state(), { type: 'run-result', ok: res.ok }, rctx(loop, envNames(loop))));
+  loop.setState(reducer(loop.state(), { type: 'run-result', ok: res.ok }, rctx(loop, realNames(loop))));
   if (!res.ok) loop.status(t(loop.state().language, 'status.pi-launch', { err: res.message }));
 }
 

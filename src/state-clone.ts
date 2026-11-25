@@ -69,8 +69,9 @@ export function applyCloneResult(
 ): AppState {
   if (state.clone === null) return state;
   if (!action.ok) return { ...state, clone: { ...state.clone, pending: false, error: action.message } };
-  // Индекс копии — по строкам списка целиком (`envNames`), как их нумерует экран.
-  const at = action.name === undefined ? -1 : ctx.envNames.indexOf(action.name);
+  // Индекс копии — по строкам списка целиком (`envNames`), как их нумерует экран. Ищем с конца:
+  // синтетическая основная запись стоит первой и может совпадать по имени с обычным окружением.
+  const at = action.name === undefined ? -1 : ctx.envNames.lastIndexOf(action.name);
   const selected = at >= 0 ? at : Math.max(0, Math.min(state.selected, ctx.envNames.length - 1));
   return { ...state, clone: null, selected };
 }

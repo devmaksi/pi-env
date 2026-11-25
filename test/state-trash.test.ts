@@ -127,3 +127,12 @@ test('applyTrashResult: после восстановления курсор с�
   const after = reducer(busy, { type: 'trash-result', ok: true, message: 'ok' }, ctx(['e0', 'e1', 'e2'], ['e8@2000']));
   assert.equal(after.selected, 4, 'курсор — на «Корзина» нового списка, а не на «Создать»');
 });
+
+test('applyTrashResult: основной агент отдельной строкой — курсор остаётся на строке «Корзина»', () => {
+  // Строки экрана: 0 «agent» (основной вне `<root>`), 1 e0, 2 e1, 3 «Создать», 4 «Корзина».
+  // Уникальность имён — по realNames (без «agent»), курсор — по строкам целиком.
+  const c = makeCtx(['agent', 'e0', 'e1'], true, ['e9@3000'], ['e0', 'e1']);
+  const busy = { ...open(), selected: 4, trash: freshTrash({ pending: { kind: 'restore', dirName: 'e9@3000' } }) };
+  const after = reducer(busy, { type: 'trash-result', ok: true, message: 'ok' }, c);
+  assert.equal(after.selected, 4, 'курсор на «Корзина» экрана, а не на «Создать»');
+});

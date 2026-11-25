@@ -77,8 +77,6 @@ async function drive(root: string, keys: string[]): Promise<string[][]> {
 }
 
 const trashRow = (lang: string) => t(lang, 'envs.trash', { n: 2 });
-
-
 test('app: основной агент отдельной строкой — ↓ доезжает до «Корзина (2)» и Enter открывает её', async () => {
   const root = tmpRoot();
   // rows: 0 Основной, 1 e0, 2 e1, 3 Создать, 4 Корзина
@@ -100,5 +98,20 @@ test('app: Enter по строке «Создать» открывает фор�
   const after = shots[4];
   assert.ok(after.some((l) => l.includes(t('ru', 'form.hint.space'))), 'форма создания не открылась');
   assert.ok(!after.some((l) => l.includes('gone')), 'Enter по «Создать» открыл корзину');
+});
+
+/**
+ * Инвариант «что подсвечено, то и правится»: `E` берёт строку по тому же номеру, что и подсветка
+ * (`envs[state.selected]`). До фикса список был короче подсвечиваемой области на строку, и этот
+ * инвариант держался только случайно — после рефакторинга `applyKey` он обязан быть проверен.
+ */
+test('app: E правит именно подсвеченную строку, а не соседнюю', async () => {
+  const root = tmpRoot();
+  // ↓↓ = курсор на e1 (0 Основной, 1 e0, 2 e1) → E открывает форму правки e1
+  const shots = await drive(root, ['down', 'down', 'e', 'ctrlc']);
+  const form = shots[3];
+  const nameRow = t('ru', 'form.name');
+  assert.ok(form.some((l) => l.includes(`${nameRow}e1▌`)), `в форме не e1:\n${form.slice(0, 12).join('\n')}`);
+  assert.ok(!form.some((l) => l.includes(`${nameRow}e0▌`)), 'форма открылась для e0');
 });
 

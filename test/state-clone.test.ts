@@ -121,6 +121,16 @@ test('clone-result: курсор на копии — индекс по стро�
   assert.equal(s.selected, 3);
 });
 
+test('clone-result: имя копии совпало с именем основной строки — курсор на копии, а не на основном', () => {
+  // Основная запись вне `<root>` называется «agent»; копия получила то же имя — строки совпадают.
+  const s = applyCloneResult(
+    { ...open({ pending: true }), selected: 0 },
+    { type: 'clone-result', ok: true, message: '/root/agent', name: 'agent' },
+    makeCtx(['agent', 'agent', 'two'], true, [], ['agent', 'two']),
+  );
+  assert.equal(s.selected, 1);
+});
+
 test('клон: имя копии проверяется по realNames, а не по строкам списка', () => {
   // основная запись вне `<root>` — её имя не занято, имя обычного окружения — занято
   const c = makeCtx(['agent', 'one'], true, [], ['one']);

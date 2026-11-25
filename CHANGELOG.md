@@ -17,7 +17,9 @@ Russian text: [CHANGELOG.ru.md](CHANGELOG.ru.md).
 - Tests: `test/app-main-row.test.ts` (a real `run()` cycle: ↓ reaches «Trash (2)» and Enter opens it,
   Enter on «Create» opens the form and not the trash), `test/state.test.ts` (the row/Enter mapping
   with a separate main row), `test/state-clone.test.ts` (the cursor lands on the copy by row, the
-  copy name is validated against `realNames`).
+  copy name is validated against `realNames`), `test/state-trash.test.ts` (after a restore the cursor
+  stays on the «Trash» row when the main agent is a row of its own). Each new test is verified to be
+  red on `45cc9a4` and red again under a mutation that puts the old index space back.
 
 ## [0.2.6] — 2026-11-19
 
