@@ -21,6 +21,14 @@ Russian text: [CHANGELOG.ru.md](CHANGELOG.ru.md).
   stays on the «Trash» row when the main agent is a row of its own). Each new test is verified to be
   red on `45cc9a4` and red again under a mutation that puts the old index space back.
 
+### A rebuilt binary stays runnable
+
+- **`pi-env` no longer answers «Permission denied» after a rebuild.** `tsc` never sets the executable
+  bit on the file it emits, while `bin` points straight at `dist/index.js` — and a tree linked with
+  `npm link` runs exactly that file, so `rm -rf dist && npm run build` left the global command
+  non-executable. `chmod +x dist/index.js` is now part of the `build` script, and `test/ci.test.ts`
+  checks both the script and the mode of the built bin.
+
 ## [0.2.6] — 2026-11-19
 
 ### Responsiveness of long operations

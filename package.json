@@ -42,7 +42,7 @@
     "developer-tools"
   ],
   "scripts": {
-    "build": "tsc && rm -rf dist/locales && cp -r src/locales dist/locales",
+    "build": "tsc && chmod +x dist/index.js && rm -rf dist/locales && cp -r src/locales dist/locales",
     "test": "tsx --test test/*.test.ts",
     "bench": "tsx bench/paint-bench.ts",
     "demo": "python3 -m demo.capture --langs en,ru",

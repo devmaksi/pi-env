@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readFileSync, statSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
 const repo = (rel: string): string => {
@@ -27,6 +27,30 @@ const staleFloorClaims = (text: string): string[] =>
 
 test('engines: минимальная Node — 22.19.0 (как у pi)', () => {
   assert.match(repo('package.json'), /"node":\s*">=22\.19\.0"/);
+});
+
+/**
+ * `bin` указывает на `dist/index.js`, а `tsc` не ставит исполняющий бит emitted-файлу.
+ * Без `chmod` в скрипте сборки `pi-env`, установленный через `npm link` (или из локальной
+ * сборки), перестаёт запускаться: `bash: …/bin/pi-env: Отказано в доступе`.
+ */
+test('build: скрипт сборки оставляет bin исполняемым', () => {
+  const pkg = JSON.parse(repo('package.json')) as { bin?: Record<string, string>; scripts?: Record<string, string> };
+  const bins = Object.values(pkg.bin ?? {});
+  assert.ok(bins.length > 0, 'package.json: нет поля bin');
+  const build = pkg.scripts?.build ?? '';
+  for (const bin of bins) {
+    assert.ok(build.includes(`chmod +x ${bin}`), `scripts.build не ставит exec-бит на ${bin}: ${build}`);
+  }
+});
+
+test('dist: собранный bin действительно исполняемый', () => {
+  const pkg = JSON.parse(repo('package.json')) as { bin?: Record<string, string> };
+  for (const bin of Object.values(pkg.bin ?? {})) {
+    const path = fileURLToPath(new URL(`../${bin}`, import.meta.url));
+    if (!existsSync(path)) continue; // сборки не было — проверять нечего
+    assert.ok((statSync(path).mode & 0o111) !== 0, `${bin}: после сборки нет exec-бита`);
+  }
 });
 
 test('доки не обещают Node ниже engines', () => {

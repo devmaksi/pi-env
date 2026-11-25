@@ -183,7 +183,8 @@
 
 ## Команды
 
-- `npm run build` — компиляция `src/` → `dist/`
+- `npm run build` — компиляция `src/` → `dist/` и `chmod +x dist/index.js` (bin-файл; без него
+  `pi-env`, установленный `npm link` на это дерево, перестаёт запускаться)
 - `npm test` — `tsx --test test/*.test.ts`
 - `npm run bench` — замер байт на репок (`bench/paint-bench.ts`: полный кадр против построчного диффа; в `dist` не попадает)
 - `npm run start` — запуск CLI (`node dist/index.js`)
@@ -533,6 +534,10 @@
   принимают необязательный `signal` и `run: RunFn`, слой запуска подставляется в тестах через
   `RunDeps.cmd`. `Esc` снимает только процесс текущего busy-экрана (`busyProcessView`), `Ctrl+C` —
   все процессы (`cancelAll`); живая проверка MCP в `Esc` не входит.
+- Собранный bin обязан оставаться исполняемым: `npm link` на рабочее дерево делает глобальный
+  `pi-env` ровно `dist/index.js`, а `tsc` exec-бит emitted-файлу не ставит. `chmod +x dist/index.js`
+  — часть скрипта `build` (не разовая команда); страховка — `test/ci.test.ts` проверяет и скрипт, и
+  режим файла после сборки. Симптом потери бита: `bash: …/bin/pi-env: Отказано в доступе`.
 - Индексы списка окружений — одни на все слои: `ReducerCtx.envNames` = строки списка целиком
   (`envs.map(e => e.name)`, основная запись — тоже строка), именно так их нумерует `renderEnvList`;
   по ним считаются `listLength('envs')`, Enter по «Создать»/«Корзина», курсор после корзины
