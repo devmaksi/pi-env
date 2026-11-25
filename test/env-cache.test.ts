@@ -2,12 +2,21 @@ import { test } from 'node:test';
 import assert from 'node:assert';
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { basename, join } from 'node:path';
 import { createScanCache, scanSignature } from '../src/env-cache.js';
 import { scan } from '../src/environments.js';
 import { listTrash } from '../src/trash.js';
 
 const dirs: string[] = [];
+
+/** Каталог main-агента вне корня — снимок обязан его учитывать. */
+function tmpAgent(): string {
+  const d = mkdtempSync(join(tmpdir(), 'pienv-agent-'));
+  dirs.push(d);
+  writeFileSync(join(d, 'settings.json'), JSON.stringify({ defaultModel: 'p/main' }));
+  return d;
+}
+const AGENT = tmpAgent();
 function tmpRoot(withEnvs = true): string {
   const dir = mkdtempSync(join(tmpdir(), 'pienv-'));
   dirs.push(dir);
@@ -19,12 +28,14 @@ function tmpRoot(withEnvs = true): string {
 }
 test.after(() => { for (const d of dirs) rmSync(d, { recursive: true, force: true }); });
 
-const names = (envs: { name: string }[] | null): string[] => (envs ?? []).map((e) => e.name);
+const real = (envs: { name: string; main?: boolean }[] | null) => (envs ?? []).filter((e) => e.main !== true);
+const names = (envs: { name: string; main?: boolean }[] | null): string[] => real(envs).map((e) => e.name);
+const dev = (envs: { name: string }[] | null) => (envs ?? []).find((e) => e.name === 'dev')!;
 
 test('подпись не изменилась → scan вызван один раз на много get()', () => {
   const root = tmpRoot();
   let scanCalls = 0;
-  const cache = createScanCache(root, {
+  const cache = createScanCache(root, AGENT, {
     scan: (r) => { scanCalls++; return scan(r); },
     listTrash: (r) => listTrash(r),
   });
@@ -38,18 +49,18 @@ test('подпись не изменилась → scan вызван один р
 test('правка settings.json снаружи → перечитка, детали обновились', () => {
   const root = tmpRoot();
   let scanCalls = 0;
-  const cache = createScanCache(root, { scan: (r) => { scanCalls++; return scan(r); } });
-  assert.equal(cache.get().envs?.[0].details.model, 'p/m1');
+  const cache = createScanCache(root, AGENT, { scan: (r) => { scanCalls++; return scan(r); } });
+  assert.equal(dev(cache.get().envs).details.model, 'p/m1');
   writeFileSync(join(root, 'dev', 'settings.json'), JSON.stringify({ defaultModel: 'p/m2' }));
   const snap = cache.get();
   assert.equal(scanCalls, 2);
-  assert.equal(snap.envs?.[0].details.model, 'p/m2');
+  assert.equal(dev(snap.envs).details.model, 'p/m2');
 });
 
 test('новое окружение, созданное снаружи → перечитка', () => {
   const root = tmpRoot();
   let scanCalls = 0;
-  const cache = createScanCache(root, { scan: (r) => { scanCalls++; return scan(r); } });
+  const cache = createScanCache(root, AGENT, { scan: (r) => { scanCalls++; return scan(r); } });
   assert.deepEqual(names(cache.get().envs), ['dev']);
   mkdirSync(join(root, 'outer'));
   const snap = cache.get();
@@ -61,7 +72,7 @@ test('подпись покрывает mcp.json и skills/', () => {
   const root = tmpRoot();
   mkdirSync(join(root, 'dev', 'skills', 'sk-a'), { recursive: true });
   let scanCalls = 0;
-  const cache = createScanCache(root, { scan: (r) => { scanCalls++; return scan(r); } });
+  const cache = createScanCache(root, AGENT, { scan: (r) => { scanCalls++; return scan(r); } });
   cache.get();
   writeFileSync(join(root, 'dev', 'mcp.json'), JSON.stringify({ servers: { docs: { type: 'stdio', command: 'c' } } }));
   cache.get();
@@ -74,7 +85,7 @@ test('подпись покрывает mcp.json и skills/', () => {
 test('invalidate() → перечитка без смены подписи', () => {
   const root = tmpRoot();
   let scanCalls = 0;
-  const cache = createScanCache(root, { scan: (r) => { scanCalls++; return scan(r); } });
+  const cache = createScanCache(root, AGENT, { scan: (r) => { scanCalls++; return scan(r); } });
   cache.get();
   cache.get();
   assert.equal(scanCalls, 1);
@@ -87,9 +98,9 @@ test('недоступный корень не кэшируется', () => {
   const root = tmpRoot(false);
   rmSync(root, { recursive: true, force: true });
   let sigCalls = 0;
-  const cache = createScanCache(root, {
+  const cache = createScanCache(root, AGENT, {
     scan: (r) => scan(r),
-    signature: (r) => { const s = scanSignature(r); sigCalls++; return s; },
+    signature: (r, a) => { const s = scanSignature(r, a); sigCalls++; return s; },
   });
   assert.equal(cache.get().envs, null);
   assert.equal(cache.get().envs, null);
@@ -100,14 +111,14 @@ test('недоступный корень не кэшируется', () => {
 
 test('scanSignature детерминирована на одном дереве', () => {
   const root = tmpRoot();
-  assert.equal(scanSignature(root), scanSignature(root));
-  assert.notEqual(scanSignature(root), null);
+  assert.equal(scanSignature(root, AGENT), scanSignature(root, AGENT));
+  assert.notEqual(scanSignature(root, AGENT), null);
 });
 
 test('корзина кэшируется вместе со снимком и перечитывается после invalidate', () => {
   const root = tmpRoot();
   let trashCalls = 0;
-  const cache = createScanCache(root, {
+  const cache = createScanCache(root, AGENT, {
     scan: (r) => scan(r),
     listTrash: (r) => { trashCalls++; return listTrash(r); },
   });
@@ -117,4 +128,35 @@ test('корзина кэшируется вместе со снимком и п
   cache.invalidate();
   cache.get();
   assert.equal(trashCalls, 2);
+});
+
+test('подпись включает агентский каталог: правка его settings.json → перечитка', () => {
+  const root = tmpRoot();
+  let scanCalls = 0;
+  const cache = createScanCache(root, AGENT, { scan: (r) => { scanCalls++; return scan(r); } });
+  cache.get();
+  writeFileSync(join(AGENT, 'settings.json'), JSON.stringify({ defaultModel: 'p/m2' }));
+  const after = cache.get();
+  assert.equal(scanCalls, 2);
+  assert.equal(after.envs?.[0].main, true);
+  assert.equal(after.envs?.[0].details.model, 'p/m2');
+});
+
+test('снимок: основная запись вне корня — первой, обычные окружения после неё', () => {
+  const root = tmpRoot();
+  const snap = createScanCache(root, AGENT, { scan: (r) => scan(r) }).get();
+  assert.deepEqual(snap.envs?.map((e) => e.name), [basename(AGENT), 'dev']);
+  assert.deepEqual(snap.envs?.map((e) => e.main === true), [true, false]);
+});
+
+test('снимок: агентский каталог внутри корня — одна строка с пометкой, без дубля', () => {
+  const root = tmpRoot();
+  const snap = createScanCache(root, join(root, 'dev'), { scan: (r) => scan(r) }).get();
+  assert.deepEqual((snap.envs ?? []).map((e) => e.name), ['dev']);
+  assert.equal(dev(snap.envs).main, true);
+});
+
+test('scanSignature: другой агентский каталог — другая подпись', () => {
+  const root = tmpRoot();
+  assert.notEqual(scanSignature(root, AGENT), scanSignature(root, join(root, 'dev')));
 });

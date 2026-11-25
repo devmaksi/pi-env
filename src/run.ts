@@ -73,19 +73,21 @@ export interface RunDeps {
   debugLog?: DebugLogFn;
   /** Слой запуска внешних процессов; по умолчанию настоящий `runCmd`, тесты подставляют фейк. */
   cmd?: RunFn;
+  /** Каталог main-агента; по умолчанию `PI_CODING_AGENT_DIR ?? ~/.pi/agent` — тесты задают явно. */
+  agentDir?: string;
 }
 
 export async function run(root: string, term: Term = createTerm(), deps: RunDeps = {}): Promise<void> {
   /** Последний записанный на экран кадр (для построчного диффа); null — писать целиком. */
   let prevFrame: PrevFrame | null = null;
-  const agentDir = defaultAgentDir();
+  const agentDir = deps.agentDir ?? defaultAgentDir();
   let catalog = loadCatalog(agentDir);
   const app = loadAppSettings(root);
   const lang0 = app.language ?? defaultLang(localeCodes());
   let state: AppState = { ...initialState(catalog), colorToggle: app.color, recheckUpdates: app.recheckUpdates, recheckMcp: app.recheckMcp, language: lang0 };
   let statusMsg: string | null = null;
   /** Снимок окружений и корзины: перечитывается при смене подписи дерева или после инвалидации. */
-  const cache = createScanCache(root);
+  const cache = createScanCache(root, agentDir);
 
   /**
    * Активные внешние процессы. `cancelOp` — тот, которому принадлежит busy-экран (его снимает

@@ -1,3 +1,4 @@
+import { dirname } from 'node:path';
 import type { Layout } from './layout.js';
 import {
   enumValues,
@@ -357,6 +358,15 @@ function envProblems(d: Environment['details'], lang: string): string[] {
   return out;
 }
 
+/**
+ * Подпись строки окружения: обычно — имя каталога; основной агент вне `<root>` —
+ * ярлык; основной агент, который и так лежит в `<root>`, — своё имя и пометка.
+ */
+function envRowLabel(e: Environment, ctx: Ctx): string {
+  if (e.main !== true) return e.name;
+  return dirname(e.path) === ctx.root ? `${e.name} · ${t(ctx.lang, 'envs.row-main')}` : t(ctx.lang, 'envs.main');
+}
+
 /** Вкладка «Окружения»: список + инфо-панель выбранного (без слияния в узком режиме). */
 export function renderEnvList(envs: Environment[], state: AppState, ctx: Ctx, trashCount: number): Section {
   const left: string[] = [];
@@ -364,7 +374,7 @@ export function renderEnvList(envs: Environment[], state: AppState, ctx: Ctx, tr
   interface Row { text: string; selected: boolean; isSep: boolean }
   const rows: Row[] = [];
   envs.forEach((e, i) => {
-    rows.push({ text: (i === state.selected ? '> ' : '  ') + e.name + (envProblems(e.details, ctx.lang).length > 0 ? ' ⚠' : ''), selected: i === state.selected, isSep: false });
+    rows.push({ text: (i === state.selected ? '> ' : '  ') + envRowLabel(e, ctx) + (envProblems(e.details, ctx.lang).length > 0 ? ' ⚠' : ''), selected: i === state.selected, isSep: false });
     if (i === envs.length - 1) {
       rows.push({ text: '─'.repeat(ctx.L.leftWidth - 2), selected: false, isSep: true });
     }
@@ -392,8 +402,9 @@ export function renderEnvList(envs: Environment[], state: AppState, ctx: Ctx, tr
   } else if (state.selected < envs.length) {
     const e = envs[state.selected];
     const d = e.details;
-    right.push(c(ANSI.bold, ctx.useColor) + e.name + c(ANSI.reset, ctx.useColor));
+    right.push(c(ANSI.bold, ctx.useColor) + envRowLabel(e, ctx) + c(ANSI.reset, ctx.useColor));
     right.push(t(ctx.lang, 'envs.path', { v: e.path }));
+    if (e.main === true) right.push(c(ANSI.dim, ctx.useColor) + t(ctx.lang, 'envs.main-note') + c(ANSI.reset, ctx.useColor));
     right.push('settings.json ' + (d.settingsError ? '⚠' : d.hasSettings ? '✓' : '—'));
     right.push(t(ctx.lang, 'form.model') + (d.model ?? '—'));
     for (const problem of envProblems(d, ctx.lang)) {

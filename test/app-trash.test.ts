@@ -47,8 +47,11 @@ async function drive(root: string, keys: string[]): Promise<void> {
   }
 }
 
-/** E → вниз до строки «Удалить» (7) → Enter (вопрос) → Enter (в корзину). */
-const KEYS_DELETE = ['e', 'down', 'down', 'down', 'down', 'down', 'down', 'down', 'enter', 'enter'];
+/**
+ * ↓ на окружение (первой строкой списка стоит основной агент) → E → вниз до строки «Удалить» (7)
+ * → Enter (вопрос) → Enter (в корзину).
+ */
+const KEYS_DELETE = ['down', 'e', 'down', 'down', 'down', 'down', 'down', 'down', 'down', 'enter', 'enter'];
 
 test('app: удаление окружения переносит его в .trash, «Корзина (1)» без самой корзины в списке', async () => {
   const root = tmpRoot();

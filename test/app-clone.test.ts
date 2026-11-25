@@ -91,7 +91,7 @@ test.after(() => { for (const d of dirs) rmSync(d, { recursive: true, force: tru
 test('C → Enter: копия окружения на диске, имя копии в списке и статус', async () => {
   const root = tmpRootRu();
   makeEnv(root, 'src');
-  const painted = await drive(root, ['c', 'enter', 'ctrlc']);
+  const painted = await drive(root, ['down', 'c', 'enter', 'ctrlc']);
   assert.equal(existsSync(join(root, 'src-copy')), true);
   assert.deepEqual(tree(join(root, 'src-copy')), tree(join(root, 'src')));
   assert.deepEqual(names(root), ['src', 'src-copy']);
@@ -104,7 +104,7 @@ test('C → Enter: копия окружения на диске, имя коп�
 test('C на строке «Создать» — ничего не происходит, каталогов не прибавилось', async () => {
   const root = tmpRootRu();
   makeEnv(root, 'src');
-  await drive(root, ['down', 'c', 'ctrlc']);
+  await drive(root, ['down', 'down', 'c', 'ctrlc']);
   assert.deepEqual(names(root), ['src']);
 });
 
@@ -121,7 +121,7 @@ test('клонирование в занятое имя: текст ошибки
   makeEnv(root, 'src');
   makeEnv(root, 'src-copy');
   writeFileSync(join(root, 'src-copy', 'marker.txt'), 'KEEP');
-  const painted = await drive(root, ['c', 'enter', 'ctrlc']);
+  const painted = await drive(root, ['down', 'c', 'enter', 'ctrlc']);
   assert.deepEqual(names(root), ['src', 'src-copy']);
   assert.equal(readFileSync(join(root, 'src-copy', 'marker.txt'), 'utf8'), 'KEEP');
   const frame = painted.join('\n');
@@ -140,6 +140,6 @@ test('имя копии набирается печатными клавишам
   const root = tmpRootRu();
   makeEnv(root, 'src');
   const erase = Array<string>(8).fill('backspace'); // дефолтное имя «src-copy»
-  await drive(root, ['c', ...erase, 'e', 'c', 'h', 'o', 'enter', 'ctrlc']);
+  await drive(root, ['down', 'c', ...erase, 'e', 'c', 'h', 'o', 'enter', 'ctrlc']);
   assert.deepEqual(names(root), ['echo', 'src']);
 });

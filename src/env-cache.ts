@@ -1,6 +1,6 @@
 import { readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
-import { scan, type Environment } from './environments.js';
+import { scan, withMain, type Environment } from './environments.js';
 import { listTrash, type TrashEntry } from './trash.js';
 
 /** Снимок окружений и корзины: `envs === null` — корень недоступен. */
@@ -21,11 +21,12 @@ function statTag(path: string): string {
 
 /**
  * Подпись дерева окружений: имена окружений + для каждого mtime самого каталога и
- * `settings.json`/`mcp.json`/`extensions/`/`skills/`, плюс mtime корня и корзины.
+ * `settings.json`/`mcp.json`/`extensions/`/`skills/`, плюс mtime корня, корзины
+ * и каталога main-агента (он вне `<root>`).
  * Дешевле полного `scan()` и ловит как изменения снаружи, так и свои правки.
  * `null` — корень не читается (кэшировать такой результат нельзя).
  */
-export function scanSignature(root: string): string | null {
+export function scanSignature(root: string, agentDir: string): string | null {
   let entries;
   try {
     entries = readdirSync(root, { withFileTypes: true });
@@ -45,20 +46,28 @@ export function scanSignature(root: string): string | null {
     );
   }
   parts.push('trash:' + statTag(join(root, '.trash')));
+  // Каталог main-агента живёт вне `<root>` — его правки иначе не видны совсем.
+  parts.push(
+    'main:' + statTag(agentDir),
+    's=' + statTag(join(agentDir, 'settings.json')),
+    'm=' + statTag(join(agentDir, 'mcp.json')),
+    'e=' + statTag(join(agentDir, 'extensions')),
+    'k=' + statTag(join(agentDir, 'skills')),
+  );
   return parts.join('|');
 }
 
 export interface ScanCacheDeps {
   scan?: typeof scan;
   listTrash?: typeof listTrash;
-  signature?: typeof scanSignature;
+  signature?: (root: string, agentDir: string) => string | null;
 }
 
 /**
  * Кэш снимка окружений: `get()` перечитывает диск только когда изменилась подпись
  * или когда кто-то позвал `invalidate()` (наши мутации, выход из дочернего `pi`).
  */
-export function createScanCache(root: string, deps: ScanCacheDeps = {}): { get(): ScanSnapshot; invalidate(): void } {
+export function createScanCache(root: string, agentDir: string, deps: ScanCacheDeps = {}): { get(): ScanSnapshot; invalidate(): void } {
   const doScan = deps.scan ?? scan;
   const doTrash = deps.listTrash ?? listTrash;
   const doSig = deps.signature ?? scanSignature;
@@ -72,12 +81,12 @@ export function createScanCache(root: string, deps: ScanCacheDeps = {}): { get()
 
   return {
     get(): ScanSnapshot {
-      const sig = doSig(root);
+      const sig = doSig(root, agentDir);
       if (sig !== null && cachedSig === sig && snapshot !== null) return snapshot;
-      const envs = doScan(root);
-      const snap: ScanSnapshot = { envs, trash: doTrash(root) };
+      const scanned = doScan(root);
+      const snap: ScanSnapshot = { envs: scanned === null ? null : withMain(scanned, agentDir), trash: doTrash(root) };
       // Нечитаемый корень и пустой результат скана не кэшируются: следующий get() обязан проверить снова.
-      if (sig !== null && envs !== null) {
+      if (sig !== null && scanned !== null) {
         cachedSig = sig;
         snapshot = snap;
       } else {

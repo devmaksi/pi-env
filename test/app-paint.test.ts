@@ -19,7 +19,7 @@ function tmpRoot(withEnvs: boolean): string {
 }
 
 /** Фейковый терминал: считает патчи кадра и байты, эмулирует очередь клавиш. */
-function fakeTerm(keys: string[]) {
+function fakeTerm(keys: string[], width: number) {
   const patches: FramePatch[] = [];
   const bytes: number[] = [];
   const calls = { start: 0, stop: 0 };
@@ -39,7 +39,7 @@ function fakeTerm(keys: string[]) {
       running = false;
       calls.stop++;
     },
-    width: () => 80,
+    width: () => width,
     height: () => 24,
     key: async () => keys[next++] ?? 'ctrlc',
     onResize() {},
@@ -62,12 +62,12 @@ function fakeTerm(keys: string[]) {
 }
 
 /** Прогон приложения на фейковом терминале: корень с окружениями + пустой каталог main-агента. */
-async function drive(keys: string[]): Promise<ReturnType<typeof fakeTerm>> {
+async function drive(keys: string[], width = 80): Promise<ReturnType<typeof fakeTerm>> {
   const root = tmpRoot(true);
   const agent = tmpRoot(false);
   const saved = process.env.PI_CODING_AGENT_DIR;
   process.env.PI_CODING_AGENT_DIR = agent;
-  const f = fakeTerm(keys);
+  const f = fakeTerm(keys, width);
   try {
     await run(root, f.term);
   } finally {
@@ -84,7 +84,8 @@ test('app: первый кадр пишется целиком (kind full)', asy
 });
 
 test('app: сдвиг курсора → rows-патч, байт заметно меньше полного кадра', async () => {
-  const f = await drive(['down', 'ctrlc']);
+  // Узкий кадр: инфо-панели нет, сдвиг курсора меняет ровно две строки списка.
+  const f = await drive(['down', 'ctrlc'], 40);
   assert.equal(f.patches.length, 2);
   assert.equal(f.patches[1].kind, 'rows');
   const rows = (f.patches[1] as { kind: 'rows'; rows: { row: number }[] }).rows;

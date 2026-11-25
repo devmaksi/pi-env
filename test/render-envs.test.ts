@@ -123,3 +123,50 @@ test('инфо-панель окружения: подсказка «C — со�
   const s = render({ state: st, envs: [plain], width: 100, height: 20, ...base });
   assert.ok(s.includes(t('ru', 'envs.hint.clone')), s);
 });
+
+const mainOutside: Environment = { name: 'agent', path: '/elsewhere/agent', main: true, details: details({ model: 'p/m' }) };
+const mainInside: Environment = { name: 'dev', path: '/root/dev', main: true, details: details() };
+
+test('основная запись вне корня — в списке ярлык, а не имя каталога', () => {
+  const s = render({ state: st, envs: [mainOutside, plain], width: 80, height: 16, ...base });
+  assert.ok(s.includes(t('ru', 'envs.main')), s);
+  assert.equal(s.includes(' agent'), false, s); // имя каталога в списке не показывается
+});
+
+test('основная запись внутри корня — своё имя и пометка «основной»', () => {
+  const s = render({ state: st, envs: [mainInside], width: 80, height: 16, ...base });
+  assert.ok(s.includes(`dev · ${t('ru', 'envs.row-main')}`), s);
+});
+
+test('инфо-панель основной записи — строка о том, что это основной агент', () => {
+  const s = render({ state: st, envs: [mainOutside], width: 100, height: 20, ...base });
+  assert.ok(s.includes(t('ru', 'envs.main-note')), s);
+  assert.ok(s.includes('/elsewhere/agent'), s);
+});
+
+test('кадр с основной записью: ровно height строк и не шире width (1- и 2-клеточный терминал)', () => {
+  for (const width of [40, 62, 80]) {
+    const height = 16;
+    const s = render({ state: { ...st, selected: 0 }, envs: [mainOutside, mainInside], width, height, ...base });
+    const lines = s.split('\n');
+    assert.equal(lines.length, height, `width=${width}`);
+    for (const line of lines) {
+      assert.equal(lastCol(line, () => 1, width), width, `1-клеточный w=${width}: ${JSON.stringify(line)}`);
+      assert.equal(lastCol(line, wide, width), width, `2-клеточный w=${width}: ${JSON.stringify(line)}`);
+      assert.equal(visibleWidth(line) <= width, true, `видимая ширина w=${width}: ${JSON.stringify(line)}`);
+    }
+  }
+});
+
+test('кадр с основной записью: средняя граница на колонке leftWidth+2 на обеих моделях терминала', () => {
+  for (const width of [62, 80]) {
+    const L = computeLayout({ width, height: 20 });
+    const mid = L.leftWidth + 2;
+    const s = render({ state: { ...st, selected: 0 }, envs: [mainOutside], width, height: 20, ...base });
+    const lines = s.split('\n');
+    for (let i = 2; i < 20 - 2; i++) {
+      assert.equal(borderCols(lines[i], () => 1, width)[1], mid, `1-клеточный w=${width} r=${i}: ${JSON.stringify(lines[i])}`);
+      assert.equal(borderCols(lines[i], wide, width)[1], mid, `2-клеточный w=${width} r=${i}: ${JSON.stringify(lines[i])}`);
+    }
+  }
+});
