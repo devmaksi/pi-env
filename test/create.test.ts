@@ -472,7 +472,7 @@ test('cloneEnvironment: копирует дерево как есть, вклю�
   const root = tmpDir();
   try {
     const src = makeSource(root, 'src');
-    const res = cloneEnvironment(root, 'src', 'dst', ['src'], 'ru');
+    const res = cloneEnvironment(root, join(root, 'src'), 'dst', ['src'], 'ru');
     assert.equal(res.ok, true);
     assert.equal(res.ok && res.path, join(root, 'dst'));
     assert.deepEqual(tree(join(root, 'dst')), tree(src));
@@ -487,7 +487,7 @@ test('cloneEnvironment: занятое имя — ошибка, существу
     makeSource(root, 'src');
     makeSource(root, 'dst');
     writeFileSync(join(root, 'dst', 'settings.json'), 'ORIGINAL');
-    const res = cloneEnvironment(root, 'src', 'dst', ['src', 'dst'], 'ru');
+    const res = cloneEnvironment(root, join(root, 'src'), 'dst', ['src', 'dst'], 'ru');
     assert.equal(res.ok, false);
     assert.equal(res.ok ? '' : res.error, t('ru', 'err.name-exists'));
     assert.equal(readFileSync(join(root, 'dst', 'settings.json'), 'utf8'), 'ORIGINAL');
@@ -500,8 +500,8 @@ test('cloneEnvironment: невалидное и пустое имя — ошиб
   const root = tmpDir();
   try {
     makeSource(root, 'src');
-    assert.equal(cloneEnvironment(root, 'src', 'пло хое', ['src'], 'ru').ok, false);
-    assert.equal(cloneEnvironment(root, 'src', '', ['src'], 'ru').ok, false);
+    assert.equal(cloneEnvironment(root, join(root, 'src'), 'пло хое', ['src'], 'ru').ok, false);
+    assert.equal(cloneEnvironment(root, join(root, 'src'), '', ['src'], 'ru').ok, false);
     assert.equal(existsSync(join(root, 'dst')), false);
   } finally {
     rmSync(root, { recursive: true, force: true });
@@ -511,7 +511,7 @@ test('cloneEnvironment: невалидное и пустое имя — ошиб
 test('cloneEnvironment: источника нет — err.not-found', () => {
   const root = tmpDir();
   try {
-    const res = cloneEnvironment(root, 'nope', 'dst', [], 'ru');
+    const res = cloneEnvironment(root, join(root, 'nope'), 'dst', [], 'ru');
     assert.equal(res.ok, false);
     assert.equal(res.ok ? '' : res.error, t('ru', 'err.not-found'));
   } finally {
@@ -528,7 +528,7 @@ test('cloneEnvironment: сбой копирования не оставляет 
     const src = makeSource(root, 'src');
     if (asRoot) symlinkSync(join(src, 'gone'), join(src, 'dangling'));
     else chmodSync(join(src, 'own'), 0o000); // каталог источника невозможно прочитать
-    const res = cloneEnvironment(root, 'src', 'dst', ['src'], 'ru');
+    const res = cloneEnvironment(root, join(root, 'src'), 'dst', ['src'], 'ru');
     assert.equal(res.ok, false);
     assert.equal(res.ok ? '' : res.error, t('ru', 'err.clone', { name: 'dst' }));
     assert.equal(existsSync(join(root, 'dst')), false);

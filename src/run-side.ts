@@ -7,7 +7,7 @@ import { reducer, makeCtx } from './state.js';
 import { buildCreateRequest } from './pi-actions.js';
 import { launchPi } from './pirun.js';
 import type { Catalog } from './catalog.js';
-import type { Environment } from './environments.js';
+import { realEnvNames, type Environment } from './environments.js';
 import type { AppState, CreateView, ExtState, McpFormAdd, McpTab, PkgCheck, Tab, UpdateCheck, ReducerCtx } from './state.js';
 import type { Term } from './terminal.js';
 
@@ -60,10 +60,15 @@ function rctx(loop: Loop, envNames: string[]): ReducerCtx {
   return makeCtx(envNames, loop.twoColumns(), loop.trashNames());
 }
 
+/** Имена обычных окружений из снимка: основная запись в проверке имён не участвует. */
+function envNames(loop: Loop): string[] {
+  return realEnvNames(loop.envs());
+}
+
 /** Хуки переходов после reducer — 1-в-1 с телом прежнего dispatch. */
 export async function runSideEffects(loop: Loop, envs: Environment[], prev: PrevSnap): Promise<void> {
   if (prev.cancelRequested) loop.cancelBusy();
-  const names = envs.map((e) => e.name);
+  const names = realEnvNames(envs);
   hooksCreate(loop, prev.view, names);
   hooksExt(loop, prev.ext);
   hooksMcp(loop, prev.mcp, names);
@@ -99,7 +104,7 @@ function hooksTrash(loop: Loop): void {
     : r.error;
   loop.status(message);
   // Имена окружений — свежие (после восстановления их стало больше): по ним reducer держит курсор на «Корзина».
-  loop.setState(reducer(loop.state(), { type: 'trash-result', ok: r.ok, message }, rctx(loop, loop.envs().map((e) => e.name))));
+  loop.setState(reducer(loop.state(), { type: 'trash-result', ok: r.ok, message }, rctx(loop, envNames(loop))));
   loop.repaint();
 }
 
@@ -114,12 +119,12 @@ function hooksClone(loop: Loop): void {
   // а окружение может весить сотни мегабайт: кадр с «Копирование…» показываем до него.
   loop.repaint();
   const lang = loop.state().language;
-  const res = cloneEnvironment(loop.root, cl.srcName, cl.name, loop.envs().map((e) => e.name), lang);
+  const res = cloneEnvironment(loop.root, cl.srcPath, cl.name, envNames(loop), lang);
   loop.invalidate(); // в списке окружений появился клон
   const message = res.ok ? t(lang, 'status.env-cloned', { name: cl.name }) : res.error;
   loop.status(message);
   // Имена окружений — свежие (после инвалидации их стало больше): по ним reducer ставит курсор на копию.
-  loop.setState(reducer(loop.state(), { type: 'clone-result', ok: res.ok, message, name: cl.name }, rctx(loop, loop.envs().map((e) => e.name))));
+  loop.setState(reducer(loop.state(), { type: 'clone-result', ok: res.ok, message, name: cl.name }, rctx(loop, envNames(loop))));
   loop.repaint();
 }
 

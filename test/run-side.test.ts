@@ -357,7 +357,7 @@ test('клон: pending — копирование каталога, инвал�
   const env = (name: string): Environment => ({ ...ENV0, name, path: join(root, name) });
   // снимок окружений «как после перечитки»: копия появляется после копирования
   const snapshot = (): Environment[] => [env('e0'), ...(existsSync(join(root, 'e0-copy')) ? [env('e0-copy')] : [])];
-  const st: AppState = { ...initialState(CATALOG), clone: { srcName: 'e0', name: 'e0-copy', caret: 7, pending: true, error: null } };
+  const st: AppState = { ...initialState(CATALOG), clone: { srcName: 'e0', srcPath: join(root, 'e0'), name: 'e0-copy', caret: 7, pending: true, error: null } };
   const h = await run(st, {}, root, '/agent', snapshot());
   assert.equal(readFileSync(join(root, 'e0-copy', 'own', 'notes.txt'), 'utf8'), 'mine');
   assert.ok(h.log.includes('invalidate'));
@@ -369,7 +369,7 @@ test('клон: занятое имя — ошибка в суб-экране и
   mkdirSync(join(root, 'e0-copy'), { recursive: true });
   writeFileSync(join(root, 'e0-copy', 'marker.txt'), 'KEEP');
   const env = (name: string): Environment => ({ ...ENV0, name, path: join(root, name) });
-  const st: AppState = { ...initialState(CATALOG), clone: { srcName: 'e0', name: 'e0-copy', caret: 7, pending: true, error: null } };
+  const st: AppState = { ...initialState(CATALOG), clone: { srcName: 'e0', srcPath: join(root, 'e0'), name: 'e0-copy', caret: 7, pending: true, error: null } };
   const h = await run(st, {}, root, '/agent', [env('e0'), env('e0-copy')]);
   assert.ok(h.state.clone !== null);
   assert.equal(h.state.clone!.error, t('ru', 'err.name-exists'));
@@ -383,7 +383,7 @@ test('клон: курсор после успеха — на копии (сни
   writeFileSync(join(root, 'e0', 'settings.json'), '{}');
   const env = (name: string): Environment => ({ ...ENV0, name, path: join(root, name) });
   let copied = false;
-  const st: AppState = { ...initialState(CATALOG), clone: { srcName: 'e0', name: 'e0-copy', caret: 7, pending: true, error: null } };
+  const st: AppState = { ...initialState(CATALOG), clone: { srcName: 'e0', srcPath: join(root, 'e0'), name: 'e0-copy', caret: 7, pending: true, error: null } };
   const h = makeLoop(st, root, '/agent', []);
   // снимок пересчитывается после инвалидации: так живёт реальный `Loop.envs()`
   const origInvalidate = h.loop.invalidate;
@@ -393,4 +393,21 @@ test('клон: курсор после успеха — на копии (сни
   await runSideEffects(h.loop, [env('e0')], prev({}));
   assert.equal(h.state.clone, null);
   assert.equal(h.state.selected, 1);
+});
+
+test('клон: источник — по пути вне корня (основной агент), копия появляется в корне', async () => {
+  const root = tmp();
+  const agent = tmp();
+  const src = join(agent, 'agent');
+  mkdirSync(join(src, 'own'), { recursive: true });
+  writeFileSync(join(src, 'settings.json'), '{}');
+  writeFileSync(join(src, 'own', 'notes.txt'), 'main agent');
+  const env = (name: string, path: string): Environment => ({ ...ENV0, name, path, main: name === 'agent' });
+  const st: AppState = {
+    ...initialState(CATALOG),
+    clone: { srcName: 'agent', srcPath: src, name: 'from-main', caret: 9, pending: true, error: null },
+  };
+  const h = await run(st, {}, root, agent, [env('agent', src)]);
+  assert.equal(readFileSync(join(root, 'from-main', 'own', 'notes.txt'), 'utf8'), 'main agent');
+  assert.ok(h.log.includes('invalidate'));
 });

@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert';
 import {
-  initialState, reducer, listLength, emptyCatalog, freshCreate, freshExt, freshMcpTab, freshClone, busyProcessView,
+  initialState, reducer, listLength, makeCtx, emptyCatalog, freshCreate, freshExt, freshMcpTab, freshClone, busyProcessView,
   SETTINGS_COUNT, LANGUAGE_ROW, type AppState, type ReducerCtx, type Catalog, type CatalogPkg, type ExtState } from '../src/state.js';
 
 /** Контекст reducer: имена окружений + раскладка. */
@@ -432,4 +432,17 @@ test('busyProcessView: файловые экраны формы и подтве�
 
 test('busyProcessView: клонирование окружения — не процесс (Esc не снимает процесс)', () => {
   assert.equal(busyProcessView({ ...initialState(), clone: { ...freshClone('one', 'ru'), pending: true } }), false);
+});
+
+test('create-open открывает форму создания (C на основной строке — копия из основного)', () => {
+  const s = reducer(initialState(), { type: 'create-open' }, makeCtx(['dev'], false));
+  assert.equal(s.sub, 'create');
+  assert.equal(s.create?.mode, 'create');
+  assert.equal(s.create?.origName, null);
+});
+
+test('create-open в суб-экране формы не срабатывает', () => {
+  const s = reducer({ ...initialState(), sub: 'create', create: freshCreate() }, { type: 'create-open' }, makeCtx([], false));
+  assert.equal(s.create?.origName, null);
+  assert.equal(s.clone, null);
 });

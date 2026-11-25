@@ -415,7 +415,8 @@ export function renderEnvList(envs: Environment[], state: AppState, ctx: Ctx, tr
     detailSection(t(ctx.lang, 'envs.extensions'), d.packages.map((s) => s.replace(/^npm:/, '')), right, ctx.L.rightWidth, ctx.lang);
     detailSection(t(ctx.lang, 'envs.mcp'), d.mcp, right, ctx.L.rightWidth, ctx.lang);
     right.push(c(ANSI.dim, ctx.useColor) + t(ctx.lang, 'envs.hint.edit') + c(ANSI.reset, ctx.useColor));
-    right.push(c(ANSI.dim, ctx.useColor) + t(ctx.lang, 'envs.hint.clone') + c(ANSI.reset, ctx.useColor));
+    right.push(c(ANSI.dim, ctx.useColor)
+      + t(ctx.lang, e.main === true ? 'envs.hint.clone-main' : 'envs.hint.clone') + c(ANSI.reset, ctx.useColor));
   } else {
     right.push(c(ANSI.dim, ctx.useColor) + t(ctx.lang, 'envs.pick') + c(ANSI.reset, ctx.useColor));
   }

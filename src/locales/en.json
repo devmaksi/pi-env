@@ -117,6 +117,7 @@
   "envs.extensions": "Extensions",
   "envs.hint.edit": "E — edit",
   "envs.hint.clone": "C — create a copy",
+  "envs.hint.clone-main": "C — create an environment from it",
   "envs.pick": "Select an environment",
   "envs.problem.settings": "settings.json unreadable: {v}",
   "envs.problem.mcp": "mcp.json unreadable: {v}",

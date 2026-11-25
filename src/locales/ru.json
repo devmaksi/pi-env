@@ -117,6 +117,7 @@
   "envs.extensions": "Расширения",
   "envs.hint.edit": "E — редактировать",
   "envs.hint.clone": "C — создать копию",
+  "envs.hint.clone-main": "C — создать окружение из основного",
   "envs.pick": "Выберите окружение",
   "envs.problem.settings": "settings.json не читается: {v}",
   "envs.problem.mcp": "mcp.json не читается: {v}",

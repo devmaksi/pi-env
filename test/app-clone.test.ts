@@ -131,7 +131,7 @@ test('клонирование в занятое имя: текст ошибки
 test('момент копирования показан в кадре до блокирующего копирования', async () => {
   const root = tmpRootRu();
   makeEnv(root, 'src');
-  const painted = await drive(root, ['c', 'enter', 'ctrlc']);
+  const painted = await drive(root, ['down', 'c', 'enter', 'ctrlc']);
   const frame = painted.join('\n');
   assert.ok(frame.includes(t('ru', 'clone.copying')), frame);
 });

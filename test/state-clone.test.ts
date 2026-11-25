@@ -7,22 +7,23 @@ const ctx = makeCtx(['one', 'two'], true);
 /** Состояние с открытым суб-экраном клонирования окружения «one». */
 const open = (over: Partial<NonNullable<AppState['clone']>> = {}): AppState => ({
   ...initialState(),
-  clone: { ...freshClone('one', 'ru'), ...over },
+  clone: { ...freshClone('one', '/root/one', 'ru'), ...over },
 });
 
 test('clone-start открывает суб-экран с именем по умолчанию', () => {
-  const s = reducer(initialState(), { type: 'clone-start', name: 'one' }, ctx);
+  const s = reducer(initialState(), { type: 'clone-start', name: 'one', path: '/root/one' }, ctx);
   assert.ok(s.clone !== null);
   assert.equal(s.clone!.srcName, 'one');
+  assert.equal(s.clone!.srcPath, '/root/one');
   assert.equal(s.clone!.name, 'one-copy');
   assert.equal(s.clone!.caret, 'one-copy'.length);
   assert.equal(s.sub, null); // не форма создания
 });
 
 test('clone-start на другой вкладке или в другом суб-экране не открывает клонирование', () => {
-  assert.equal(reducer({ ...initialState(), tab: 'mcp' }, { type: 'clone-start', name: 'one' }, ctx).clone, null);
-  assert.equal(reducer({ ...initialState(), trash: { cursor: 0, confirm: null, pending: null } }, { type: 'clone-start', name: 'one' }, ctx).clone, null);
-  assert.equal(reducer({ ...initialState(), sub: 'create' }, { type: 'clone-start', name: 'one' }, ctx).clone, null);
+  assert.equal(reducer({ ...initialState(), tab: 'mcp' }, { type: 'clone-start', name: 'one', path: '/root/one' }, ctx).clone, null);
+  assert.equal(reducer({ ...initialState(), trash: { cursor: 0, confirm: null, pending: null } }, { type: 'clone-start', name: 'one', path: '/root/one' }, ctx).clone, null);
+  assert.equal(reducer({ ...initialState(), sub: 'create' }, { type: 'clone-start', name: 'one', path: '/root/one' }, ctx).clone, null);
 });
 
 test('ввод имени, Backspace и каретка ←/→', () => {
@@ -132,4 +133,11 @@ test('clone-result (успех) без копии в снимке — курсо
   );
   assert.equal(s.clone, null);
   assert.equal(s.selected, 0);
+});
+
+test('freshClone несёт путь источника — эффект-слой копирует по пути, а не по имени', () => {
+  const cl = freshClone('agent', '/elsewhere/agent', 'ru');
+  assert.equal(cl.srcName, 'agent');
+  assert.equal(cl.srcPath, '/elsewhere/agent');
+  assert.equal(cl.name, 'agent-copy');
 });

@@ -191,21 +191,21 @@ export function updateEnvironment(
 }
 
 /**
- * Клонирует окружение `<root>/<srcName>` в `<root>/<newName>`: копирует дерево каталога
+ * Клонирует каталог окружения `srcPath` (вне `<root>` — тоже) в `<root>/<newName>`: дерево
  * как есть (settings.json, mcp.json, extensions/, skills/, каталог моделей и любые свои
  * файлы), ничего не пересобирая из каталога main-агента. Сбой копирования — неполная
  * копия удаляется, ошибка в тексте.
  */
 export function cloneEnvironment(
   root: string,
-  srcName: string,
+  srcPath: string,
   newName: string,
   existing: string[],
   lang: string = 'ru',
 ): CreateResult {
   const invalid = validateName(newName, existing, lang);
   if (invalid !== null) return { ok: false, error: invalid };
-  const src = join(root, srcName);
+  const src = srcPath;
   if (!existsSync(src)) return { ok: false, error: t(lang, 'err.not-found') };
   const dst = join(root, newName);
   if (existsSync(dst)) return { ok: false, error: t(lang, 'err.name-exists') };

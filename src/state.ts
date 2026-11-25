@@ -101,7 +101,7 @@ export function emptyCatalog(): Catalog {
 export type Action =
   | Key
   | { type: 'create-result'; ok: boolean; message: string }
-  | { type: 'edit-start'; name: string; settings: EnvSettings; mcp?: McpServer[] }
+  | { type: 'edit-start'; name: string; path: string; main: boolean; settings: EnvSettings; mcp?: McpServer[] }
   | { type: 'run-result'; ok: boolean }
   | { type: 'delete-result'; ok: boolean; message: string }
   | { type: 'updates-result'; ok: boolean; latest: Record<string, string>; scope: 'main' | 'create' }
@@ -111,7 +111,8 @@ export type Action =
   | { type: 'mcp-result'; ok: boolean; message: string; scope: 'main' | 'create'; list?: McpServer[] }
   | { type: 'mcp-live-result'; ok: boolean; message: string; scope: 'main' | 'create'; report: McpLiveReport | null }
   | { type: 'trash-result'; ok: boolean; message: string }
-  | { type: 'clone-start'; name: string }
+  | { type: 'clone-start'; name: string; path: string }
+  | { type: 'create-open' }
   | { type: 'clone-result'; ok: boolean; message: string; name?: string }
   | { type: 'self-update-result'; info: SelfUpdate | null }
   | { type: 'changelog-result'; ok: boolean; rows: ChangelogRow[] };
@@ -208,9 +209,13 @@ function applyResults(state: AppState, action: Action, ctx: ReducerCtx): AppStat
   if (action.type === 'mcp-result' && action.scope === 'main') return applyMcpResultMain(state, action);
   if (action.type === 'mcp-live-result' && action.scope === 'main') return applyMcpLiveMain(state, action);
   if (action.type === 'trash-result') return applyTrashResult(state, action, ctx);
+  if (action.type === 'create-open') {
+    if (state.sub !== null || state.tab !== 'envs') return state;
+    return { ...state, sub: 'create', create: freshCreate() };
+  }
   if (action.type === 'clone-start') {
     if (state.tab !== 'envs' || state.sub !== null || state.trash !== null || state.clone !== null) return state;
-    return { ...state, clone: freshClone(action.name, state.language) };
+    return { ...state, clone: freshClone(action.name, action.path, state.language) };
   }
   if (action.type === 'clone-result') return applyCloneResult(state, action, ctx);
   if (action.type === 'self-update-result') return applySelfUpdateResult(state, action.info);

@@ -2,7 +2,7 @@ import { existsSync, writeSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { withShutdown } from './shutdown.js';
-import { type Environment } from './environments.js';
+import { realEnvNames, type Environment } from './environments.js';
 import { createScanCache } from './env-cache.js';
 import { loadAppSettings, saveAppSettings } from './appsettings.js';
 import { loadCatalog, fetchPackageCatalog, normalizePkgSource, type CatalogPkg } from './catalog.js';
@@ -184,7 +184,7 @@ export async function run(root: string, term: Term = createTerm(), deps: RunDeps
   }
 
   function envNames(): string[] {
-    return load().envs.map((e) => e.name);
+    return realEnvNames(load().envs);
   }
 
   /** Контекст reducer: свежие имена окружений, записи корзины + раскладка. */
@@ -418,14 +418,19 @@ export async function run(root: string, term: Term = createTerm(), deps: RunDeps
     const prevRecheckMcp = state.recheckMcp;
     const prevLang = state.language;
     const { envs } = load();
-    const names = envs.map((e) => e.name);
+    const names = realEnvNames(envs);
     const tnames = trashNames();
     const prev: PrevSnap = { cancelRequested: false, view: state.create?.view ?? null, ext: state.ext, mcp: state.mcp, tab: state.tab, mcpCheck: state.mcpCheck, createMcpCheck: state.create?.mcpCheck ?? 'idle', selfCheck: state.selfCheck };
-    if (key === 'c' && state.tab === 'envs' && state.sub === null && state.trash === null && state.clone === null && state.selected < envs.length) {
-      state = reducer(state, { type: 'clone-start', name: envs[state.selected].name }, rctx(names, tnames));
-    } else if (key === 'e' && state.tab === 'envs' && state.sub === null && state.trash === null && state.clone === null && state.selected < envs.length) {
-      const settings = readSettings(envs[state.selected].path) ?? {};
-      state = reducer(state, { type: 'edit-start', name: envs[state.selected].name, settings, mcp: readMcpServers(envs[state.selected].path) }, rctx(names, tnames));
+    const row = envs[state.selected];
+    if (key === 'c' && state.tab === 'envs' && state.sub === null && state.trash === null && state.clone === null && row !== undefined) {
+      // `C` на основной строке — форма создания из основного: дерево агентского каталога
+      // (sessions/, install/releases, tmp/) не копируется.
+      state = row.main === true
+        ? reducer(state, { type: 'create-open' }, rctx(names, tnames))
+        : reducer(state, { type: 'clone-start', name: row.name, path: row.path }, rctx(names, tnames));
+    } else if (key === 'e' && state.tab === 'envs' && state.sub === null && state.trash === null && state.clone === null && row !== undefined) {
+      const settings = readSettings(row.path) ?? {};
+      state = reducer(state, { type: 'edit-start', name: row.name, path: row.path, main: row.main === true, settings, mcp: readMcpServers(row.path) }, rctx(names, tnames));
     } else {
       state = reducer(state, key, rctx(names, tnames));
     }

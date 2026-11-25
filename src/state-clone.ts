@@ -12,6 +12,8 @@ import type { AppState, Action, ReducerCtx } from './state.js';
 export interface CloneState {
   /** Имя окружения-источника. */
   srcName: string;
+  /** Путь источника: окружение может лежать вне `<root>` (основной агент). */
+  srcPath: string;
   /** Имя копии; редактируется печатными клавишами, как строка «Имя» формы. */
   name: string;
   caret: number;
@@ -19,9 +21,9 @@ export interface CloneState {
   error: string | null;
 }
 
-export function freshClone(srcName: string, lang: string): CloneState {
+export function freshClone(srcName: string, srcPath: string, lang: string): CloneState {
   const name = t(lang, 'clone.name-default', { name: srcName }).slice(0, MAX_NAME);
-  return { srcName, name, caret: name.length, pending: false, error: null };
+  return { srcName, srcPath, name, caret: name.length, pending: false, error: null };
 }
 
 /**
