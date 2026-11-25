@@ -56,6 +56,7 @@ const details = (over: Partial<Environment['details']> = {}): Environment['detai
   settingsError: null,
   mcpError: null,
   mcpSkipped: [],
+  modelsLink: 'off' as const,
   ...over,
 });
 
@@ -119,6 +120,27 @@ test('кадр с ⚠: средняя граница на колонке leftWid
   }
 });
 
+
+const linkedEnv: Environment = { name: 'shared', path: '/root/shared', details: details({ modelsLink: 'linked' }) };
+const brokenLink: Environment = { name: 'cut', path: '/root/cut', details: details({ modelsLink: 'broken' }) };
+
+test('окружение из хранилища — строка о каталоге моделей и без маркера ⚠', () => {
+  const s = render({ state: st, envs: [linkedEnv], width: 100, height: 20, ...base });
+  assert.ok(s.includes(t('ru', 'envs.models', { v: t('ru', 'envs.models-store') })), s);
+  assert.ok(!s.includes('shared ⚠'), s);
+});
+
+test('связь с хранилищем потеряна — ⚠ у имени и текст проблемы', () => {
+  const s = render({ state: st, envs: [brokenLink], width: 100, height: 20, ...base });
+  assert.ok(s.includes('cut ⚠'), s);
+  assert.ok(s.includes(t('ru', 'envs.problem.models')), s);
+  assert.ok(!s.includes(t('ru', 'envs.models', { v: t('ru', 'envs.models-store') })), s);
+});
+
+test('свои каталоги моделей не показываются отдельной строкой', () => {
+  const s = render({ state: st, envs: [plain], width: 100, height: 20, ...base });
+  assert.ok(!s.includes(t('ru', 'envs.models', { v: t('ru', 'envs.models-store') })), s);
+});
 test('инфо-панель окружения: подсказка «C — создать копию»', () => {
   const s = render({ state: st, envs: [plain], width: 100, height: 20, ...base });
   assert.ok(s.includes(t('ru', 'envs.hint.clone')), s);

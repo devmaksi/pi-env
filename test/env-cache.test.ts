@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert';
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { basename, join } from 'node:path';
 import { createScanCache, scanSignature } from '../src/env-cache.js';
@@ -159,4 +159,31 @@ test('снимок: агентский каталог внутри корня �
 test('scanSignature: другой агентский каталог — другая подпись', () => {
   const root = tmpRoot();
   assert.notEqual(scanSignature(root, AGENT), scanSignature(root, join(root, 'dev')));
+});
+
+test('scanSignature: правка общего файла хранилища меняет подпись', () => {
+  const root = tmpRoot();
+  const storeFile = join(root, '.store', 'models', 'models.json');
+  mkdirSync(join(storeFile, '..'), { recursive: true });
+  writeFileSync(storeFile, '{"providers":{"a":{}}}');
+  const before = scanSignature(root, AGENT, storeFile);
+  assert.notEqual(before, null);
+  writeFileSync(storeFile, '{"providers":{"a":{},"b":{}}}');
+  assert.notEqual(scanSignature(root, AGENT, storeFile), before);
+  assert.equal(scanSignature(root, AGENT, null), scanSignature(root, AGENT));
+});
+
+test('createScanCache с хранилищем: обрыв симлинка виден без invalidate', () => {
+  const root = tmpRoot();
+  const storeFile = join(root, '.store', 'models', 'models.json');
+  mkdirSync(join(storeFile, '..'), { recursive: true });
+  writeFileSync(storeFile, '{"providers":{}}');
+  symlinkSync(storeFile, join(root, 'dev', 'models.json'));
+  let scanCalls = 0;
+  const cache = createScanCache(root, AGENT, { scan: (r, s) => { scanCalls++; return scan(r, s); } }, storeFile);
+  assert.equal(dev(cache.get().envs).details.modelsLink, 'linked');
+  rmSync(storeFile);
+  const snap = cache.get();
+  assert.equal(scanCalls, 2);
+  assert.equal(dev(snap.envs).details.modelsLink, 'broken');
 });

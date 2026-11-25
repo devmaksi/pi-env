@@ -355,6 +355,7 @@ function envProblems(d: Environment['details'], lang: string): string[] {
   if (d.settingsError) out.push(t(lang, 'envs.problem.settings', { v: d.settingsError }));
   if (d.mcpError) out.push(t(lang, 'envs.problem.mcp', { v: d.mcpError }));
   if (d.mcpSkipped.length > 0) out.push(t(lang, 'envs.problem.mcp-skipped', { v: d.mcpSkipped.join(', ') }));
+  if (d.modelsLink === 'broken') out.push(t(lang, 'envs.problem.models'));
   return out;
 }
 
@@ -407,6 +408,9 @@ export function renderEnvList(envs: Environment[], state: AppState, ctx: Ctx, tr
     if (e.main === true) right.push(c(ANSI.dim, ctx.useColor) + t(ctx.lang, 'envs.main-note') + c(ANSI.reset, ctx.useColor));
     right.push('settings.json ' + (d.settingsError ? '⚠' : d.hasSettings ? '✓' : '—'));
     right.push(t(ctx.lang, 'form.model') + (d.model ?? '—'));
+    if (d.modelsLink === 'linked') {
+      right.push(t(ctx.lang, 'envs.models', { v: t(ctx.lang, 'envs.models-store') }));
+    }
     for (const problem of envProblems(d, ctx.lang)) {
       right.push(c(ANSI.dim, ctx.useColor) + problem + c(ANSI.reset, ctx.useColor));
     }
@@ -488,6 +492,9 @@ export function renderCloneTab(cl: CloneState, source: Environment | undefined, 
     right.push(t(ctx.lang, 'envs.path', { v: source.path }));
     right.push('settings.json ' + (d.settingsError ? '⚠' : d.hasSettings ? '✓' : '—'));
     right.push(t(ctx.lang, 'form.model') + (d.model ?? '—'));
+    if (d.modelsLink === 'linked') {
+      right.push(t(ctx.lang, 'envs.models', { v: t(ctx.lang, 'envs.models-store') }));
+    }
     for (const problem of envProblems(d, ctx.lang)) right.push(dim(problem));
     detailSection(t(ctx.lang, 'envs.tools'), d.tools, right, ctx.L.rightWidth, ctx.lang);
     detailSection(t(ctx.lang, 'envs.skills'), d.skills, right, ctx.L.rightWidth, ctx.lang);

@@ -4,6 +4,7 @@ import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { basename, join } from 'node:path';
 import { scan, withMain, realEnvNames } from '../src/environments.js';
+import { symlinkSync } from 'node:fs';
 
 test('scan: отсутствующий корень → null', () => {
   assert.equal(scan('/nonexistent/pi-env-path'), null);
@@ -28,8 +29,8 @@ test('scan: только каталоги, сортировка, пустая д
     writeFileSync(join(dir, 'a', 'settings.json'), '{}');
     writeFileSync(join(dir, 'file.txt'), 'x');
     assert.deepEqual(scan(dir), [
-      { name: 'a', path: join(dir, 'a'), details: { hasSettings: true, model: null, tools: [], skills: [], packages: [], mcp: [], settingsError: null, mcpError: null, mcpSkipped: [] } },
-      { name: 'b', path: join(dir, 'b'), details: { hasSettings: false, model: null, tools: [], skills: [], packages: [], mcp: [], settingsError: null, mcpError: null, mcpSkipped: [] } },
+      { name: 'a', path: join(dir, 'a'), details: { hasSettings: true, model: null, tools: [], skills: [], packages: [], mcp: [], settingsError: null, mcpError: null, mcpSkipped: [], modelsLink: 'off' } },
+      { name: 'b', path: join(dir, 'b'), details: { hasSettings: false, model: null, tools: [], skills: [], packages: [], mcp: [], settingsError: null, mcpError: null, mcpSkipped: [], modelsLink: 'off' } },
     ]);
   } finally {
     rmSync(dir, { recursive: true });
@@ -49,7 +50,7 @@ test('scan: детализация — модель, инструменты, с�
       {
         name: 'dev',
         path: join(dir, 'dev'),
-        details: { hasSettings: true, model: 'p1/m1', tools: ['tool1.ts'], skills: ['sk-a', 'sk-b'], packages: ['npm:pkg-a'], mcp: [], settingsError: null, mcpError: null, mcpSkipped: [] },
+        details: { hasSettings: true, model: 'p1/m1', tools: ['tool1.ts'], skills: ['sk-a', 'sk-b'], packages: ['npm:pkg-a'], mcp: [], settingsError: null, mcpError: null, mcpSkipped: [], modelsLink: 'off' },
       },
     ]);
   } finally {
@@ -79,7 +80,7 @@ test('scan: mcp.json окружения — имена в details.mcp', () => {
     writeFileSync(join(dir, 'dev', 'mcp.json'),
       JSON.stringify({ mcpServers: { browsermcp: { command: 'npx' } } }));
     assert.deepEqual(scan(dir), [
-      { name: 'dev', path: join(dir, 'dev'), details: { hasSettings: false, model: null, tools: [], skills: [], packages: [], mcp: ['browsermcp'], settingsError: null, mcpError: null, mcpSkipped: [] } },
+      { name: 'dev', path: join(dir, 'dev'), details: { hasSettings: false, model: null, tools: [], skills: [], packages: [], mcp: ['browsermcp'], settingsError: null, mcpError: null, mcpSkipped: [], modelsLink: 'off' } },
     ]);
   } finally {
     rmSync(dir, { recursive: true });
@@ -200,4 +201,29 @@ test('scan: у обычных окружений main не проставлен'
 test('realEnvNames: основная запись исключена', () => {
   const root = tmpFixtureWithEnv('dev');
   assert.deepEqual(realEnvNames(withMain(scan(root)!, join(root, 'dev'))), []);
+});
+
+test("scan с файлом хранилища: linked / broken / off", () => {
+  const root = tmpFixtureWithEnv('dev');
+  const storeFile = join(root, '.store', 'models', 'models.json');
+  mkdirSync(join(storeFile, '..'), { recursive: true });
+  writeFileSync(storeFile, '{"providers":{}}');
+  symlinkSync(storeFile, join(root, 'dev', 'models.json'));
+  assert.equal(scan(root, storeFile)![0].details.modelsLink, 'linked');
+  rmSync(storeFile);
+  assert.equal(scan(root, storeFile)![0].details.modelsLink, 'broken');
+  assert.equal(scan(root)![0].details.modelsLink, 'off', 'без хранилища — своего файла достаточно');
+});
+
+test("withMain: основная запись получает modelsLink из файла хранилища", () => {
+  const root = tmpFixtureWithEnv('dev');
+  const storeFile = join(root, '.store', 'models', 'models.json');
+  mkdirSync(join(storeFile, '..'), { recursive: true });
+  writeFileSync(storeFile, '{"providers":{}}');
+  const agent = join(tmpDir(), 'agent');   // вне <root> — синтетическая запись
+  mkdirSync(agent, { recursive: true });
+  symlinkSync(storeFile, join(agent, 'models.json'));
+  const out = withMain(scan(root)!, agent, storeFile);
+  assert.equal(out[0].main, true);
+  assert.equal(out[0].details.modelsLink, 'linked');
 });

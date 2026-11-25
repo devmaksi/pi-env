@@ -1,6 +1,7 @@
 import { existsSync, readdirSync, type Dirent } from 'node:fs';
 import { basename, join, resolve } from 'node:path';
 import { readJsonFileDetailed, readMcpServersDetailed } from './mcp.js';
+import { modelsLinkState, type ModelsLink } from './store.js';
 
 export interface EnvDetails {
   hasSettings: boolean;
@@ -14,6 +15,8 @@ export interface EnvDetails {
   /** Текст сбоя чтения mcp.json (`null`, если файл читается или его нет). */
   mcpError: string | null;
   /** Имена записей mcp.json, которые не удалось разобрать. */
+  /** Как окружение получает каталог моделей (файл хранилища — симлинк, свой файл — `off`). */
+  modelsLink: ModelsLink;
   mcpSkipped: string[];
 }
 
@@ -30,7 +33,7 @@ export interface Environment {
  * Каждая подпапка — окружение; файлы игнорируются.
  * Возвращает null, если корень не существует или нечитаем.
  */
-export function scan(root: string): Environment[] | null {
+export function scan(root: string, storeFile: string | null = null): Environment[] | null {
   if (!existsSync(root)) return null;
   let entries;
   try {
@@ -44,7 +47,7 @@ export function scan(root: string): Environment[] | null {
     .filter((e) => e.isDirectory() && !e.name.startsWith('.'))
     .map((e) => {
       const p = join(root, e.name);
-      return { name: e.name, path: p, details: readDetails(p) };
+      return { name: e.name, path: p, details: readDetails(p, storeFile) };
     })
     .sort((a, b) => a.name.localeCompare(b.name));
 }
@@ -54,11 +57,11 @@ export function scan(root: string): Environment[] | null {
  * Внутри `<root>` — помечаем существующую строку (дубля нет), вне — синтетическая первая
  * строка. `name` — имя каталога: данные локали не знают, ярлык даёт рендер.
  */
-export function withMain(envs: Environment[], agentDir: string): Environment[] {
+export function withMain(envs: Environment[], agentDir: string, storeFile: string | null = null): Environment[] {
   const dir = resolve(agentDir);
   const existing = envs.find((e) => e.path === dir);
   if (existing !== undefined) return envs.map((e) => (e === existing ? { ...e, main: true } : e));
-  return [{ name: basename(dir), path: dir, main: true, details: readDetails(dir) }, ...envs];
+  return [{ name: basename(dir), path: dir, main: true, details: readDetails(dir, storeFile) }, ...envs];
 }
 
 /** Имена обычных окружений: основная запись не участвует в проверке уникальности имён. */
@@ -69,11 +72,12 @@ export function realEnvNames(envs: Environment[]): string[] {
 /**
  * Детализация окружения: модель и пакеты из settings.json,
  * инструменты — файлы extensions/, скиллы — подкаталоги skills/.
+ * `storeFile` — общий файл каталога моделей: по нему считается `modelsLink`.
  * Битые settings.json/mcp.json не молчат: их текст возвращается в settingsError,
  * mcpError и mcpSkipped — оттуда их берут и журнал (`PI_ENV_DEBUG=1`), и маркер `⚠`
  * в списке окружений.
  */
-export function readDetails(dir: string): EnvDetails {
+export function readDetails(dir: string, storeFile: string | null = null): EnvDetails {
   const settingsPath = join(dir, 'settings.json');
   const settings = readJsonFileDetailed(settingsPath);
   const hasSettings = existsSync(settingsPath);
@@ -99,6 +103,7 @@ export function readDetails(dir: string): EnvDetails {
     settingsError: settings.error,
     mcpError: mcp.fileError,
     mcpSkipped: mcp.skipped,
+    modelsLink: storeFile === null ? 'off' : modelsLinkState(dir, storeFile),
   };
 }
 

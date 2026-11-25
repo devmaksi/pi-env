@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import { withShutdown } from './shutdown.js';
 import { realEnvNames, type Environment } from './environments.js';
 import { createScanCache } from './env-cache.js';
+import { storeModelsFile, storeRoot } from './store.js';
 import { loadAppSettings, saveAppSettings } from './appsettings.js';
 import { loadCatalog, fetchPackageCatalog, normalizePkgSource, type CatalogPkg } from './catalog.js';
 import { computeLayout } from './layout.js';
@@ -87,7 +88,8 @@ export async function run(root: string, term: Term = createTerm(), deps: RunDeps
   let state: AppState = { ...initialState(catalog), colorToggle: app.color, recheckUpdates: app.recheckUpdates, recheckMcp: app.recheckMcp, language: lang0 };
   let statusMsg: string | null = null;
   /** Снимок окружений и корзины: перечитывается при смене подписи дерева или после инвалидации. */
-  const cache = createScanCache(root, agentDir);
+  const storeFile = storeModelsFile(storeRoot(root, app.storeDir, process.env.PI_ENV_STORE));
+  const cache = createScanCache(root, agentDir, {}, storeFile);
 
   /**
    * Активные внешние процессы. `cancelOp` — тот, которому принадлежит busy-экран (его снимает
@@ -437,7 +439,7 @@ export async function run(root: string, term: Term = createTerm(), deps: RunDeps
     // Заявка на отмену считается после reducer: экран процесса — тот, что стал текущим.
     prev.cancelRequested = key === 'esc' && busyProcessView(state);
     if (state.colorToggle !== prevColor || state.recheckUpdates !== prevRecheck || state.recheckMcp !== prevRecheckMcp || state.language !== prevLang) {
-      saveAppSettings(root, { color: state.colorToggle, recheckUpdates: state.recheckUpdates, recheckMcp: state.recheckMcp, language: state.language });
+      saveAppSettings(root, { color: state.colorToggle, recheckUpdates: state.recheckUpdates, recheckMcp: state.recheckMcp, storeDir: app.storeDir, language: state.language });
     }
     return { envs, prev };
   }
