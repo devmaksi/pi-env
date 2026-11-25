@@ -4,7 +4,7 @@ import { statSync } from 'node:fs';
 import { join } from 'node:path';
 import { run } from './run.js';
 import { runPassthrough } from './pirun.js';
-import { parsePiEnvArgs } from './cli.js';
+import { envPathCandidates, parsePiEnvArgs } from './cli.js';
 import { loadAppSettings } from './appsettings.js';
 import { t, defaultLang, localeCodes } from './i18n.js';
 import { realpathSync } from 'node:fs';
@@ -26,6 +26,7 @@ function printHelp(lang: string): void {
       '',
       t(lang, 'help.usage'),
       t(lang, 'help.passthrough'),
+      t(lang, 'help.main'),
       '',
       t(lang, 'help.flags'),
       t(lang, 'help.root'),
@@ -49,8 +50,10 @@ function main(): void {
     process.exit(2);
   }
   if (parsed.envName !== undefined) {
-    const envPath = join(root, parsed.envName);
-    if (!statSync(envPath, { throwIfNoEntry: false })?.isDirectory()) {
+    const agentDir = process.env.PI_CODING_AGENT_DIR ?? join(homedir(), '.pi', 'agent');
+    const envPath = envPathCandidates(root, parsed.envName, agentDir)
+      .find((p) => statSync(p, { throwIfNoEntry: false })?.isDirectory());
+    if (envPath === undefined) {
       process.stderr.write(t(lang, 'run.env.not_found', { p: parsed.envName, r: root }) + '\n');
       process.exit(2);
     }
@@ -61,12 +64,11 @@ function main(): void {
     process.stderr.write(t(lang, 'tty.error') + '\n');
     process.exit(2);
   }
-  const agentDir = process.env.PI_CODING_AGENT_DIR ?? join(homedir(), '.pi', 'agent');
   const check: SelfCheckDeps = {
     fetchFn: (url, init) => globalThis.fetch(url, init),
     installedVersion: installedVersion(),
     moduleRealPath: realpathSync(fileURLToPath(import.meta.url)),
-    agentNpmDir: join(agentDir, 'npm'),
+    agentNpmDir: join(process.env.PI_CODING_AGENT_DIR ?? join(homedir(), '.pi', 'agent'), 'npm'),
     noCheck: process.env.PI_ENV_NO_UPDATE_CHECK === '1',
   };
   void run(root, createTerm(), {

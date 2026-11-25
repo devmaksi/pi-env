@@ -1,3 +1,4 @@
+import { join } from 'node:path';
 /**
  * Результат разбора argv pi-env.
  * `root`/`envName`/`badUsage` — undefined, когда неприменимы.
@@ -22,6 +23,17 @@ export interface ParsedArgs {
  * `--root <путь>` и `-h/--help`; прочие флаги — ошибка использования.
  * Без позиционных аргументов — TUI-режим (envName не задан).
  */
+/**
+ * Каталоги-кандидаты для позиционного токена CLI: сначала окружение в `<root>`,
+ * затем (только для токена `main`) каталог основного агента. Реальное `<root>/main`
+ * поэтому сохраняет приоритет.
+ */
+export function envPathCandidates(root: string, token: string, agentDir: string): string[] {
+  const out = [join(root, token)];
+  if (token === 'main' && agentDir !== '') out.push(agentDir);
+  return out;
+}
+
 export function parsePiEnvArgs(argv: string[]): ParsedArgs {
   let root: string | undefined;
   let help = false;

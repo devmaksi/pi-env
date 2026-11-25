@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { parsePiEnvArgs, type ParsedArgs } from '../src/cli.js';
+import { envPathCandidates, parsePiEnvArgs, type ParsedArgs } from '../src/cli.js';
 
 function expectParsed(argv: string[], help: boolean, envName: string | undefined,
   passthrough: string[], root?: string, badUsage?: string): void {
@@ -54,4 +54,16 @@ test('--root без значения — ошибка использования
 
 test('--root берёт следующее значение, даже похожее на флаг', () => {
   expectParsed(['--root', '-x', 'myenv'], false, 'myenv', [], '-x');
+});
+
+test('envPathCandidates: обычное имя — только путь в корне', () => {
+  assert.deepEqual(envPathCandidates('/r', 'dev', '/agent'), ['/r/dev']);
+});
+
+test('envPathCandidates: токен main добавляет агентский каталог вторым', () => {
+  assert.deepEqual(envPathCandidates('/r', 'main', '/agent'), ['/r/main', '/agent']);
+});
+
+test('envPathCandidates: пустой agentDir — только путь в корне', () => {
+  assert.deepEqual(envPathCandidates('/r', 'main', ''), ['/r/main']);
 });

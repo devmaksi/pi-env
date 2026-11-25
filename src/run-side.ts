@@ -293,7 +293,7 @@ async function doRun(loop: Loop, envs: Environment[]): Promise<void> {
   if (!(st.sub === 'run' && st.tab === 'envs' && st.selected < envs.length)) return;
   const res = await launchPi(loop.term, envs[st.selected]);
   loop.invalidate(); // дочерний `pi` мог поменять конфиг окружения
-  loop.setState(reducer(loop.state(), { type: 'run-result', ok: res.ok }, rctx(loop, envs.map((e) => e.name))));
+  loop.setState(reducer(loop.state(), { type: 'run-result', ok: res.ok }, rctx(loop, envNames(loop))));
   if (!res.ok) loop.status(t(loop.state().language, 'status.pi-launch', { err: res.message }));
 }
 

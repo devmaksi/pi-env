@@ -177,6 +177,7 @@
   "help.title": "pi-env — CLI for managing pi environments",
   "help.usage": "Usage: pi-env [--root <path>] [env [pi args...]]",
   "help.passthrough": "  pi-env <env> [pi args...] — run pi in the environment; args are passed to pi as-is (e.g. --mode json)",
+  "help.main": "  pi-env main [pi args...] — run the main agent (its agent directory)",
   "help.flags": "Flags:",
   "help.root": "  --root <path>   root directory of environments (default ~/.pi-env)",
   "help.help": "  -h, --help      this help",
