@@ -1,7 +1,11 @@
+import { existsSync } from 'node:fs';
 import { join, relative } from 'node:path';
 import { cloneEnvironment, createEnvironment, updateEnvironmentAt } from './create.js';
 import { copyMcpEntry, removeMcpEntry, readMcpServers } from './mcp.js';
-import { deleteTrashForever, moveFileToTrash, moveToTrash, restoreTrash } from './trash.js';
+import {
+  deleteTrashFileForever, deleteTrashForever, moveFileToTrash, moveToTrash,
+  restoreTrash, restoreTrashFile, trashFilesRoot,
+} from './trash.js';
 import { archiveEnvModelsIntoStore, linkModels, unlinkModels, type StoreResult } from './store.js';
 import { t } from './i18n.js';
 import { reducer, makeCtx } from './state.js';
@@ -97,10 +101,12 @@ function hooksTrash(loop: Loop): void {
   const pending = loop.state().trash?.pending ?? null;
   if (pending === null) return;
   const lang = loop.state().language;
+  // Запись корзины — каталог окружения или одиночный файл (ветка `.trash/files`).
+  const isFile = existsSync(join(trashFilesRoot(loop.root), pending.dirName));
   const name = pending.dirName.split('@')[0] ?? pending.dirName;
   const r = pending.kind === 'restore'
-    ? restoreTrash(loop.root, pending.dirName, lang)
-    : deleteTrashForever(loop.root, pending.dirName, lang);
+    ? (isFile ? restoreTrashFile(loop.root, pending.dirName, lang) : restoreTrash(loop.root, pending.dirName, lang))
+    : (isFile ? deleteTrashFileForever(loop.root, pending.dirName, lang) : deleteTrashForever(loop.root, pending.dirName, lang));
   loop.invalidate(); // корзина меняет и окружения, и список записей
   const message = r.ok
     ? t(lang, pending.kind === 'restore' ? 'status.trash-restored' : 'status.trash-deleted', { name })

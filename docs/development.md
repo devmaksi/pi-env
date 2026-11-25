@@ -108,6 +108,12 @@ mentioned by name here rather than linked.
   entry of the list (`withMain`); editing it patches `settings.json` and leaves the agent
   directory alone, deleting and renaming are disabled, and the CLI form is `pi-env main`.
 
+- Shared model-catalog storage — `docs/superpowers/specs/2026-11-25-env-store-models-design.md`:
+  a shared `<root>/.store/models/models.json` (overridden by the `storeDir` setting in
+  `.pi-env.json` and by `PI_ENV_STORE`, the variable wins), the environment's `models.json`
+  becomes a symlink to it, per-environment model visibility is the pi `enabledModels` setting,
+  and the environment's own copy moves into the file-trash branch
+  `<root>/.trash/files/<env>--<file>@<ms>`.
 - Environment cloning — `docs/superpowers/specs/2026-11-19-env-clone-design.md`:
   `C` on an environment opens a name prompt and copies the environment directory
   verbatim (its own files included), instead of rebuilding it from the main agent.

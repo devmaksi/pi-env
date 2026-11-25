@@ -74,7 +74,7 @@ export function formRows(mode: 'create' | 'edit', main = false): number {
 }
 export const MAX_NAME = 40;
 
-export function freshCreate(): CreateState {
+export function freshCreate(over: Partial<CreateState> = {}): CreateState {
   return {
     name: '', caret: 0, cursor: 0, provider: null, model: null,
     mode: 'create', origName: null, main: false,
@@ -83,6 +83,7 @@ export function freshCreate(): CreateState {
     removing: null, installCatalog: [], installStatus: 'idle', installing: null, query: '',
     check: 'idle', latest: {},
     mcpAdd: null, envMcp: [], mcp: [], mcpOp: null, removingMcp: null, mcpCheck: 'idle', mcpLive: null,
+    ...over,
   };
 }
 

@@ -551,3 +551,9 @@ test('создание окружения: хранилище включено �
   assert.deepEqual(c.modelsSel, []);
   assert.equal(c.modelsTouched, false);
 });
+
+test('create-open: обычно хранилище включено, «из основного» — выключено', () => {
+  const ctx = rc([]);
+  assert.equal(reducer(initialState(), { type: 'create-open' }, ctx).create!.store, true);
+  assert.equal(reducer(initialState(), { type: 'create-open', fromMain: true }, ctx).create!.store, false);
+});

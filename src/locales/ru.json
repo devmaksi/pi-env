@@ -143,6 +143,7 @@
   "envs.trash.pick": "Enter — открыть корзину",
   "trash.title": "Корзина",
   "trash.deleted-at": "Удалено: {v}",
+  "trash.file": "Файл: {v}",
   "hint.trash-restore": "Enter — восстановить",
   "hint.trash-delete": "X — удалить совсем",
   "ext.title": "Расширения (основной агент)",

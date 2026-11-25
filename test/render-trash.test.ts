@@ -93,3 +93,25 @@ test('суб-экран корзины: метка записи — «<имя> �
   const s = frame(opened(), ENVS, ENTRIES);
   assert.ok(s.some((l) => l.includes('old · ' + formatTs(3000))), JSON.stringify(s[3]));
 });
+
+const fileEntry = (envName: string, fileName: string, ts: number): TrashEntry => {
+  const dirName = `${envName}--${fileName}@${ts}`;
+  return { dirName, name: envName, ts, path: '/root/.trash/files/' + dirName, kind: 'file', fileName };
+};
+
+test('корзина файлов: метка «<окружение> · <файл> · <дата>» и строка «Файл:» в инфо-панели', () => {
+  const entries = [fileEntry('old', 'models.json', 4000), entry('old', 3000)];
+  const s = frame(opened(), ENVS, entries);
+  assert.ok(s.some((l) => l.includes('old · models.json · ' + formatTs(4000))), JSON.stringify(s));
+  assert.ok(s.some((l) => l.includes('Файл: models.json')), JSON.stringify(s));
+  assert.ok(s.some((l) => l.includes('Путь: /root/.trash/files/old--models.j')), JSON.stringify(s));
+});
+
+test('кадр корзины с файловыми записями — ровно height строк фиксированной ширины', () => {
+  const entries = [fileEntry('e1', 'models.json', 5000), entry('old', 3000)];
+  for (const [w, h] of [[62, 10], [80, 12], [100, 16]] as const) {
+    const s = frame(opened({ cursor: 1 }), ENVS, entries, w, h);
+    assert.equal(s.length, h, `@ ${w}x${h}`);
+    for (const l of s) assert.equal(frameWidth(l) + wideCount(l), w, `клеток на строке @ ${w}x${h}: ${JSON.stringify(l)}`);
+  }
+});

@@ -118,7 +118,7 @@ export type Action =
   | { type: 'mcp-live-result'; ok: boolean; message: string; scope: 'main' | 'create'; report: McpLiveReport | null }
   | { type: 'trash-result'; ok: boolean; message: string }
   | { type: 'clone-start'; name: string; path: string }
-  | { type: 'create-open' }
+  | { type: 'create-open'; fromMain?: boolean }
   | { type: 'clone-result'; ok: boolean; message: string; name?: string }
   | { type: 'self-update-result'; info: SelfUpdate | null }
   | { type: 'changelog-result'; ok: boolean; rows: ChangelogRow[] };
@@ -224,7 +224,9 @@ function applyResults(state: AppState, action: Action, ctx: ReducerCtx): AppStat
   if (action.type === 'trash-result') return applyTrashResult(state, action, ctx);
   if (action.type === 'create-open') {
     if (state.sub !== null || state.tab !== 'envs') return state;
-    return { ...state, sub: 'create', create: freshCreate() };
+    // Созданное «из основного» получает хранилище выключенным: копия каталога main-агента
+    // ожидаема, а основная запись остаётся обычной, пока пользователь не включит сам.
+    return { ...state, sub: 'create', create: freshCreate({ store: action.fromMain !== true }) };
   }
   if (action.type === 'clone-start') {
     if (state.tab !== 'envs' || state.sub !== null || state.trash !== null || state.clone !== null) return state;

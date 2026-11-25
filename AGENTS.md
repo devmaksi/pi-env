@@ -60,6 +60,23 @@
   (edit: union «окружение + main» — копирование MCP main-агента в окружение,
   удаление записей окружения, «Добавить новый» в окружение; create — отметки
   из main, mcp.json пишется при создании), MCP в детализации окружения
+- Хранилище каталога моделей (первый срез общего хранилища): общий файл
+  `<root>/.store/models/models.json` (путь — `storeDir` в `<root>/.pi-env.json` или
+  `PI_ENV_STORE`, у переменной приоритет; доступно по умолчанию, пока окружение к нему
+  не подключено). В форме окружения строка «Хранилище» (Enter — вопрос «Подключить общий
+  каталог моделей», повторный Enter — отключение) и строка «Модели» (пикер `model-list`:
+  Space отмечает `провайдер/модель`, пустой выбор = все модели каталога, снятая отметка
+  модели по умолчанию невозможна, исчезнувшая из каталога отметка помечена «нет в каталоге»).
+  Включение: своя копия `models.json` уходит в корзину файлов `<root>/.trash/files/<окружение>--models.json@<мс>`
+  (для каталога вне `<root>` — в снимок `<store>/models/models.json.bak-<мс>`), затем
+  `models.json` окружения — симлинк на общий файл; выключение — вместо симлинка обычная копия.
+  Доступность моделей — настройка pi `enabledModels` (пишется `patchSettings` точечно и только
+  если выбор меняли: `modelsTouched`), `auth.json` и `models-store.json` остаются своими.
+  Состояние связи — `EnvDetails.modelsLink` (`off`/`linked`/`broken`), `broken` даёт `⚠`
+  в списке и лечится `R` на окружении (`repairModelsLink`, статус `status.store-repaired`);
+  перед разрушительными правками общего файла — снимок `models.json.bak-<мс>` (хранится 5).
+  Новое окружение создаётся с включённым хранилищем, «создать из основного» (`C` на основной
+  строке) — с выключенным.
 - Живой статус MCP (`pi mcp list --json`, этап 3): маркеры подключения в списке
   вкладки «MCP» и в списке MCP формы окружения (`✓ N` — подключён и N инструментов,
   `⚠ вход`, `✗ ошибка`, `— выкл`), в инфо-панели — состояние, текст ошибки,
@@ -300,12 +317,24 @@
   `fetchChangelogEntries` (второй язык догружается, если в основном нет блока последней доступной версии), `AbortSignal.timeout`
 - `src/state-update.ts` — динамические вкладки `tabsOf` (`update` перед `about` только при `selfUpdate !== null`), `UpdateUi` (курсор, чейнджлог, `copyRequest`),
   `updateMachine` (↑↓/Enter/R), `applySelfUpdateResult` (вкладка исчезла под курсором → соседняя), `updateListLength`/`selectedCommand`
-- `src/trash.ts` — корзина окружений (чистые): `moveToTrash`/`listTrash`/
+- `src/store.ts` — хранилище каталога моделей (чистое): `storeRoot` (приоритет `PI_ENV_STORE` →
+  `storeDir` → `<root>/.store`; относительный `storeDir` — от корня окружений), `storeModelsFile`,
+  `envModelsFile`, `modelsLinkState` (`off`/`linked`/`broken` через `lstat`+`readlink`),
+  `storeSnapshotName`/`snapshotStoreModels` (5 последних), `ensureStoreModels` (источник —
+  `models.json` main-агента, битый общий файл сначала в снимок), `linkModels`/`unlinkModels`/
+  `repairModelsLink`, `archiveEnvModelsIntoStore` (своя копия вне `<root>` → снимок хранилища),
+  `storeFileUsable`/`storeFileTag`
+- `src/trash.ts` — корзина окружений и одиночных файлов (чистые): `moveToTrash`/`listTrash`/
   `restoreTrash`/`deleteTrashForever` (переносы `fs.rename` между `<root>/<имя>` и
   `<root>/.trash/<имя>@<мс>`; одно имя = последняя запись, `@` разделитель — его
   запрещает `validateName`), `formatTs`/`trashLabel` (метка «2026-10-24 14:30»),
   служебные (не экспортируются) `safeDirName` (имя безопасно как один уровень `.trash`)
-  и `parseDirName` (имя/метка обратно из имени каталога)
+  и `parseDirName` (имя/метка обратно из имени каталога). Ветка одиночных файлов
+  `<root>/.trash/files/<окружение>--<файл>@<мс>`: `TRASH_FILES_DIR`/`trashFilesRoot`,
+  `trashFileName`, `moveFileToTrash`, `restoreTrashFile`, `deleteTrashFileForever`,
+  `parseFileDirName`; `TrashEntry.kind` (`dir`/`file`) и `fileName`, `listTrash` отдаёт
+  сначала каталоги, затем файлы, сама папка `files` записью не считается; `trashLabel`
+  для файла — «<окружение> · <файл> · <дата>»
 - `src/state-trash.ts` — суб-экран «Корзина»: `TrashState` (`cursor`, `confirm`,
   `pending`), `freshTrash`, `trashMachine` (↑↓/Enter/X/Esc/TAB), `applyTrashResult`
   (результат restore/delete навсегда; список пуст → курсор 0) (чистые)
@@ -324,7 +353,8 @@
   список вкладка «Окружения» = окружения + «Создать» + «Корзина (N)»,
   `enterEnvs` открывает суб-экран корзины; ре-экспортирует всё из
   `state-*.ts` (внешние импорты `./state.js` не менялись) (чистые)
-- `src/state-form.ts` — `CreateState`/`freshCreate`/`freshEdit`, строки формы
+- `src/state-form.ts` — `CreateState`/`freshCreate`/`freshEdit` (+`modelsSel`,
+  `modelCatalog`, `modelsTouched`, `store`), строки формы
   (`ROW_*`, `formRows(mode, main)` — у основного агента строки «Удалить» нет),
   `formReducer` (имя основного агента нередактируемое), `listViewReducer`,
   `packageListSources`, `clampToLen` (чистые)
@@ -389,7 +419,12 @@
   `cmd.test.ts` — отмена по `AbortSignal`, отличимый таймаут (`cancelled`/`timedOut`/`timeoutMs`),
   `pi-actions.test.ts` — проброс сигнала и тексты `cmdFailureText`, `ticker.test.ts` — цепочка таймеров,
   `env-cache.test.ts` — подпись дерева, кэш и инвалидация, `state.test.ts` — `busyProcessView`,
-  `run-side.test.ts` — `cancelBusy` и вызовы `invalidate` по мутациям, `app-cancel.test.ts` — сквозной
+  `run-side.test.ts` — `cancelBusy`, вызовы `invalidate` по мутациям и `storeOperation`
+  (включение/выключение хранилища, снимок хранилища для каталога вне `<root>`, корзина файлов),
+  `store.test.ts` — путь хранилища, состояния связи, снимки, `link`/`unlink`/`repair`,
+  `app-store.test.ts` — сквозной `run()`: `R` чинит битый симлинк, включение хранилища в форме
+  (симлинк + запись в корзине файлов), «Корзина» удаляет файловую запись совсем,
+  `app-cancel.test.ts` — сквозной
   `run()`: Esc снимает `pi mcp add`, в статусе «Прервано», `⏳ 0 с` в кадре, Ctrl+C уходит с abort)
   , `create.test.ts` дополнен `cloneEnvironment` (копия дерева, занятые/битые имена, сбой
   копирования без неполной копии), `state-clone.test.ts` — машина суб-экрана (имя по
@@ -434,6 +469,14 @@
 - Съёмка демо-GIF — только `demo/` (Python 3, stdlib + бинарный `agg`): в `files`
   package.json `demo/` не входит и в npm-тарбелл не попадает. Пересъёмка меняет
   `docs/demo*.gif` — это артефакты, их коммитят.
+- Хранилище моделей: симлинкуется только `models.json` (`models-store.json` и `auth.json`
+  остаются в окружении — pi персонализирует их по auth-данным, общий файл смешал бы каталоги).
+  Состояния связи — `off`/`linked`/`broken`: обычный файл, заменивший симлинк, неотличим от
+  `off`, поэтому состояния «replaced» нет. Разрушительные правки общего файла — только после
+  снимка `models.json.bak-<мс>`; своя копия окружения внутри `<root>` идёт в файловую корзину,
+  вне `<root>` (каталог main-агента) — в снимок хранилища. `enabledModels` пишется только при
+  изменённом выборе (`modelsTouched`): pi дописывает настройку сам, перезапись стёрла бы эти
+  правки; отключение хранилища выбор моделей не трогает.
 - Не добавлять runtime-зависимости без необходимости.
 - Изменять раскладку/поведение клавиш — только вместе с обновлением тестов
   `render`/`state` и этого файла.
@@ -521,6 +564,8 @@
 - R — обновить живой статус MCP (`pi mcp list`): на вкладке «MCP» (список) и
   в списке MCP формы окружения; во время проверки повторный R не запускает
   вторую проверку; в суб-экранах (форма добавления, подтверждение удаления) — игнор
+- R на вкладке «Окружения» — починить связь `models.json` с общим хранилищем
+  (только при `modelsLink === 'broken'`; на остальных состояниях — ничего)
 - ←/→ на enum-строке формы (закрытый список значений: «Тип» и «Exposure» в форме добавления MCP) —
   сменить значение со циклом по списку, без Enter-режима; на текстовой строке формы — двигать caret
 - Печатные символы / Backspace — ввод имени (строка «Имя» формы), поиска
@@ -550,6 +595,12 @@
 - Этап 3 (готов): отзывчивость долгих операций — фоновые `pi install`/`update`/`remove`/`mcp add`/`mcp list`,
   отмена по `Esc` (процесс убивается), остановка всех процессов при выходе, счётчик «⏳ N с»,
   различимый таймаут; кэш снимка окружений (`src/env-cache.ts`) — один `scan()` на действие.
+- Этап 3 (готов, первый срез общего хранилища): хранилище каталога моделей —
+  `<root>/.store/models/models.json`, симлинк `models.json` окружения, `enabledModels`
+  как видимость моделей, файловая корзина `<root>/.trash/files/`, починка по `R`.
+  Общими пока не являются: `models-store.json` (персонализируется окружением), `auth.json`
+  (один битый файл выключил бы все агенты), `npm/`+`git/` пакетов, скиллы, промпты, темы —
+  следующие срезы.
 - Ограничения MCP (осознанно): `headers`/oauth/`timeout` — только в ручном
   `mcp.json`; правка существующего сервера — удалить + добавить; значения env/args
   в форме — без пробелов (разбор по пробелам); `pi mcp login`/`logout` из TUI не

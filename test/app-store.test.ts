@@ -51,10 +51,10 @@ function storeFile(root: string): string {
   return file;
 }
 
-async function drive(root: string, keys: string[]): Promise<string> {
+async function drive(root: string, keys: string[], agent?: string): Promise<string> {
   const savedAgent = process.env.PI_CODING_AGENT_DIR;
   const painted: string[] = [];
-  process.env.PI_CODING_AGENT_DIR = join(root, 'no-such-agent');
+  process.env.PI_CODING_AGENT_DIR = agent ?? join(root, 'no-such-agent');
   try {
     await run(root, fakeTerm(keys, painted), {});
   } finally {
@@ -94,3 +94,42 @@ test('сквозной: курсор на «Создать» — «R» не тр
   assert.equal(readFileSync(file, 'utf8').includes('providers'), true);
   assert.equal(existsSync(join(root, '.trash')), false);
 });
+
+/** Каталог main-агента вне корня окружений: из него создаётся общий файл каталога. */
+function tmpAgent(catalog: unknown): string {
+  const dir = mkdtempSync(join(tmpdir(), 'pi-env-agent-'));
+  writeFileSync(join(dir, 'models.json'), JSON.stringify(catalog));
+  return dir;
+}
+
+test('сквозной: включение хранилища в форме — симлинк, своя копия в корзине файлов', async () => {
+  const root = tmpRoot('.store');
+  const dir = envDir(root, 'e0');
+  writeFileSync(join(dir, 'models.json'), '{"own":true}');
+  const agent = tmpAgent({ providers: { p: { models: { m: {} } } } });
+  // курсор на e0 → E → три строки вниз («Хранилище») → Enter (вопрос) → Enter (подтверждение)
+  const frame = await drive(root, ['down', 'e', 'down', 'down', 'down', 'enter', 'enter', 'ctrlc'], agent);
+  const link = join(dir, 'models.json');
+  assert.ok(lstatSync(link).isSymbolicLink(), 'models.json — симлинк');
+  assert.equal(readFileSync(link, 'utf8'), readFileSync(storeFileOf(root), 'utf8'));
+  const entries = listTrash(root);
+  assert.equal(entries.length, 1, JSON.stringify(entries));
+  assert.equal(entries[0]!.kind, 'file');
+  assert.ok(frame.includes(t('ru', 'status.store-linked')), frame.slice(-1500));
+});
+
+test('сквозной: «Корзина» — X + Enter удаляет файловую запись совсем', async () => {
+  const root = tmpRoot('.store');
+  const dir = envDir(root, 'e0');
+  writeFileSync(join(dir, 'models.json'), '{"own":true}');
+  const agent = tmpAgent({ providers: { p: { models: { m: {} } } } });
+  await drive(root, ['down', 'e', 'down', 'down', 'down', 'enter', 'enter', 'ctrlc'], agent);
+  assert.equal(listTrash(root).length, 1);
+  // список: основная строка, e0, «Создать», «Корзина» → три «вниз»; Enter — суб-экран; X, Enter — подтверждение
+  await drive(root, ['down', 'down', 'down', 'enter', 'x', 'enter', 'ctrlc'], agent);
+  assert.equal(listTrash(root).length, 0);
+});
+
+function storeFileOf(root: string): string {
+  return join(root, '.store', 'models', 'models.json');
+}

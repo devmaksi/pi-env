@@ -490,7 +490,8 @@ export function renderTrashTab(tr: TrashState, entries: TrashEntry[], ctx: Ctx):
     right.push(dim(t(ctx.lang, 'hint.confirm')));
     right.push(dim(t(ctx.lang, 'hint.cancel')));
   } else if (cur !== undefined) {
-    right.push(bold(cur.name));
+    right.push(bold(cur.kind === 'file' && cur.fileName ? `${cur.name} · ${cur.fileName}` : cur.name));
+    if (cur.kind === 'file' && cur.fileName) right.push(t(ctx.lang, 'trash.file', { v: cur.fileName }));
     right.push(t(ctx.lang, 'trash.deleted-at', { v: cur.ts === null ? '—' : formatTs(cur.ts) }));
     right.push(t(ctx.lang, 'envs.path', { v: cur.path }));
     right.push(dim(t(ctx.lang, 'hint.trash-restore')));

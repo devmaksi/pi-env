@@ -88,9 +88,10 @@ export async function run(root: string, term: Term = createTerm(), deps: RunDeps
   let state: AppState = { ...initialState(catalog), colorToggle: app.color, recheckUpdates: app.recheckUpdates, recheckMcp: app.recheckMcp, language: lang0 };
   let statusMsg: string | null = null;
   /** Снимок окружений и корзины: перечитывается при смене подписи дерева или после инвалидации. */
+  // Хранилище доступно всегда: по умолчанию `<root>/.store`, переезжает настройкой `storeDir`
+  // или `PI_ENV_STORE`. Окружение подключается к нему сам — без переключателя «вообще».
   const storeFile = storeModelsFile(storeRoot(root, app.storeDir, process.env.PI_ENV_STORE));
-  const storeOn = app.storeDir !== null || process.env.PI_ENV_STORE !== undefined;
-  const cache = createScanCache(root, agentDir, {}, storeOn ? storeFile : null);
+  const cache = createScanCache(root, agentDir, {}, storeFile);
 
   /**
    * Активные внешние процессы. `cancelOp` — тот, которому принадлежит busy-экран (его снимает
@@ -409,7 +410,7 @@ export async function run(root: string, term: Term = createTerm(), deps: RunDeps
     doMcpCheck: (dir, scope) => { void doMcpCheck(dir, scope); },
     cancelBusy: () => cancelBusy(),
     invalidate: () => cache.invalidate(),
-    storeFile: () => (storeOn ? storeFile : null),
+    storeFile: () => storeFile,
     trashNames: () => trashNames(),
     runSelfUpdate: () => { void runSelfUpdate(); },
     loadChangelog: () => { void loadChangelog(); },
@@ -430,7 +431,7 @@ export async function run(root: string, term: Term = createTerm(), deps: RunDeps
       // `C` на основной строке — форма создания из основного: дерево агентского каталога
       // (sessions/, install/releases, tmp/) не копируется.
       state = row.main === true
-        ? reducer(state, { type: 'create-open' }, rctx(names, tnames))
+        ? reducer(state, { type: 'create-open', fromMain: true }, rctx(names, tnames))
         : reducer(state, { type: 'clone-start', name: row.name, path: row.path }, rctx(names, tnames));
     } else if (key === 'e' && state.tab === 'envs' && state.sub === null && state.trash === null && state.clone === null && row !== undefined) {
       const settings = readSettings(row.path) ?? {};
@@ -443,7 +444,7 @@ export async function run(root: string, term: Term = createTerm(), deps: RunDeps
       }, rctx(names, tnames));
     } else if (key === 'r' && state.tab === 'envs' && state.sub === null && state.trash === null && state.clone === null && row !== undefined) {
       // `R` на вкладке окружений — починка связи с общим каталогом моделей (битый симлинк).
-      const file = storeOn ? storeFile : null;
+      const file = storeFile;
       if (file !== null && row.details.modelsLink === 'broken') {
         const r = repairModelsLink(row.path, file, agentDir, state.language);
         cache.invalidate();

@@ -501,3 +501,23 @@ test('store: нет общего файла (хранилище выключен
   assert.equal(h.state.create!.view, 'form');
   assert.ok(h.log.some((l) => l === 'status:' + t('ru', 'err.store-no-source')), h.log.join('|'));
 });
+
+test('trash: запись файла восстанавливается в окружение и удаляется совсем по kind ветки', async () => {
+  const setup = storeSetup();
+  const entry = 'e0--models.json@12345';
+  const filesDir = join(setup.root, '.trash', 'files');
+  mkdirSync(filesDir, { recursive: true });
+  writeFileSync(join(filesDir, entry), '{"own":true}');
+  // восстановление
+  let st = { ...initialState(CATALOG), language: 'ru', trash: freshTrash({ pending: { kind: 'restore', dirName: entry } }) };
+  let h = makeLoop(st, setup.root, join(setup.root, 'main-agent'), [setup.env]);
+  await runSideEffects(h.loop, [setup.env], prev({ view: null }));
+  assert.equal(readFileSync(join(setup.envDir, 'models.json'), 'utf8'), '{"own":true}');
+  assert.ok(h.log.some((l) => l.includes('status:')), h.log.join('|'));
+  // удалить совсем
+  writeFileSync(join(filesDir, entry), '{"own":true}');
+  st = { ...initialState(CATALOG), language: 'ru', trash: freshTrash({ pending: { kind: 'delete', dirName: entry } }) };
+  h = makeLoop(st, setup.root, join(setup.root, 'main-agent'), [setup.env]);
+  await runSideEffects(h.loop, [setup.env], prev({ view: null }));
+  assert.equal(existsSync(join(filesDir, entry)), false);
+});

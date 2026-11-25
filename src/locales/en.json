@@ -143,6 +143,7 @@
   "envs.trash.pick": "Enter — open trash",
   "trash.title": "Trash",
   "trash.deleted-at": "Deleted: {v}",
+  "trash.file": "File: {v}",
   "hint.trash-restore": "Enter — restore",
   "hint.trash-delete": "X — delete forever",
   "ext.title": "Extensions (main agent)",
