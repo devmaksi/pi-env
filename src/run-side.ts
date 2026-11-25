@@ -1,7 +1,8 @@
-import { join } from 'node:path';
+import { join, relative } from 'node:path';
 import { cloneEnvironment, createEnvironment, updateEnvironmentAt } from './create.js';
 import { copyMcpEntry, removeMcpEntry, readMcpServers } from './mcp.js';
-import { deleteTrashForever, moveToTrash, restoreTrash } from './trash.js';
+import { deleteTrashForever, moveFileToTrash, moveToTrash, restoreTrash } from './trash.js';
+import { archiveEnvModelsIntoStore, linkModels, unlinkModels, type StoreResult } from './store.js';
 import { t } from './i18n.js';
 import { reducer, makeCtx } from './state.js';
 import { buildCreateRequest } from './pi-actions.js';
@@ -51,6 +52,8 @@ export interface Loop {
   trashNames(): string[];
   /** Сбросить кэш снимка окружений (после любой мутации конфигов). */
   invalidate(): void;
+  /** Общий файл каталога моделей; null — хранилище выключено. */
+  storeFile(): string | null;
   runSelfUpdate(): void;
   loadChangelog(): void;
 }
@@ -148,7 +151,9 @@ function hooksCreate(loop: Loop, prevView: CreateView | null, names: string[]): 
   const cr = loop.state().create;
   if (cr === null) return;
   const v = cr.view;
-  if (v === 'removing' && prevView === 'confirm-remove') {
+  if (v === 'store-op' && prevView !== 'store-op') {
+    storeOperation(loop, names);
+  } else if (v === 'removing' && prevView === 'confirm-remove') {
     const pkg = cr.removing !== null ? loop.catalog().packages.find((p) => p.name === cr.removing) : undefined;
     if (pkg) loop.doRemove(pkg.source);
   } else if (v === 'updating' && prevView === 'packages') {
@@ -251,18 +256,58 @@ function startMcpCheck(loop: Loop, dir: string, scope: 'main' | 'create'): void 
   loop.doMcpCheck(dir, scope);
 }
 
+/**
+ * Переключение хранилища каталога моделей: включение — своя копия уходит в корзину
+ * файлов (или в снимок хранилища для каталога main-агента) и ставится симлинк;
+ * выключение — вместо симлинка обычная копия общего файла.
+ */
+function storeOperation(loop: Loop, names: string[]): void {
+  const cr = loop.state().create!;
+  const lang = loop.state().language;
+  const wanted = !cr.store;
+  // При создании окружения файловых операций нет: каталога ещё нет, флаг уйдёт в createEnvironment.
+  if (cr.mode !== 'edit') {
+    loop.setState(reducer(loop.state(), { type: 'store-result', ok: true, message: '', store: wanted }, rctx(loop, names)));
+    return;
+  }
+  const storeFile = loop.storeFile();
+  if (storeFile === null) {
+    const message = t(lang, 'err.store-no-source');
+    loop.status(message);
+    loop.setState(reducer(loop.state(), { type: 'store-result', ok: false, message, store: cr.store }, rctx(loop, names)));
+    return;
+  }
+  const dir = formInstallDir(loop);
+  const now = Date.now();
+  let res: StoreResult;
+  if (wanted) {
+    if (relative(loop.root, dir).startsWith('..')) archiveEnvModelsIntoStore(dir, storeFile, now);
+    else moveFileToTrash(loop.root, cr.origName ?? cr.name, 'models.json', now, lang);
+    res = linkModels(dir, storeFile, loop.agentDir, lang, now);
+  } else {
+    res = unlinkModels(dir, storeFile, lang);
+  }
+  const message = res.ok ? t(lang, wanted ? 'status.store-linked' : 'status.store-unlinked') : res.error;
+  loop.status(message);
+  loop.invalidate(); // changed models.json of the environment
+  loop.setState(reducer(loop.state(), { type: 'store-result', ok: res.ok, message, store: wanted }, rctx(loop, names)));
+  loop.repaint();
+}
+
 function doSubmit(loop: Loop, names: string[]): void {
   const cr = loop.state().create;
   if (cr === null || cr.view !== 'submitting') return;
   const cat = loop.catalog();
   const req = buildCreateRequest(cat, cr);
+  if (cr.modelsTouched) req.enabledModels = cr.modelsSel;
   const lang = loop.state().language;
+  const store = { storeFile: loop.storeFile(), storeModels: cr.store };
   const res = cr.mode === 'edit'
     // Основное окружение: имя каталога и ресурсы (extensions/, skills/) не трогаются,
     // settings.json правится точечно.
     ? updateEnvironmentAt(formInstallDir(loop), req, { allTools: cat.tools, allSkills: cat.skills },
-      { rename: !cr.main, syncResources: !cr.main, modelSource: cr.main ? undefined : loop.agentDir }, lang)
-    : createEnvironment(loop.root, req, loop.agentDir, lang);
+      { rename: !cr.main, syncResources: !cr.main, modelSource: cr.main ? undefined : loop.agentDir, ...store }, lang)
+    : createEnvironment(loop.root, req, loop.agentDir, lang, store);
   const message = res.ok ? res.path : res.error;
   loop.invalidate(); // создано/переименовано/обновлено окружение
   loop.setState(reducer(loop.state(), { type: 'create-result', ok: res.ok, message }, rctx(loop, names)));

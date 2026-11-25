@@ -4,9 +4,9 @@ import { join } from 'node:path';
 import { withShutdown } from './shutdown.js';
 import { realEnvNames, type Environment } from './environments.js';
 import { createScanCache } from './env-cache.js';
-import { storeModelsFile, storeRoot } from './store.js';
+import { repairModelsLink, storeModelsFile, storeRoot } from './store.js';
 import { loadAppSettings, saveAppSettings } from './appsettings.js';
-import { loadCatalog, fetchPackageCatalog, normalizePkgSource, type CatalogPkg } from './catalog.js';
+import { listProviders, loadCatalog, fetchPackageCatalog, normalizePkgSource, type CatalogPkg } from './catalog.js';
 import { computeLayout } from './layout.js';
 import { frameKey, paintFrame, type PrevFrame } from './diff.js';
 import { createThrottle, type Throttle, type ThrottleDeps } from './throttle.js';
@@ -89,7 +89,8 @@ export async function run(root: string, term: Term = createTerm(), deps: RunDeps
   let statusMsg: string | null = null;
   /** Снимок окружений и корзины: перечитывается при смене подписи дерева или после инвалидации. */
   const storeFile = storeModelsFile(storeRoot(root, app.storeDir, process.env.PI_ENV_STORE));
-  const cache = createScanCache(root, agentDir, {}, storeFile);
+  const storeOn = app.storeDir !== null || process.env.PI_ENV_STORE !== undefined;
+  const cache = createScanCache(root, agentDir, {}, storeOn ? storeFile : null);
 
   /**
    * Активные внешние процессы. `cancelOp` — тот, которому принадлежит busy-экран (его снимает
@@ -408,6 +409,7 @@ export async function run(root: string, term: Term = createTerm(), deps: RunDeps
     doMcpCheck: (dir, scope) => { void doMcpCheck(dir, scope); },
     cancelBusy: () => cancelBusy(),
     invalidate: () => cache.invalidate(),
+    storeFile: () => (storeOn ? storeFile : null),
     trashNames: () => trashNames(),
     runSelfUpdate: () => { void runSelfUpdate(); },
     loadChangelog: () => { void loadChangelog(); },
@@ -432,7 +434,21 @@ export async function run(root: string, term: Term = createTerm(), deps: RunDeps
         : reducer(state, { type: 'clone-start', name: row.name, path: row.path }, rctx(names, tnames));
     } else if (key === 'e' && state.tab === 'envs' && state.sub === null && state.trash === null && state.clone === null && row !== undefined) {
       const settings = readSettings(row.path) ?? {};
-      state = reducer(state, { type: 'edit-start', name: row.name, path: row.path, main: row.main === true, settings, mcp: readMcpServers(row.path) }, rctx(names, tnames));
+      state = reducer(state, {
+        type: 'edit-start', name: row.name, path: row.path, main: row.main === true, settings,
+        mcp: readMcpServers(row.path),
+        store: row.details.modelsLink === 'linked',
+        enabledModels: settings.enabledModels ?? [],
+        modelCatalog: listProviders(row.path),
+      }, rctx(names, tnames));
+    } else if (key === 'r' && state.tab === 'envs' && state.sub === null && state.trash === null && state.clone === null && row !== undefined) {
+      // `R` на вкладке окружений — починка связи с общим каталогом моделей (битый симлинк).
+      const file = storeOn ? storeFile : null;
+      if (file !== null && row.details.modelsLink === 'broken') {
+        const r = repairModelsLink(row.path, file, agentDir, state.language);
+        cache.invalidate();
+        statusMsg = r.ok ? t(state.language, 'status.store-repaired') : r.error;
+      }
     } else {
       state = reducer(state, key, rctx(names, tnames));
     }

@@ -3,6 +3,7 @@ import { basename, dirname, join } from 'node:path';
 import { uniqueName, type SkillItem, type ToolItem } from './catalog.js';
 import { t } from './i18n.js';
 import { writeMcpFile, type McpServer } from './mcp.js';
+import { linkModels } from './store.js';
 
 export interface CreateRequest {
   name: string;
@@ -12,6 +13,8 @@ export interface CreateRequest {
   skills?: SkillItem[];
   packages?: string[];
   mcp?: McpServer[];
+  /** Модели, доступные окружению (`провайдер/модель`); undefined — не трогать настройку. */
+  enabledModels?: string[];
 }
 
 export type CreateResult = { ok: true; path: string } | { ok: false; error: string };
@@ -19,6 +22,8 @@ export type CreateResult = { ok: true; path: string } | { ok: false; error: stri
 
 export interface EnvSettings {
   defaultProvider?: string;
+  /** Модели, доступные окружению (настройка pi `enabledModels`). */
+  enabledModels?: string[];
   defaultModel?: string;
   extensions?: string[];
   skills?: string[];
@@ -40,6 +45,7 @@ export function readSettings(envDir: string): EnvSettings | null {
     const ex = arr(raw.extensions); if (ex !== undefined) out.extensions = ex;
     const sk = arr(raw.skills); if (sk !== undefined) out.skills = sk;
     const pk = arr(raw.packages); if (pk !== undefined) out.packages = pk;
+    const em = arr(raw.enabledModels); if (em !== undefined) out.enabledModels = em;
     return out;
   } catch {
     return null;
@@ -58,7 +64,13 @@ export function validateName(name: string, existing: string[], lang: string = 'r
  * инструменты (extensions/), скиллы (skills/), список пакетов и
  * каталог моделей (models.json, models-store.json, auth.json) из main-агента.
  */
-export function createEnvironment(root: string, req: CreateRequest, agentDir?: string, lang: string = 'ru'): CreateResult {
+export function createEnvironment(
+  root: string,
+  req: CreateRequest,
+  agentDir?: string,
+  lang: string = 'ru',
+  opts: { storeFile?: string | null; storeModels?: boolean } = {},
+): CreateResult {
   const invalid = validateName(req.name, [], lang);
   if (invalid !== null) {
     return { ok: false, error: invalid };
@@ -72,7 +84,11 @@ export function createEnvironment(root: string, req: CreateRequest, agentDir?: s
   } catch {
     return { ok: false, error: t(lang, 'err.dir-create', { dir: envDir }) };
   }
-  if (agentDir !== undefined) copyModelFiles(agentDir, envDir);
+  if (agentDir !== undefined) copyModelFiles(agentDir, envDir, opts.storeModels !== true);
+  if (opts.storeModels === true && opts.storeFile != null) {
+    const link = linkModels(envDir, opts.storeFile, agentDir ?? envDir, lang);
+    if (!link.ok) return { ok: false, error: link.error };
+  }
 
   const settings: Record<string, unknown> = {};
   if (req.defaultProvider && req.defaultModel) {
@@ -102,6 +118,7 @@ export function createEnvironment(root: string, req: CreateRequest, agentDir?: s
 
   const packages = uniqueStrings(req.packages ?? []);
   if (packages.length > 0) settings.packages = packages;
+  if (req.enabledModels !== undefined && req.enabledModels.length > 0) settings.enabledModels = req.enabledModels;
 
   const mcp = req.mcp ?? [];
   if (mcp.length > 0) writeMcpFile(envDir, mcp);
@@ -124,6 +141,10 @@ export interface EditOptions {
   syncResources: boolean;
   /** Откуда брать каталог моделей (`models.json`, `models-store.json`, `auth.json`). */
   modelSource?: string;
+  /** Общий файл каталога моделей; null — хранилище не используется. */
+  storeFile?: string | null;
+  /** true — `models.json` окружения должен быть симлинком на хранилище. */
+  storeModels?: boolean;
 }
 
 /**
@@ -173,7 +194,8 @@ export function updateEnvironmentAt(
     }
     envDir = newDir;
   }
-  if (opts.modelSource !== undefined) copyModelFiles(opts.modelSource, envDir);
+  const linked = opts.storeModels === true && opts.storeFile != null;
+  if (opts.modelSource !== undefined && !linked) copyModelFiles(opts.modelSource, envDir);
 
   if (opts.syncResources) {
     const selectedTools = new Set((req.tools ?? []).map((t) => basename(t.path)));
@@ -224,6 +246,12 @@ export function updateEnvironmentAt(
   const packages = uniqueStrings(req.packages ?? []);
   if (packages.length > 0) patch.packages = packages;
   else unset.push('packages');
+  // Выбор моделей — только когда его меняли в пикере: pi сам дописывает `enabledModels`,
+  // перезапись без изменения стирала бы эти добавки.
+  if (req.enabledModels !== undefined) {
+    if (req.enabledModels.length > 0) patch.enabledModels = req.enabledModels;
+    else unset.push('enabledModels');
+  }
   patchSettings(envDir, patch, unset);
   return { ok: true, path: envDir };
 }
@@ -243,7 +271,7 @@ export function updateEnvironment(
     join(root, oldName),
     req,
     ctx,
-    { rename: true, syncResources: true, modelSource: ctx.agentDir },
+    { rename: true, syncResources: true, modelSource: ctx.agentDir, storeModels: false },
     lang,
   );
 }
@@ -305,8 +333,9 @@ function copyRecursive(src: string, dest: string): void {
 }
 
 /** Копирует каталог моделей (models.json, models-store.json, auth.json) main-агента в окружение. */
-function copyModelFiles(agentDir: string, envDir: string): void {
+function copyModelFiles(agentDir: string, envDir: string, withCatalog = true): void {
   for (const name of ['models.json', 'models-store.json', 'auth.json']) {
+    if (name === 'models.json' && !withCatalog) continue;
     const src = join(agentDir, name);
     if (existsSync(src)) copyFileSync(src, join(envDir, name));
   }

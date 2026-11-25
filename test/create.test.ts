@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert';
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync, readFileSync, readdirSync, existsSync, chmodSync, symlinkSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync, readFileSync, readdirSync, existsSync, chmodSync, symlinkSync, lstatSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { validateName, createEnvironment, readSettings, updateEnvironment, updateEnvironmentAt, cloneEnvironment } from '../src/create.js';
@@ -614,4 +614,85 @@ test('updateEnvironmentAt: отсутствует каталог — ошибк�
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
+});
+
+const created: string[] = [];
+function mk(): string {
+  const dir = mkdtempSync(join(tmpdir(), 'pi-env-store-'));
+  created.push(dir);
+  return dir;
+}
+test.after(() => { for (const d of created) rmSync(d, { recursive: true, force: true }); });
+
+// ─── хранилище каталога моделей и выбор моделей ───────────────────────
+
+test('enabledModels: выбор пикера пишется в settings.json и стирается пустым списком', () => {
+  const root = mk();
+  const res = createEnvironment(root, { name: 'e1', defaultProvider: 'p', defaultModel: 'm', enabledModels: ['p/m', 'p/o'] });
+  assert.ok(res.ok);
+  let raw = JSON.parse(readFileSync(join(root, 'e1', 'settings.json'), 'utf8'));
+  assert.deepEqual(raw.enabledModels, ['p/m', 'p/o']);
+  const upd = updateEnvironmentAt(join(root, 'e1'), { name: 'e1', enabledModels: [] },
+    { allTools: [], allSkills: [] }, { rename: true, syncResources: false, storeModels: false });
+  assert.ok(upd.ok);
+  raw = JSON.parse(readFileSync(join(root, 'e1', 'settings.json'), 'utf8'));
+  assert.equal('enabledModels' in raw, false);
+});
+
+test('enabledModels: не трогается, если выбор не меняли', () => {
+  const root = mk();
+  mkdirSync(join(root, 'e2'), { recursive: true });
+  writeFileSync(join(root, 'e2', 'settings.json'), JSON.stringify({ enabledModels: ['p/m'] }, null, 2));
+  updateEnvironmentAt(join(root, 'e2'), { name: 'e2' }, { allTools: [], allSkills: [] },
+    { rename: true, syncResources: false, storeModels: false });
+  const raw = JSON.parse(readFileSync(join(root, 'e2', 'settings.json'), 'utf8'));
+  assert.deepEqual(raw.enabledModels, ['p/m']);
+});
+
+test('createEnvironment со хранилищем: models.json — симлинк, models-store.json и auth.json — свои', () => {
+  const root = mk();
+  const agent = mk();
+  writeFileSync(join(agent, 'models.json'), '{"shared":true}');
+  writeFileSync(join(agent, 'models-store.json'), '{"personal":true}');
+  writeFileSync(join(agent, 'auth.json'), '{"token":"t"}');
+  const storeDir = join(root, '.store', 'models');
+  mkdirSync(storeDir, { recursive: true });
+  const storeFile = join(storeDir, 'models.json');
+  writeFileSync(storeFile, '{"shared":true}');
+  const res = createEnvironment(root, { name: 'e3' }, agent, 'ru', { storeFile, storeModels: true });
+  assert.ok(res.ok);
+  assert.ok(lstatSync(join(root, 'e3', 'models.json')).isSymbolicLink());
+  assert.equal(readFileSync(join(root, 'e3', 'models.json'), 'utf8'), '{"shared":true}');
+  assert.ok(!lstatSync(join(root, 'e3', 'models-store.json')).isSymbolicLink());
+  assert.ok(existsSync(join(root, 'e3', 'auth.json')));
+});
+
+test('updateEnvironmentAt при включённом хранилище не копирует models.json поверх симлинка', () => {
+  const root = mk();
+  const agent = mk();
+  writeFileSync(join(agent, 'models.json'), '{"agent":true}');
+  const storeDir = join(root, '.store', 'models');
+  mkdirSync(storeDir, { recursive: true });
+  const storeFile = join(storeDir, 'models.json');
+  writeFileSync(storeFile, '{"shared":true}');
+  mkdirSync(join(root, 'e4'), { recursive: true });
+  symlinkSync(storeFile, join(root, 'e4', 'models.json'));
+  const res = updateEnvironmentAt(join(root, 'e4'), { name: 'e4' },
+    { allTools: [], allSkills: [], agentDir: agent }, { rename: true, syncResources: false, modelSource: agent, storeFile, storeModels: true });
+  assert.ok(res.ok);
+  assert.ok(lstatSync(join(root, 'e4', 'models.json')).isSymbolicLink());
+  assert.equal(readFileSync(join(root, 'e4', 'models.json'), 'utf8'), '{"shared":true}');
+  assert.equal(existsSync(join(agent, 'models.json')), true);
+});
+
+test('updateEnvironmentAt при выключенном хранилище возвращает обычную копию каталога', () => {
+  const root = mk();
+  const agent = mk();
+  writeFileSync(join(agent, 'models.json'), '{"agent":true}');
+  mkdirSync(join(root, 'e5'), { recursive: true });
+  const res = updateEnvironmentAt(join(root, 'e5'), { name: 'e5' },
+    { allTools: [], allSkills: [], agentDir: agent }, { rename: true, syncResources: false, modelSource: agent, storeModels: false });
+  assert.ok(res.ok);
+  assert.ok(!lstatSync(join(root, 'e5', 'models.json')).isSymbolicLink());
+  assert.equal(readFileSync(join(root, 'e5', 'models.json'), 'utf8'), '{"agent":true}');
 });

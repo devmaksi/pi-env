@@ -153,6 +153,23 @@ export function unlinkModels(envDir: string, storeFile: string, lang: string): S
   return { ok: true };
 }
 
+/**
+ * Своя копия каталога моделей уходит в снимок хранилища — для окружений вне `<root>`
+ * (каталог main-агента), где файловая корзина окружений недоступна.
+ */
+export function archiveEnvModelsIntoStore(envDir: string, storeFile: string, now: number): boolean {
+  const src = envModelsFile(envDir);
+  try {
+    if (!existsSync(src) || lstatSync(src).isSymbolicLink()) return false;
+    mkdirSync(dirname(storeFile), { recursive: true });
+    copyFileSync(src, join(dirname(storeFile), storeSnapshotName(storeFile, now)));
+    unlinkSync(src);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 /** Починка битой связи: снимает битый симлинк и ставит новый. */
 export function repairModelsLink(envDir: string, storeFile: string, agentDir: string, lang: string, now = Date.now()): StoreResult {
   if (modelsLinkState(envDir, storeFile) !== 'broken') return { ok: true };

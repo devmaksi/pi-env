@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert';
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { lstatSync, mkdirSync, mkdtempSync, readdirSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { existsSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -45,6 +45,7 @@ function makeLoop(initial: AppState, root = '/root', agentDir = '/agent', envs: 
     cancelBusy: () => { log.push('cancelBusy'); },
     trashNames: () => [],
     invalidate: () => { log.push('invalidate'); },
+    storeFile: () => null,
   };
   return { loop, log, get state() { return state; } };
 }
@@ -410,4 +411,93 @@ test('клон: источник — по пути вне корня (основ
   const h = await run(st, {}, root, agent, [env('agent', src)]);
   assert.equal(readFileSync(join(root, 'from-main', 'own', 'notes.txt'), 'utf8'), 'main agent');
   assert.ok(h.log.includes('invalidate'));
+});
+
+// ─── хранилище каталога моделей ───────────────────────────────────────
+
+function storeSetup() {
+  const root = tmp();
+  const envDir = join(root, 'e0');
+  mkdirSync(envDir, { recursive: true });
+  const storeDir = join(root, '.store', 'models');
+  mkdirSync(storeDir, { recursive: true });
+  const storeFile = join(storeDir, 'models.json');
+  writeFileSync(storeFile, JSON.stringify({ providers: { shared: { models: {} } } }));
+  const env: Environment = {
+    name: 'e0', path: envDir,
+    details: { hasSettings: true, model: null, tools: [], skills: [], packages: [], mcp: [], settingsError: null, mcpError: null, mcpSkipped: [], modelsLink: 'off' },
+  };
+  return { root, envDir, storeFile, env };
+}
+
+function storeLoop(setup: ReturnType<typeof storeSetup>, initial: AppState, agentDir?: string) {
+  const h = makeLoop(initial, setup.root, agentDir ?? join(setup.root, 'main-agent'), [setup.env]);
+  h.loop.storeFile = () => setup.storeFile;
+  return h;
+}
+
+const storeForm = (p: Partial<CreateState>): AppState => ({
+  ...cr({ view: 'store-op', mode: 'edit', origName: 'e0', ...p }),
+  language: 'ru',
+});
+
+test('store: включение — своя копия в корзину файлов, models.json становится симлинком', async () => {
+  const setup = storeSetup();
+  writeFileSync(join(setup.envDir, 'models.json'), '{"own":true}');
+  const h = storeLoop(setup, storeForm({ store: false }));
+  await runSideEffects(h.loop, [setup.env], prev({ view: 'form' }));
+  assert.ok(lstatSync(join(setup.envDir, 'models.json')).isSymbolicLink());
+  assert.equal(readFileSync(join(setup.envDir, 'models.json'), 'utf8'), readFileSync(setup.storeFile, 'utf8'));
+  const entries = listTrash(setup.root);
+  assert.equal(entries.length, 1);
+  assert.equal(entries[0].kind, 'file');
+  assert.ok(entries[0].dirName.startsWith('e0--models.json@'));
+  assert.ok(h.log.includes('invalidate'));
+  assert.ok(h.log.some((l) => l === 'status:' + t('ru', 'status.store-linked')), h.log.join('|'));
+  assert.equal(h.state.create!.store, true);
+  assert.equal(h.state.create!.view, 'form');
+});
+
+test('store: выключение — вместо симлинка обычная копия общего файла', async () => {
+  const setup = storeSetup();
+  symlinkSync(setup.storeFile, join(setup.envDir, 'models.json'));
+  const h = storeLoop(setup, storeForm({ store: true }));
+  await runSideEffects(h.loop, [setup.env], prev({ view: 'form' }));
+  assert.ok(!lstatSync(join(setup.envDir, 'models.json')).isSymbolicLink());
+  assert.equal(readFileSync(join(setup.envDir, 'models.json'), 'utf8'), readFileSync(setup.storeFile, 'utf8'));
+  assert.ok(h.log.some((l) => l === 'status:' + t('ru', 'status.store-unlinked')), h.log.join('|'));
+  assert.equal(h.state.create!.store, false);
+});
+
+test('store: каталог main-агента вне root — своя копия в снимок хранилища, не в корзину', async () => {
+  const setup = storeSetup();
+  const agentDir = mkdtempSync(join(tmpdir(), 'pienv-agent-'));
+  tmpDirs.push(agentDir);
+  writeFileSync(join(agentDir, 'models.json'), '{"own":true}');
+  const h = storeLoop(setup, storeForm({ store: false, main: true }), agentDir);
+  await runSideEffects(h.loop, [setup.env], prev({ view: 'form' }));
+  assert.ok(lstatSync(join(agentDir, 'models.json')).isSymbolicLink());
+  const snaps = readdirSync(join(setup.root, '.store', 'models')).filter((f) => f.startsWith('models.json.bak-'));
+  assert.equal(snaps.length, 1);
+  assert.equal(readFileSync(join(setup.root, '.store', 'models', snaps[0]), 'utf8'), '{"own":true}');
+  assert.equal(listTrash(setup.root).length, 0);
+});
+
+test('store: при создании окружения файловых операций нет — только флаг', async () => {
+  const setup = storeSetup();
+  const h = storeLoop(setup, { ...cr({ view: 'store-op', store: false }), language: 'ru' });
+  await runSideEffects(h.loop, [setup.env], prev({ view: 'form' }));
+  assert.equal(h.state.create!.store, true);
+  assert.equal(existsSync(join(setup.root, 'e0', 'models.json')), false);
+  assert.ok(!h.log.includes('invalidate'));
+});
+
+test('store: нет общего файла (хранилище выключено) — ошибка, флаг не меняется', async () => {
+  const setup = storeSetup();
+  const h = storeLoop(setup, storeForm({ store: false }));
+  h.loop.storeFile = () => null;
+  await runSideEffects(h.loop, [setup.env], prev({ view: 'form' }));
+  assert.equal(h.state.create!.store, false);
+  assert.equal(h.state.create!.view, 'form');
+  assert.ok(h.log.some((l) => l === 'status:' + t('ru', 'err.store-no-source')), h.log.join('|'));
 });
