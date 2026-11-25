@@ -2,8 +2,8 @@ import { test } from 'node:test';
 import assert from 'node:assert';
 import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
-import { scan } from '../src/environments.js';
+import { basename, join } from 'node:path';
+import { scan, withMain, realEnvNames } from '../src/environments.js';
 
 test('scan: отсутствующий корень → null', () => {
   assert.equal(scan('/nonexistent/pi-env-path'), null);
@@ -135,4 +135,69 @@ test('scan: каталоги с точкой в начале пропускаю�
   } finally {
     rmSync(dir, { recursive: true });
   }
+});
+
+const dirs: string[] = [];
+test.after(() => { for (const d of dirs) rmSync(d, { recursive: true, force: true }); });
+
+function tmpDir(): string {
+  const d = mkdtempSync(join(tmpdir(), 'pienv-'));
+  dirs.push(d);
+  return d;
+}
+
+/** Корень с одним окружением-каталогом `<root>/<name>`. */
+function tmpFixtureWithEnv(name: string): string {
+  const d = tmpDir();
+  mkdirSync(join(d, name));
+  return d;
+}
+
+/** Отдельный каталог main-агента с settings.json. */
+function tmpAgentDir(settings: unknown): string {
+  const d = tmpDir();
+  writeFileSync(join(d, 'settings.json'), JSON.stringify(settings));
+  return d;
+}
+
+test('withMain: агентский каталог внутри корня — пометка на существующей строке', () => {
+  const root = tmpFixtureWithEnv('dev');
+  const out = withMain(scan(root)!, join(root, 'dev'));
+  assert.deepEqual(out.map((e) => [e.name, e.main === true]), [['dev', true]]);
+});
+
+test('withMain: каталог вне корня — первой строкой, name = basename, main: true', () => {
+  const root = tmpFixtureWithEnv('dev');
+  const agent = tmpAgentDir({ defaultProvider: 'p', defaultModel: 'm' });
+  const out = withMain(scan(root)!, agent);
+  assert.deepEqual(out.map((e) => e.name), [basename(agent), 'dev']);
+  assert.equal(out[0].main, true);
+  assert.equal(out[0].details.model, 'p/m');
+});
+
+test('withMain: битый settings.json агентского каталога → settingsError в деталях', () => {
+  const root = tmpFixtureWithEnv('dev');
+  const agent = tmpDir();
+  writeFileSync(join(agent, 'settings.json'), '{ битый');
+  const out = withMain(scan(root)!, agent);
+  assert.equal(out[0].main, true);
+  assert.notEqual(out[0].details.settingsError, null);
+});
+
+test('withMain: несуществующий агентский каталог → запись есть, details пустые', () => {
+  const root = tmpFixtureWithEnv('dev');
+  const out = withMain(scan(root)!, join(tmpDir(), 'gone'));
+  assert.equal(out.length, 2);
+  assert.equal(out[0].main, true);
+  assert.equal(out[0].details.hasSettings, false);
+  assert.deepEqual(out[0].details.tools, []);
+});
+
+test('scan: у обычных окружений main не проставлен', () => {
+  assert.equal(scan(tmpFixtureWithEnv('dev'))[0].main, undefined);
+});
+
+test('realEnvNames: основная запись исключена', () => {
+  const root = tmpFixtureWithEnv('dev');
+  assert.deepEqual(realEnvNames(withMain(scan(root)!, join(root, 'dev'))), []);
 });
