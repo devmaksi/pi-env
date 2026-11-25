@@ -130,16 +130,8 @@ export function ensureStoreModels(storeFile: string, agentDir: string, now: numb
 export function linkModels(envDir: string, storeFile: string, agentDir: string, lang: string, now = Date.now()): StoreResult {
   const ensure = ensureStoreModels(storeFile, agentDir, now, lang);
   if (!ensure.ok) return ensure;
-  const path = envModelsFile(envDir);
-  try {
-    const st = lstatSync(path, { throwIfNoEntry: false });
-    if (st !== undefined && st !== null && !st.isDirectory()) unlinkSync(path);
-    mkdirSync(envDir, { recursive: true });
-    symlinkSync(storeFile, path);
-  } catch {
-    return { ok: false, error: t(lang, 'err.models-link') };
-  }
-  return { ok: true };
+  const link = placeLink(envDir, storeFile);
+  return link.ok ? link : { ok: false, error: t(lang, 'err.models-link') };
 }
 
 /** Разрыв связи: вместо симлинка — обычная копия общего файла. Свой файл не трогается. */
@@ -161,18 +153,67 @@ export function unlinkModels(envDir: string, storeFile: string, lang: string): S
  * Своя копия каталога моделей уходит в снимок хранилища — для окружений вне `<root>`
  * (каталог main-агента), где файловая корзина окружений недоступна.
  */
-export function archiveEnvModelsIntoStore(envDir: string, storeFile: string, now: number): boolean {
+export function archiveEnvModelsIntoStore(envDir: string, storeFile: string, now: number): string | null {
   const src = envModelsFile(envDir);
   try {
-    if (!existsSync(src) || lstatSync(src).isSymbolicLink()) return false;
+    if (!existsSync(src) || lstatSync(src).isSymbolicLink()) return null;
+    const snap = join(dirname(storeFile), storeSnapshotName(storeFile, now));
     mkdirSync(dirname(storeFile), { recursive: true });
-    copyFileSync(src, join(dirname(storeFile), storeSnapshotName(storeFile, now)));
+    copyFileSync(src, snap);
     pruneSnapshots(dirname(storeFile), `${basename(storeFile)}.bak-`, 5);
     unlinkSync(src);
-    return true;
+    return snap;
   } catch {
-    return false;
+    return null;
   }
+}
+
+/** Возврат снятой копии из снимка хранилища (откат неудавшегося включения). */
+export function restoreFromStoreSnapshot(snapshotPath: string, envDir: string): void {
+  try {
+    copyFileSync(snapshotPath, envModelsFile(envDir));
+    rmSync(snapshotPath);
+  } catch {
+    /* копия останется в снимке — хуже, чем потерять её, но операцию это не отменяет */
+  }
+}
+
+/**
+ * Включение хранилища для одного окружения, в безопасном порядке:
+ * 1) общий файл создан (иначе источник ещё здесь, и трогать нечего);
+ * 2) своя копия убрана в корзину/снимок (провал — операция не начинается);
+ * 3) симлинк; провал — своя копия возвращена (`undo`).
+ * `own.move` кладёт копию в корзину файлов или в снимок хранилища, `own.undo` её возвращает.
+ */
+export function enableModelsStorage(
+  envDir: string,
+  storeFile: string,
+  agentDir: string,
+  lang: string,
+  now: number,
+  own: { move: () => StoreResult; undo: () => void },
+): StoreResult {
+  const ensure = ensureStoreModels(storeFile, agentDir, now, lang);
+  if (!ensure.ok) return ensure;
+  const moved = own.move();
+  if (!moved.ok) return moved;
+  const link = placeLink(envDir, storeFile);
+  if (!link.ok) own.undo();
+  return link;
+}
+
+/** Ставит симлинк на уже существующий общий файл. */
+function placeLink(envDir: string, storeFile: string): StoreResult {
+  const path = envModelsFile(envDir);
+  try {
+    const st = lstatSync(path, { throwIfNoEntry: false });
+    if (st !== undefined && st !== null && !st.isDirectory()) unlinkSync(path);
+    mkdirSync(envDir, { recursive: true });
+    symlinkSync(storeFile, path);
+  } catch {
+    return { ok: false, error: '' };
+  }
+  return { ok: true };
 }
 
 /** Починка битой связи: снимает битый симлинк и ставит новый. */

@@ -133,3 +133,14 @@ test('сквозной: «Корзина» — X + Enter удаляет файл
 function storeFileOf(root: string): string {
   return join(root, '.store', 'models', 'models.json');
 }
+
+test('сквозной: «R» на основной строке чинит битый симлинк каталога main-агента', async () => {
+  const root = tmpRoot();
+  const agent = mkdtempSync(join(tmpdir(), 'pi-env-agent-'));
+  symlinkSync(join(root, 'нет-такого'), join(agent, 'models.json')); // битый симлинк у агента
+  storeFile(root); // общий файл есть
+  const frame = await drive(root, ['R', 'ctrlc'], agent); // курсор и так на основной строке
+  assert.ok(lstatSync(join(agent, 'models.json')).isSymbolicLink());
+  assert.equal(readFileSync(join(agent, 'models.json'), 'utf8'), readFileSync(storeFileOf(root), 'utf8'));
+  assert.ok(frame.includes(t('ru', 'status.store-repaired')), frame.slice(-1500));
+});

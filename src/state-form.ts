@@ -47,6 +47,8 @@ export interface CreateState {
   modelsTouched: boolean;
   /** Каталог моделей окружения лежит в хранилище (models.json — симлинк). */
   store: boolean;
+  /** Хранилище в этой сессии формы переключали — каталог моделей при сохранении не перезаписываем. */
+  storeTouched: boolean;
   mcpOp: { name: string; kind: 'copy' | 'remove' } | null;
   removingMcp: string | null;
   /** Проверка живого статуса MCP в списке формы и её результат. */
@@ -79,7 +81,7 @@ export function freshCreate(over: Partial<CreateState> = {}): CreateState {
     name: '', caret: 0, cursor: 0, provider: null, model: null,
     mode: 'create', origName: null, main: false,
     tools: [], packages: [], skills: [], view: 'form', error: null, done: null,
-    modelsSel: [], modelCatalog: [], modelsTouched: false, store: true,
+    modelsSel: [], modelCatalog: [], modelsTouched: false, store: true, storeTouched: false,
     removing: null, installCatalog: [], installStatus: 'idle', installing: null, query: '',
     check: 'idle', latest: {},
     mcpAdd: null, envMcp: [], mcp: [], mcpOp: null, removingMcp: null, mcpCheck: 'idle', mcpLive: null,
@@ -115,7 +117,7 @@ export function freshEdit(
     view: 'form',
     error: null,
     done: null,
-    modelsSel: [...enabledModels], modelCatalog, modelsTouched: false, store,
+    modelsSel: [...enabledModels], modelCatalog, modelsTouched: false, store, storeTouched: false,
     removing: null, installCatalog: [], installStatus: 'idle', installing: null, query: '',
     check: 'idle', latest: {},
     mcpAdd: null, envMcp, mcp: [], mcpOp: null, removingMcp: null, mcpCheck: 'idle', mcpLive: null,

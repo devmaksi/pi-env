@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import { ROW_MODELS, ROW_STORE, ROW_TOOLS, ROW_PACKAGES, ROW_SKILLS, ROW_MCP, ROW_ACTION, ROW_DELETE, FORM_ROWS, modelRows } from '../src/state.js';
 import assert from 'node:assert';
-import { initialState, reducer, freshCreate, freshEdit, type AppState, type ReducerCtx, type Catalog } from '../src/state.js';
+import { emptyCatalog, initialState, reducer, freshCreate, freshEdit, type AppState, type ReducerCtx, type Catalog } from '../src/state.js';
 import type { CatalogPkg } from '../src/catalog.js';
 
 /** Контекст reducer: имена окружений + раскладка. */
@@ -556,4 +556,13 @@ test('create-open: обычно хранилище включено, «из ос
   const ctx = rc([]);
   assert.equal(reducer(initialState(), { type: 'create-open' }, ctx).create!.store, true);
   assert.equal(reducer(initialState(), { type: 'create-open', fromMain: true }, ctx).create!.store, false);
+});
+
+test('create-open: пикер «Модели» получает каталог, store-result ставит storeTouched', () => {
+  const cat = { ...emptyCatalog(), providers: [{ id: 'p', name: 'P', models: [{ id: 'm', name: 'M' }] }] };
+  const st = reducer(initialState(cat), { type: 'create-open' }, rc([]));
+  assert.deepEqual(st.create!.modelCatalog.map((x) => x.id), ['p']);
+  const after = reducer(st, { type: 'store-result', ok: true, message: '', store: false }, rc([]));
+  assert.equal(after.create!.storeTouched, true);
+  assert.equal(after.create!.store, false);
 });

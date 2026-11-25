@@ -521,3 +521,60 @@ test('trash: запись файла восстанавливается в ок�
   await runSideEffects(h.loop, [setup.env], prev({ view: null }));
   assert.equal(existsSync(join(filesDir, entry)), false);
 });
+
+test('store: включение для основного агента БЕЗ общего файла — каталог не теряется', async () => {
+  // Репро блокера: общего файла ещё нет, источник — models.json самого main-агента.
+  const setup = storeSetup();
+  rmSync(setup.storeFile); // хранилище ещё не создано
+  const agentDir = mkdtempSync(join(tmpdir(), 'pienv-agent-'));
+  tmpDirs.push(agentDir);
+  writeFileSync(join(agentDir, 'models.json'), '{"agent":true}');
+  const h = storeLoop(setup, storeForm({ store: false, main: true }), agentDir);
+  await runSideEffects(h.loop, [setup.env], prev({ view: 'form' }));
+  assert.ok(existsSync(setup.storeFile), 'общий файл создан из каталога агента');
+  assert.equal(readFileSync(setup.storeFile, 'utf8'), '{"agent":true}');
+  assert.ok(lstatSync(join(agentDir, 'models.json')).isSymbolicLink(), 'каталог агента — симлинк на хранилище');
+  const snaps = readdirSync(join(setup.root, '.store', 'models')).filter((f) => f.includes('.bak-'));
+  assert.equal(snaps.length, 1, JSON.stringify(snaps));
+  assert.equal(readFileSync(join(setup.root, '.store', 'models', snaps[0]), 'utf8'), '{"agent":true}');
+  assert.ok(h.state.create!.store, 'флаг включён');
+  assert.ok(h.log.some((l) => l === 'status:' + t('ru', 'status.store-linked')), h.log.join('|'));
+});
+
+test('store: корзина файлов недоступна — операция прервана, своя копия цела', async () => {
+  const setup = storeSetup();
+  writeFileSync(join(setup.envDir, 'models.json'), '{"own":true}');
+  writeFileSync(join(setup.root, '.trash'), 'not a dir'); // корзину не создать
+  const h = storeLoop(setup, storeForm({ store: false }));
+  await runSideEffects(h.loop, [setup.env], prev({ view: 'form' }));
+  assert.equal(readFileSync(join(setup.envDir, 'models.json'), 'utf8'), '{"own":true}');
+  assert.ok(!lstatSync(join(setup.envDir, 'models.json')).isSymbolicLink());
+  assert.equal(h.state.create!.store, false, 'флаг не переключён');
+  assert.ok(h.log.some((l) => l.includes('status:')), h.log.join('|'));
+});
+
+test('store: сохранение после переключения хранилища не перезаписывает каталог из main-агента', async () => {
+  const setup = storeSetup();
+  const agentDir = mkdtempSync(join(tmpdir(), 'pienv-agent-'));
+  tmpDirs.push(agentDir);
+  writeFileSync(join(agentDir, 'models.json'), '{"agent":true}');
+  symlinkSync(setup.storeFile, join(setup.envDir, 'models.json'));
+  const h = storeLoop(setup, {
+    ...cr({ view: 'submitting', mode: 'edit', origName: 'e0', store: false, storeTouched: true }),
+    language: 'ru',
+  }, agentDir);
+  await runSideEffects(h.loop, [setup.env], prev({ view: 'form' }));
+  assert.equal(readFileSync(join(setup.envDir, 'models.json'), 'utf8'), readFileSync(setup.storeFile, 'utf8'));
+});
+
+test('trash: статус файловой записи — «окружение · файл», а не сырое имя каталога', async () => {
+  const setup = storeSetup();
+  const entry = 'e0--models.json@12345';
+  const filesDir = join(setup.root, '.trash', 'files');
+  mkdirSync(filesDir, { recursive: true });
+  writeFileSync(join(filesDir, entry), '{"own":true}');
+  const st = { ...initialState(CATALOG), language: 'ru', trash: freshTrash({ pending: { kind: 'delete', dirName: entry } }) };
+  const h = makeLoop(st, setup.root, join(setup.root, 'main-agent'), [setup.env]);
+  await runSideEffects(h.loop, [setup.env], prev({ view: null }));
+  assert.ok(h.log.some((l) => l.includes('e0 · models.json')), h.log.join('|'));
+});

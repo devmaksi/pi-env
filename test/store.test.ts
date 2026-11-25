@@ -1,11 +1,12 @@
 import { test } from 'node:test';
 import assert from 'node:assert';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, symlinkSync, unlinkSync, writeFileSync } from 'node:fs';
+import { existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, symlinkSync, unlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
   STORE_DIR, storeRoot, storeModelsFile, modelsLinkState, ensureStoreModels,
   snapshotStoreModels, linkModels, unlinkModels, archiveEnvModelsIntoStore, envModelsFile, storeSnapshotName,
+  enableModelsStorage, restoreFromStoreSnapshot,
 } from '../src/store.js';
 import { t } from '../src/i18n.js';
 
@@ -143,10 +144,92 @@ test('снимок из своей копии вне root: старых сним
   const envDir = tmpDir();
   for (let i = 0; i < 7; i++) {
     writeFileSync(envModelsFile(envDir), JSON.stringify({ v: i }));
-    assert.equal(archiveEnvModelsIntoStore(envDir, storeFile, 1000 + i), true);
+    assert.ok(archiveEnvModelsIntoStore(envDir, storeFile, 1000 + i) !== null);
   }
   const snaps = readdirSync(join(root, 'models')).filter((n) => n.includes('.bak-'));
   assert.equal(snaps.length, 5, JSON.stringify(snaps));
   assert.deepEqual(snaps.sort(), ['models.json.bak-1002', 'models.json.bak-1003', 'models.json.bak-1004', 'models.json.bak-1005', 'models.json.bak-1006']);
   assert.equal(storeSnapshotName(storeFile, 1006), 'models.json.bak-1006');
+});
+
+// ─── безопасный порядок включения хранилища ───────────────────────────
+
+test('enableModelsStorage: общий файл создаётся ДО перемещения своей копии', () => {
+  const root = tmpDir();
+  const storeFile = storeModelsFile(root);
+  const agent = tmpDir();
+  writeJson(envModelsFile(agent), { providers: { a: { models: { m: {} } } } });
+  const envDir = tmpDir();
+  writeJson(envModelsFile(envDir), { own: true });
+  const seen: boolean[] = [];
+  const res = enableModelsStorage(envDir, storeFile, agent, 'ru', 7, {
+    move: () => { seen.push(existsSync(storeFile)); return { ok: true }; },
+    undo: () => {},
+  });
+  assert.deepEqual(seen, [true], 'к моменту перемещения общий файл уже создан');
+  assert.ok(res.ok);
+  assert.equal(readFileSync(envModelsFile(envDir), 'utf8'), readFileSync(storeFile, 'utf8'));
+});
+
+test('enableModelsStorage: нет общего файла и нет источника — своя копия не тронута', () => {
+  const root = tmpDir();
+  const storeFile = storeModelsFile(root);
+  const envDir = tmpDir();
+  writeJson(envModelsFile(envDir), { own: true });
+  const ownBytes = readFileSync(envModelsFile(envDir), 'utf8');
+  let moved = false;
+  const res = enableModelsStorage(envDir, storeFile, tmpDir(), 'ru', 8, {
+    move: () => { moved = true; return { ok: true }; },
+    undo: () => {},
+  });
+  assert.equal(res.ok, false);
+  assert.match((res as { error: string }).error, new RegExp(t('ru', 'err.store-no-source').slice(0, 12)));
+  assert.equal(moved, false, 'перемещение не начиналось');
+  assert.equal(readFileSync(envModelsFile(envDir), 'utf8'), ownBytes);
+});
+
+test('enableModelsStorage: провал перемещения — симлинка нет, копия на месте', () => {
+  const root = tmpDir();
+  const storeFile = storeModelsFile(root);
+  writeJson(storeFile, { shared: true });
+  const envDir = tmpDir();
+  writeJson(envModelsFile(envDir), { own: true });
+  const ownBytes = readFileSync(envModelsFile(envDir), 'utf8');
+  const res = enableModelsStorage(envDir, storeFile, tmpDir(), 'ru', 9, {
+    move: () => ({ ok: false, error: 'корзина недоступна' }),
+    undo: () => { throw new Error('undo не вызывается при провале перемещения'); },
+  });
+  assert.equal(res.ok, false);
+  assert.equal(lstatSync(envModelsFile(envDir)).isSymbolicLink(), false);
+  assert.equal(readFileSync(envModelsFile(envDir), 'utf8'), ownBytes);
+});
+
+test('enableModelsStorage: провал симлинка — копия возвращена (undo)', () => {
+  const root = tmpDir();
+  const storeFile = storeModelsFile(root);
+  writeJson(storeFile, { shared: true });
+  const envDir = tmpDir();
+  // каталог на месте models.json: симлинк поставить нельзя (каталоги linkModels не снимает)
+  mkdirSync(envModelsFile(envDir), { recursive: true });
+  let undone = 0;
+  const res = enableModelsStorage(envDir, storeFile, tmpDir(), 'ru', 10, {
+    move: () => { undone = -1; return { ok: true }; },
+    undo: () => { undone += 1; },
+  });
+  assert.equal(res.ok, false);
+  assert.equal(undone, 0, 'undo вызван ровно один раз');
+});
+
+test('restoreFromStoreSnapshot: откат возвращает файл и убирает снимок', () => {
+  const root = tmpDir();
+  const storeFile = storeModelsFile(root);
+  const envDir = tmpDir();
+  writeJson(envModelsFile(envDir), { own: true });
+  const snap = archiveEnvModelsIntoStore(envDir, storeFile, 11);
+  assert.ok(snap !== null);
+  assert.equal(existsSync(envModelsFile(envDir)), false);
+  const ownBytes = '{\n  "own": true\n}';
+  restoreFromStoreSnapshot(snap!, envDir);
+  assert.equal(readFileSync(envModelsFile(envDir), 'utf8'), ownBytes);
+  assert.equal(existsSync(snap!), false);
 });

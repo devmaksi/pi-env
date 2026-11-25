@@ -67,9 +67,13 @@
   каталог моделей», повторный Enter — отключение) и строка «Модели» (пикер `model-list`:
   Space отмечает `провайдер/модель`, пустой выбор = все модели каталога, снятая отметка
   модели по умолчанию невозможна, исчезнувшая из каталога отметка помечена «нет в каталоге»).
-  Включение: своя копия `models.json` уходит в корзину файлов `<root>/.trash/files/<окружение>--models.json@<мс>`
-  (для каталога вне `<root>` — в снимок `<store>/models/models.json.bak-<мс>`), затем
-  `models.json` окружения — симлинк на общий файл; выключение — вместо симлинка обычная копия.
+  Включение — строго в порядке `enableModelsStorage`: сначала созданный общий файл, затем
+  своя копия `models.json` уходит в корзину файлов `<root>/.trash/files/<окружение>--models.json@<мс>`
+  (для каталога вне `<root>` — в снимок `<store>/models/models.json.bak-<мс>`), и лишь потом
+  ставится симлинк; провал перемещения прерывает операцию, провал симлинка возвращает копию
+  (`restoreFromStoreSnapshot`), при любой ошибке флаг хранилища не переключается. Выключение —
+  вместо симлинка обычная копия. Не-файл на месте `models.json` в файловую корзину не кладётся
+  (`err.trash-not-file`: каталог в ветке файлов был бы невидим в суб-экране «Корзина`).
   Доступность моделей — настройка pi `enabledModels` (пишется `patchSettings` точечно и только
   если выбор меняли: `modelsTouched`), `auth.json` и `models-store.json` остаются своими.
   Состояние связи — `EnvDetails.modelsLink` (`off`/`linked`/`broken`), `broken` даёт `⚠`
@@ -91,7 +95,7 @@
   → `runCmd`), `Ctrl+C` выходит, сняв все незавершённые процессы (`cancelAll`). `CmdResult` различает
   `cancelled`/`timedOut`/`timeoutMs`, текст строит `cmdFailureText` (`status.cancelled*`, `status.timeout*`).
 - Кэш снимка окружений (`src/env-cache.ts`): `scan()` и `listTrash()` вызываются раз на действие —
-  `run.ts` держит `cache`, подпись = mtime корня, каталогов окружений и `settings.json`/`mcp.json`/`extensions/`/`skills/`
+  `run.ts` держит `cache`, подпись = mtime корня, каталогов окружений и `settings.json`/`mcp.json`/`extensions/`/`skills/`/`models.json`
   (те же проверки для каталога основного агента — `scanSignature(root, agentDir)`);
   инвалидация — после создания/сохранения/переименования, корзины, MCP-операций, возврата из дочернего `pi`
   и окончания любой внешней команды (в `finally` у `startOp`). Нечитаемый корень не кэшируется.
@@ -320,10 +324,11 @@
 - `src/store.ts` — хранилище каталога моделей (чистое): `storeRoot` (приоритет `PI_ENV_STORE` →
   `storeDir` → `<root>/.store`; относительный `storeDir` — от корня окружений), `storeModelsFile`,
   `envModelsFile`, `modelsLinkState` (`off`/`linked`/`broken` через `lstat`+`readlink`),
-  `storeSnapshotName`/`snapshotStoreModels` (5 последних), `ensureStoreModels` (источник —
-  `models.json` main-агента, битый общий файл сначала в снимок), `linkModels`/`unlinkModels`/
-  `repairModelsLink`, `archiveEnvModelsIntoStore` (своя копия вне `<root>` → снимок хранилища),
-  `storeFileUsable`/`storeFileTag`
+  `storeSnapshotName`/`snapshotStoreModels`/`pruneSnapshots` (5 последних), `ensureStoreModels`
+  (источник — `models.json` main-агента, битый общий файл сначала в снимок), `linkModels`/
+  `unlinkModels`/`repairModelsLink`, `enableModelsStorage` (порядок «общий файл → своя копия →
+  симлинк», с `undo` при провале симлинка), `archiveEnvModelsIntoStore` (своя копия вне `<root>` →
+  снимок хранилища, отдаёт путь снимка) и `restoreFromStoreSnapshot` (откат), `storeFileUsable`
 - `src/trash.ts` — корзина окружений и одиночных файлов (чистые): `moveToTrash`/`listTrash`/
   `restoreTrash`/`deleteTrashForever` (переносы `fs.rename` между `<root>/<имя>` и
   `<root>/.trash/<имя>@<мс>`; одно имя = последняя запись, `@` разделитель — его
@@ -332,7 +337,8 @@
   и `parseDirName` (имя/метка обратно из имени каталога). Ветка одиночных файлов
   `<root>/.trash/files/<окружение>--<файл>@<мс>`: `TRASH_FILES_DIR`/`trashFilesRoot`,
   `trashFileName`, `moveFileToTrash`, `restoreTrashFile`, `deleteTrashFileForever`,
-  `parseFileDirName`; `TrashEntry.kind` (`dir`/`file`) и `fileName`, `listTrash` отдаёт
+  `parseFileDirName`, `trashEntryDisplayName` (статус «e0 · models.json»),
+  `TrashEntry.kind` (`dir`/`file`) и `fileName`, `listTrash` отдаёт
   сначала каталоги, затем файлы, сама папка `files` записью не считается; `trashLabel`
   для файла — «<окружение> · <файл> · <дата>»
 - `src/state-trash.ts` — суб-экран «Корзина»: `TrashState` (`cursor`, `confirm`,
@@ -384,8 +390,8 @@
   поверх `pi-actions.ts`/`cmd.ts`, объект `Loop` для побочных эффектов
   (`prevFrame` + `paintFrame` — дифф-репок; `makeProgressPainter`/`PROGRESS_THROTTLE_MS` — throttle прогресса каталога; `cache` — снимок окружений из `env-cache.ts`, `startOp`/`cancelBusy`/`cancelAll` — отмена процессов, `opTicker` — секунды, `Loop` отдаёт `invalidate`/`trashNames`)
 - `src/env-cache.ts` — кэш снимка окружений и корзины (чистый): `scanSignature(root, agentDir)`
-  (mtime корня, каталогов окружений, `settings.json`/`mcp.json`/`extensions/`/`skills/` — и те же
-  проверки для каталога основного агента), `createScanCache(root, agentDir, deps)` →
+  (mtime корня, каталогов окружений, `settings.json`/`mcp.json`/`extensions/`/`skills/`/`models.json` —
+  и те же проверки для каталога основного агента), `createScanCache(root, agentDir, deps)` →
   `get()` (снимок уже с `withMain`)/`invalidate()`; нечитаемый корень не кэшируется
 - `src/ticker.ts` — `createTicker(onTick, deps)`: цепочка таймеров, пока `onTick()` возвращает true
   (повторный `start()` не заводит вторую) (чистая, таймеры инжектятся)
@@ -476,7 +482,10 @@
   снимка `models.json.bak-<мс>`; своя копия окружения внутри `<root>` идёт в файловую корзину,
   вне `<root>` (каталог main-агента) — в снимок хранилища. `enabledModels` пишется только при
   изменённом выборе (`modelsTouched`): pi дописывает настройку сам, перезапись стёрла бы эти
-  правки; отключение хранилища выбор моделей не трогает.
+  правки; отключение хранилища выбор моделей не трогает. После переключения хранилища в форме
+  (`storeTouched`) сохранение не перезаписывает `models.json` из каталога main-агента. Операция
+  хранилища синхронная (свои `fs.rename`/`symlink`, не дочерний процесс): экран `store-op`
+  не процессный, `Esc` его не прерывает — подсказка `hint.kill` на нём не показывается.
 - Не добавлять runtime-зависимости без необходимости.
 - Изменять раскладку/поведение клавиш — только вместе с обновлением тестов
   `render`/`state` и этого файла.

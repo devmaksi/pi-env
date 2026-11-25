@@ -62,6 +62,7 @@ function createResultReducer(c: CreateState, action: Action, catalog: Catalog): 
       view: 'form',
       cursor: ROW_STORE,
       store: action.store,
+      storeTouched: true,
       error: action.ok ? null : action.message,
     };
   }

@@ -339,7 +339,8 @@ function elapsedSuffix(ctx: Ctx): string {
 // Заглушки и подтверждения создания: view → [текст, bold?, подсказки]
 const CREATE_BUSY: Record<string, { text: (cr: CreateState, lang: string) => string; bold?: boolean; hints: StrKey[] }> = {
   'store-confirm': { text: (_cr, lang) => t(lang, 'busy.store-confirm'), bold: true, hints: ['hint.confirm', 'hint.cancel'] },
-  'store-op': { text: (_cr, lang) => t(lang, 'busy.store-op'), hints: ['hint.kill'] },
+  // Синхронная операция (свои файловые переходы, не дочерний процесс): прерывать нечего.
+  'store-op': { text: (_cr, lang) => t(lang, 'busy.store-op'), hints: [] },
   'confirm-delete': { text: (cr, lang) => t(lang, 'busy.delete-env', { name: cr.name }), bold: true, hints: ['hint.confirm', 'hint.cancel'] },
   'deleting': { text: (_cr, lang) => t(lang, 'busy.deleting'), hints: ['hint.cancel'] },
   'submitting': { text: (_cr, lang) => t(lang, 'busy.creating'), hints: ['hint.cancel'] },

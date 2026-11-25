@@ -4,9 +4,11 @@ import { cloneEnvironment, createEnvironment, updateEnvironmentAt } from './crea
 import { copyMcpEntry, removeMcpEntry, readMcpServers } from './mcp.js';
 import {
   deleteTrashFileForever, deleteTrashForever, moveFileToTrash, moveToTrash,
-  restoreTrash, restoreTrashFile, trashFilesRoot,
+  restoreTrash, restoreTrashFile, trashEntryDisplayName, trashFileName, trashFilesRoot,
 } from './trash.js';
-import { archiveEnvModelsIntoStore, linkModels, unlinkModels, type StoreResult } from './store.js';
+import {
+  archiveEnvModelsIntoStore, enableModelsStorage, restoreFromStoreSnapshot, unlinkModels, type StoreResult,
+} from './store.js';
 import { t } from './i18n.js';
 import { reducer, makeCtx } from './state.js';
 import { buildCreateRequest } from './pi-actions.js';
@@ -103,7 +105,7 @@ function hooksTrash(loop: Loop): void {
   const lang = loop.state().language;
   // Запись корзины — каталог окружения или одиночный файл (ветка `.trash/files`).
   const isFile = existsSync(join(trashFilesRoot(loop.root), pending.dirName));
-  const name = pending.dirName.split('@')[0] ?? pending.dirName;
+  const name = trashEntryDisplayName(pending.dirName);
   const r = pending.kind === 'restore'
     ? (isFile ? restoreTrashFile(loop.root, pending.dirName, lang) : restoreTrash(loop.root, pending.dirName, lang))
     : (isFile ? deleteTrashFileForever(loop.root, pending.dirName, lang) : deleteTrashForever(loop.root, pending.dirName, lang));
@@ -285,19 +287,50 @@ function storeOperation(loop: Loop, names: string[]): void {
   }
   const dir = formInstallDir(loop);
   const now = Date.now();
+  const envName = cr.origName ?? cr.name;
   let res: StoreResult;
   if (wanted) {
-    if (relative(loop.root, dir).startsWith('..')) archiveEnvModelsIntoStore(dir, storeFile, now);
-    else moveFileToTrash(loop.root, cr.origName ?? cr.name, 'models.json', now, lang);
-    res = linkModels(dir, storeFile, loop.agentDir, lang, now);
+    // Порядок задаёт `enableModelsStorage`: сначала общий файл, только потом своя копия
+    // уходит в корзину (или в снимок), и лишь затем ставится симлинк; провал симлинка
+    // возвращает копию обратно.
+    res = enableModelsStorage(dir, storeFile, loop.agentDir, lang, now,
+      relative(loop.root, dir).startsWith('..')
+        ? snapshotOwn(dir, storeFile, now)
+        : fileTrashOwn(loop.root, envName, now, lang));
   } else {
     res = unlinkModels(dir, storeFile, lang);
   }
   const message = res.ok ? t(lang, wanted ? 'status.store-linked' : 'status.store-unlinked') : res.error;
   loop.status(message);
-  loop.invalidate(); // changed models.json of the environment
-  loop.setState(reducer(loop.state(), { type: 'store-result', ok: res.ok, message, store: wanted }, rctx(loop, names)));
+  loop.invalidate(); // менялся models.json окружения (или его не стало)
+  // Провал — флаг остаётся прежним: файловое состояние не изменилось, врать про него нельзя.
+  loop.setState(reducer(loop.state(), { type: 'store-result', ok: res.ok, message, store: res.ok ? wanted : cr.store }, rctx(loop, names)));
   loop.repaint();
+}
+
+/** Своя копия `models.json` окружения внутрь `<root>` — в корзину файлов, с откатом. */
+function fileTrashOwn(root: string, envName: string, now: number, lang: string): { move: () => StoreResult; undo: () => void } {
+  let entryName: string | null = null;
+  return {
+    move: () => {
+      const r = moveFileToTrash(root, envName, 'models.json', now, lang);
+      if (r.ok) entryName = trashFileName(envName, 'models.json', now);
+      return r;
+    },
+    undo: () => { if (entryName !== null) restoreTrashFile(root, entryName, lang); },
+  };
+}
+
+/** Своя копия каталога вне `<root>` (каталог main-агента) — в снимок хранилища, с откатом. */
+function snapshotOwn(envDir: string, storeFile: string, now: number): { move: () => StoreResult; undo: () => void } {
+  let snapshot: string | null = null;
+  return {
+    move: () => {
+      snapshot = archiveEnvModelsIntoStore(envDir, storeFile, now);
+      return snapshot === null ? { ok: false, error: '' } : { ok: true };
+    },
+    undo: () => { if (snapshot !== null) restoreFromStoreSnapshot(snapshot, envDir); },
+  };
 }
 
 function doSubmit(loop: Loop, names: string[]): void {
@@ -312,7 +345,12 @@ function doSubmit(loop: Loop, names: string[]): void {
     // Основное окружение: имя каталога и ресурсы (extensions/, skills/) не трогаются,
     // settings.json правится точечно.
     ? updateEnvironmentAt(formInstallDir(loop), req, { allTools: cat.tools, allSkills: cat.skills },
-      { rename: !cr.main, syncResources: !cr.main, modelSource: cr.main ? undefined : loop.agentDir, ...store }, lang)
+      {
+        rename: !cr.main, syncResources: !cr.main, ...store,
+        // После переключения хранилища каталог моделей уже разобран (симлинк или своя копия) —
+        // copying из main-агента молча перезаписал бы результат.
+        modelSource: cr.main || cr.storeTouched ? undefined : loop.agentDir,
+      }, lang)
     : createEnvironment(loop.root, req, loop.agentDir, lang, store);
   const message = res.ok ? res.path : res.error;
   loop.invalidate(); // создано/переименовано/обновлено окружение

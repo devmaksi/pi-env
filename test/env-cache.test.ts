@@ -187,3 +187,15 @@ test('createScanCache с хранилищем: обрыв симлинка ви�
   assert.equal(scanCalls, 2);
   assert.equal(dev(snap.envs).details.modelsLink, 'broken');
 });
+
+test('scanSignature: правка содержимого своего models.json меняет подпись (mtime каталога её не ловит)', () => {
+  const root = mkdtempSync(join(tmpdir(), 'pienv-sig-'));
+  const agent = mkdtempSync(join(tmpdir(), 'pienv-agent-'));
+  mkdirSync(join(root, 'e0'), { recursive: true });
+  writeFileSync(join(root, 'e0', 'models.json'), '{"v":1}');
+  const before = scanSignature(root, agent);
+  writeFileSync(join(root, 'e0', 'models.json'), '{"v":2}');
+  assert.notEqual(scanSignature(root, agent), before);
+  rmSync(root, { recursive: true, force: true });
+  rmSync(agent, { recursive: true, force: true });
+});

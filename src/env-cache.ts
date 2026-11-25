@@ -44,6 +44,9 @@ export function scanSignature(root: string, agentDir: string, storeFile: string 
       'm=' + statTag(join(dir, 'mcp.json')),
       'e=' + statTag(join(dir, 'extensions')),
       'k=' + statTag(join(dir, 'skills')),
+      // Правка содержимого своего `models.json` mtime каталога не меняет: без этой части
+      // связь с хранилищем (`modelsLink`) могла бы показываться протухшей.
+      'l=' + statTag(join(dir, 'models.json')),
     );
   }
   parts.push('trash:' + statTag(join(root, '.trash')));
@@ -56,6 +59,7 @@ export function scanSignature(root: string, agentDir: string, storeFile: string 
     'm=' + statTag(join(agentDir, 'mcp.json')),
     'e=' + statTag(join(agentDir, 'extensions')),
     'k=' + statTag(join(agentDir, 'skills')),
+    'l=' + statTag(join(agentDir, 'models.json')),
   );
   return parts.join('|');
 }

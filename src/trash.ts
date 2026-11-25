@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readdirSync, renameSync, rmSync } from 'node:fs';
+import { lstatSync, existsSync, mkdirSync, readdirSync, renameSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { t } from './i18n.js';
 
@@ -133,6 +133,13 @@ export function moveToTrash(root: string, name: string, now: number, lang: strin
 export function moveFileToTrash(root: string, envName: string, fileName: string, now: number, lang: string = 'ru'): TrashResult {
   const from = join(root, envName, fileName);
   if (!existsSync(from)) return { ok: false, error: t(lang, 'err.not-found') };
+  // Файловая ветка корзины хранит только файлы: каталог, перенесённый сюда, в суб-экране
+  // «Корзина» не виден (список читает файлы) и через UI не восстанавливается.
+  try {
+    if (!lstatSync(from).isFile()) return { ok: false, error: t(lang, 'err.trash-not-file', { name: `${envName}/${fileName}` }) };
+  } catch {
+    return { ok: false, error: t(lang, 'err.trash-move', { name: `${envName}/${fileName}` }) };
+  }
   const dir = trashFilesRoot(root);
   const to = join(dir, trashFileName(envName, fileName, now));
   try {
@@ -142,6 +149,16 @@ export function moveFileToTrash(root: string, envName: string, fileName: string,
     return { ok: false, error: t(lang, 'err.trash-move', { name: `${envName}/${fileName}` }) };
   }
   return { ok: true, path: to };
+}
+
+/** Человекочитаемое имя записи для статус-строки: каталог — имя окружения, файл — «окружение · файл». */
+export function trashEntryDisplayName(dirName: string): string {
+  const { name, ts } = parseDirName(dirName);
+  const sep = name.lastIndexOf(FILE_SEP);
+  if (sep <= 0 || sep + FILE_SEP.length >= name.length) return name;
+  const envName = name.slice(0, sep);
+  const fileName = name.slice(sep + FILE_SEP.length);
+  return ts === null ? `${envName} · ${fileName}` : `${envName} · ${fileName}`;
 }
 
 /** Возвращает запись корзины на место: `<root>/<имя>`. Занятое имя — ошибка, запись остаётся в корзине. */

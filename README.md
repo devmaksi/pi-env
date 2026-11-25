@@ -72,9 +72,9 @@ different purpose.
 - shared model-catalog storage: one `<root>/.store/models/models.json` for every
   environment (the “Storage” row in the environment form), per-environment model
   visibility in the “Models” row (the pi `enabledModels` setting), a broken link is
-  repaired with `R` on the environment; the storage path is overridden by the
-  storage lives in `<root>/.store` by default and moves with the `storeDir` entry of
-  `<root>/.pi-env.json` or the `PI_ENV_STORE` variable;
+  repaired with `R` on the environment; the storage lives in `<root>/.store` by
+  default and moves with the `storeDir` entry of `<root>/.pi-env.json` or the
+  `PI_ENV_STORE` variable;
 - extension management: update checks («↑ latest» markers), updating
   one/all packages (`pi update`), removal (`pi remove`);
 - installing extensions from the `https://pi.dev/packages` catalog: globally

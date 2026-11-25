@@ -307,5 +307,5 @@ test('«Хранилище»: подтверждение подключения 
   assert.ok(ask.includes('Enter — подтвердить'), ask);
   const op = render({ state: editState({ view: 'store-op' }), envs, width: 100, height: 14, root: '/root', useColor: false, status: null });
   assert.ok(op.includes('Переподключаем каталог моделей'), op);
-  assert.ok(op.includes('Esc — прервать'), op);
+  assert.ok(!op.includes('Esc — прервать'), 'операция синхронна — прерывать нечего, подсказки нет');
 });

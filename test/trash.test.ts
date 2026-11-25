@@ -234,3 +234,15 @@ test('корзина файлов: имя окружения с «--» разб�
   assert.ok(back.ok, back.error);
   assert.equal(readFileSync(join(dir, 'models.json'), 'utf8'), '{"own":true}');
 });
+
+test('корзина файлов: не-файл на месте models.json не переносится (иначе запись невидима в UI)', () => {
+  const root = tmp();
+  const dir = join(root, 'e0', 'models.json');
+  mkdirSync(dir, { recursive: true });
+  writeFileSync(join(dir, 'inner'), 'x');
+  const res = moveFileToTrash(root, 'e0', 'models.json', 100, 'ru');
+  assert.equal(res.ok, false);
+  assert.match(res.error!, new RegExp(t('ru', 'err.trash-not-file', { name: 'e0/models.json' }).slice(0, 12)));
+  assert.equal(readFileSync(join(dir, 'inner'), 'utf8'), 'x');
+  assert.equal(listTrash(root).length, 0);
+});

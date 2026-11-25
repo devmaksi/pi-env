@@ -156,6 +156,7 @@
   "err.rename": "Failed to rename environment to {name}",
   "err.delete": "Failed to delete environment {name}",
   "err.trash-move": "Failed to move \"{name}\" to trash",
+  "err.trash-not-file": "“{name}” is not a file — the file trash does not take such entries",
   "err.trash-taken": "Name \"{name}\" is taken — free it, then restore",
   "err.trash-restore": "Failed to restore \"{name}\"",
   "err.trash-delete": "Failed to delete \"{name}\" forever",

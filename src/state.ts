@@ -226,7 +226,12 @@ function applyResults(state: AppState, action: Action, ctx: ReducerCtx): AppStat
     if (state.sub !== null || state.tab !== 'envs') return state;
     // Созданное «из основного» получает хранилище выключенным: копия каталога main-агента
     // ожидаема, а основная запись остаётся обычной, пока пользователь не включит сам.
-    return { ...state, sub: 'create', create: freshCreate({ store: action.fromMain !== true }) };
+    // Пикер «Модели» в создании читает каталог того агента, из которого создаётся окружение.
+    return {
+      ...state,
+      sub: 'create',
+      create: freshCreate({ store: action.fromMain !== true, modelCatalog: state.catalog.providers }),
+    };
   }
   if (action.type === 'clone-start') {
     if (state.tab !== 'envs' || state.sub !== null || state.trash !== null || state.clone !== null) return state;
