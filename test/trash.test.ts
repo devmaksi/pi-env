@@ -5,7 +5,8 @@ import { existsSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
-  TRASH_DIR, trashRoot, listTrash, moveToTrash, restoreTrash, deleteTrashForever, formatTs, trashLabel,
+  TRASH_DIR, TRASH_FILES_DIR, trashRoot, trashFilesRoot, listTrash, moveToTrash, restoreTrash,
+  moveFileToTrash, restoreTrashFile, deleteTrashForever, deleteTrashFileForever, trashFileName, formatTs, trashLabel,
 } from '../src/trash.js';
 import { t } from '../src/i18n.js';
 
@@ -128,4 +129,92 @@ test('formatTs/trashLabel: "dev-supo · 2026-10-24 12:03"; без метки —
 test('TRASH_DIR/trashRoot: корзина — скрытый каталог корня', () => {
   assert.equal(TRASH_DIR, '.trash');
   assert.equal(trashRoot('/r'), join('/r', '.trash'));
+});
+
+test("moveFileToTrash: файл окружения попадает в .trash/files и виден в списке", () => {
+  const root = tmp();
+  const dir = env(root, 'e1');
+  writeFileSync(join(dir, 'models.json'), '{"providers":{}}');
+  const res = moveFileToTrash(root, 'e1', 'models.json', 1_700_000_000_000, 'ru');
+  assert.equal(res.ok, true);
+  assert.equal(existsSync(join(dir, 'models.json')), false);
+  assert.equal(existsSync(join(trashFilesRoot(root), 'e1--models.json@1700000000000')), true);
+  const entries = listTrash(root);
+  assert.deepEqual(entries.map((e) => [e.kind, e.name, e.fileName]), [['file', 'e1', 'models.json']]);
+});
+
+test("moveFileToTrash: нет файла — err.not-found, корзина не создаётся", () => {
+  const root = tmp();
+  env(root, 'e1');
+  const res = moveFileToTrash(root, 'e1', 'models.json', 1_700_000_000_000, 'ru');
+  assert.equal(res.ok, false);
+  assert.equal(res.ok ? null : res.error, t('ru', 'err.not-found'));
+  assert.deepEqual(listTrash(root), []);
+});
+
+test("restoreTrashFile: файл возвращается в своё окружение", () => {
+  const root = tmp();
+  const dir = env(root, 'e1');
+  writeFileSync(join(dir, 'models.json'), '{"providers":{"a":{}}}');
+  moveFileToTrash(root, 'e1', 'models.json', 1_700_000_000_000, 'ru');
+  const res = restoreTrashFile(root, 'e1--models.json@1700000000000', 'ru');
+  assert.equal(res.ok, true);
+  assert.equal(readFileSync(join(dir, 'models.json'), 'utf8'), '{"providers":{"a":{}}}');
+  assert.deepEqual(listTrash(root), []);
+});
+
+test("restoreTrashFile: занятый путь — ошибка, файл остаётся в корзине", () => {
+  const root = tmp();
+  const dir = env(root, 'e1');
+  writeFileSync(join(dir, 'models.json'), '{"providers":{}}');
+  moveFileToTrash(root, 'e1', 'models.json', 1_700_000_000_000, 'ru');
+  writeFileSync(join(dir, 'models.json'), '{"providers":{"new":{}}}');
+  const res = restoreTrashFile(root, 'e1--models.json@1700000000000', 'ru');
+  assert.equal(res.ok, false);
+  assert.equal(listTrash(root).length, 1);
+});
+
+test("listTrash: каталог .trash/files не становится записью корзины", () => {
+  const root = tmp();
+  env(root, 'e1');
+  writeFileSync(join(join(root, 'e1'), 'models.json'), '{}');
+  moveFileToTrash(root, 'e1', 'models.json', 1_700_000_000_000, 'ru');
+  assert.deepEqual(listTrash(root).map((e) => e.name), ['e1']);
+  assert.deepEqual(listTrash(root).map((e) => e.kind), ['file']);
+});
+
+test("listTrash: каталоги окружений идут перед файлами", () => {
+  const root = tmp();
+  const e2 = env(root, 'e2');
+  writeFileSync(join(e2, 'models.json'), '{}');
+  moveToTrash(root, 'e2', 1_700_000_000_002, 'ru');
+  moveFileToTrash(root, 'e2', 'models.json', 1_700_000_000_001, 'ru').ok; // файла уже нет — ок-не-ок не важен
+  const dirOnly = env(root, 'e3');
+  writeFileSync(join(dirOnly, 'models.json'), '{}');
+  moveFileToTrash(root, 'e3', 'models.json', 1_700_000_000_003, 'ru');
+  assert.deepEqual(listTrash(root).map((e) => e.kind), ['dir', 'file']);
+});
+
+test("deleteTrashFileForever: файловая запись удалена совсем", () => {
+  const root = tmp();
+  const dir = env(root, 'e1');
+  writeFileSync(join(dir, 'models.json'), '{}');
+  moveFileToTrash(root, 'e1', 'models.json', 1_700_000_000_000, 'ru');
+  assert.equal(deleteTrashFileForever(root, 'e1--models.json@1700000000000', 'ru').ok, true);
+  assert.deepEqual(listTrash(root), []);
+});
+
+test("trashFileName/trashLabel: метка файловой записи — окружение, файл и дата", () => {
+  assert.equal(trashFileName('e1', 'models.json', 1_700_000_000_000), 'e1--models.json@1700000000000');
+  const root = tmp();
+  const dir = env(root, 'e1');
+  writeFileSync(join(dir, 'models.json'), '{}');
+  moveFileToTrash(root, 'e1', 'models.json', 1_700_000_000_000, 'ru');
+  const [entry] = listTrash(root);
+  assert.equal(trashLabel(entry), `e1 · models.json · ${formatTs(1_700_000_000_000)}`);
+});
+
+test("TRASH_FILES_DIR: ветка файлов — внутри .trash", () => {
+  assert.equal(TRASH_FILES_DIR, 'files');
+  assert.equal(trashFilesRoot('/r'), join('/r', TRASH_DIR, TRASH_FILES_DIR));
 });

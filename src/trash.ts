@@ -4,23 +4,36 @@ import { t } from './i18n.js';
 
 /** Служебный каталог корзины в корне окружений (имя с `.` — его не даёт создать `validateName`). */
 export const TRASH_DIR = '.trash';
+/** Ветка корзины для одиночных файлов (имя без `.` — внутри `.trash`, окружением не считается). */
+export const TRASH_FILES_DIR = 'files';
+/** Разделитель «окружение — файл» в имени файловой записи. */
+const FILE_SEP = '--';
 
 /**
- * Запись корзины: каталог перенесённого окружения.
- * `dirName` — имя каталога (`<имя окружения>@<unix-мс>`), `name` — исходное имя окружения,
- * `ts` — метка удаления; null — метки нет (каталог создали вручную или метку испортили).
+ * Запись корзины: каталог перенесённого окружения или одиночный файл.
+ * `dirName` — имя записи (`<имя>@<unix-мс>` для каталога, `<окружение>--<файл>@<unix-мс>` для файла),
+ * `name` — исходное имя окружения, `ts` — метка удаления; null — метки нет.
  */
 export interface TrashEntry {
   dirName: string;
   name: string;
   ts: number | null;
   path: string;
+  /** Каталог окружения или одиночный файл (ветка `.trash/files`). */
+  kind: 'dir' | 'file';
+  /** Для файловой записи: имя файла внутри окружения (`models.json`). */
+  fileName?: string;
 }
 
 export type TrashResult = { ok: true; path: string } | { ok: false; error: string };
 
 export function trashRoot(root: string): string {
   return join(root, TRASH_DIR);
+}
+
+/** Каталог файловых записей корзины. */
+export function trashFilesRoot(root: string): string {
+  return join(root, TRASH_DIR, TRASH_FILES_DIR);
 }
 
 /** Имя безопасно как один уровень внутри .trash: без `.`/`..` и без разделителей пути. */
@@ -39,26 +52,64 @@ function parseDirName(dirName: string): { name: string; ts: number | null } {
   return Number.isFinite(ts) ? { name: dirName.slice(0, i), ts } : { name: dirName, ts: null };
 }
 
-/** Записи корзины: датированные — новые сверху, без метки — в конце списка по имени. [] — корзины нет. */
-export function listTrash(root: string): TrashEntry[] {
-  const dir = trashRoot(root);
-  if (!existsSync(dir)) return [];
-  let names: string[];
-  try {
-    names = readdirSync(dir, { withFileTypes: true }).filter((e) => e.isDirectory()).map((e) => e.name);
-  } catch {
-    return [];
-  }
-  const entries = names.map((dirName) => {
-    const { name, ts } = parseDirName(dirName);
-    return { dirName, name, ts, path: join(dir, dirName) };
-  });
+/** Разбор имени файловой записи: `<окружение>--<файл>@<мс>`. */
+function parseFileDirName(dirName: string): { envName: string; fileName: string; ts: number | null } {
+  const { name, ts } = parseDirName(dirName);
+  const sep = name.indexOf(FILE_SEP);
+  if (sep <= 0 || sep + FILE_SEP.length >= name.length) return { envName: name, fileName: '', ts };
+  return { envName: name.slice(0, sep), fileName: name.slice(sep + FILE_SEP.length), ts };
+}
+
+/** Имя файловой записи корзины. */
+export function trashFileName(envName: string, fileName: string, now: number): string {
+  return envName + FILE_SEP + fileName + '@' + now;
+}
+
+function sortEntries(entries: TrashEntry[]): TrashEntry[] {
   return entries.sort((a, b) => {
     if (a.ts === null && b.ts === null) return a.dirName.localeCompare(b.dirName);
     if (a.ts === null) return 1;
     if (b.ts === null) return -1;
     return b.ts - a.ts;
   });
+}
+
+/**
+ * Записи корзины: сначала каталоги окружений, затем одиночные файлы; внутри —
+ * датированные новые сверху, без метки — в конце списка по имени. [] — корзины нет.
+ */
+export function listTrash(root: string): TrashEntry[] {
+  const dirs: TrashEntry[] = [];
+  const dir = trashRoot(root);
+  if (existsSync(dir)) {
+    let names: string[];
+    try {
+      names = readdirSync(dir, { withFileTypes: true })
+        .filter((e) => e.isDirectory() && e.name !== TRASH_FILES_DIR)
+        .map((e) => e.name);
+    } catch {
+      names = [];
+    }
+    for (const dirName of names) {
+      const { name, ts } = parseDirName(dirName);
+      dirs.push({ dirName, name, ts, path: join(dir, dirName), kind: 'dir' });
+    }
+  }
+  const files: TrashEntry[] = [];
+  const filesDir = trashFilesRoot(root);
+  if (existsSync(filesDir)) {
+    let names: string[];
+    try {
+      names = readdirSync(filesDir, { withFileTypes: true }).filter((e) => e.isFile()).map((e) => e.name);
+    } catch {
+      names = [];
+    }
+    for (const dirName of names) {
+      const { envName, fileName, ts } = parseFileDirName(dirName);
+      files.push({ dirName, name: envName, ts, path: join(filesDir, dirName), kind: 'file', fileName });
+    }
+  }
+  return [...sortEntries(dirs), ...sortEntries(files)];
 }
 
 /** Переносит каталог окружения `<root>/<name>` в корзину (`<name>@<now>`). Один `rename`, без копирования. */
@@ -72,6 +123,21 @@ export function moveToTrash(root: string, name: string, now: number, lang: strin
     renameSync(from, to);
   } catch {
     return { ok: false, error: t(lang, 'err.trash-move', { name }) };
+  }
+  return { ok: true, path: to };
+}
+
+/** Переносит файл окружения `<root>/<env>/<file>` в ветку `.trash/files`. */
+export function moveFileToTrash(root: string, envName: string, fileName: string, now: number, lang: string = 'ru'): TrashResult {
+  const from = join(root, envName, fileName);
+  if (!existsSync(from)) return { ok: false, error: t(lang, 'err.not-found') };
+  const dir = trashFilesRoot(root);
+  const to = join(dir, trashFileName(envName, fileName, now));
+  try {
+    mkdirSync(dir, { recursive: true });
+    renameSync(from, to);
+  } catch {
+    return { ok: false, error: t(lang, 'err.trash-move', { name: `${envName}/${fileName}` }) };
   }
   return { ok: true, path: to };
 }
@@ -92,6 +158,23 @@ export function restoreTrash(root: string, dirName: string, lang: string = 'ru')
   return { ok: true, path: to };
 }
 
+/** Возвращает файл из `.trash/files` в своё окружение. Занятый путь — ошибка, файл остаётся в корзине. */
+export function restoreTrashFile(root: string, entryName: string, lang: string = 'ru'): TrashResult {
+  if (!safeDirName(entryName)) return { ok: false, error: t(lang, 'err.trash-bad-name', { name: entryName }) };
+  const from = join(trashFilesRoot(root), entryName);
+  if (!existsSync(from)) return { ok: false, error: t(lang, 'err.not-found') };
+  const { envName, fileName } = parseFileDirName(entryName);
+  if (envName === '' || fileName === '') return { ok: false, error: t(lang, 'err.trash-bad-name', { name: entryName }) };
+  const to = join(root, envName, fileName);
+  if (existsSync(to)) return { ok: false, error: t(lang, 'err.trash-taken', { name: `${envName}/${fileName}` }) };
+  try {
+    renameSync(from, to);
+  } catch {
+    return { ok: false, error: t(lang, 'err.trash-restore', { name: `${envName}/${fileName}` }) };
+  }
+  return { ok: true, path: to };
+}
+
 /** `rm -rf` только записи корзины — единственное безвозвратное удаление в корзине. */
 export function deleteTrashForever(root: string, dirName: string, lang: string = 'ru'): TrashResult {
   if (!safeDirName(dirName)) return { ok: false, error: t(lang, 'err.trash-bad-name', { name: dirName }) };
@@ -105,6 +188,20 @@ export function deleteTrashForever(root: string, dirName: string, lang: string =
   return { ok: true, path };
 }
 
+/** Безвозвратное удаление файловой записи корзины. */
+export function deleteTrashFileForever(root: string, entryName: string, lang: string = 'ru'): TrashResult {
+  if (!safeDirName(entryName)) return { ok: false, error: t(lang, 'err.trash-bad-name', { name: entryName }) };
+  const path = join(trashFilesRoot(root), entryName);
+  if (!existsSync(path)) return { ok: false, error: t(lang, 'err.not-found') };
+  const { envName, fileName } = parseFileDirName(entryName);
+  try {
+    rmSync(path);
+  } catch {
+    return { ok: false, error: t(lang, 'err.trash-delete', { name: `${envName}/${fileName}` }) };
+  }
+  return { ok: true, path };
+}
+
 /** Метка времени в имени записи: `2026-10-24 12:03` (локальное время, не UTC). */
 export function formatTs(ts: number): string {
   const d = new Date(ts);
@@ -112,7 +209,8 @@ export function formatTs(ts: number): string {
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
 }
 
-/** Подпись записи в списке: `<имя> · <дата>`; без метки — только имя. */
+/** Подпись записи в списке: `<имя> · <дата>`; файл — `<окружение> · <файл> · <дата>`; без метки — только имя. */
 export function trashLabel(e: TrashEntry): string {
-  return e.ts === null ? e.name : `${e.name} · ${formatTs(e.ts)}`;
+  const base = e.kind === 'file' && e.fileName ? `${e.name} · ${e.fileName}` : e.name;
+  return e.ts === null ? base : `${base} · ${formatTs(e.ts)}`;
 }
