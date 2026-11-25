@@ -1,4 +1,4 @@
-import { existsSync } from 'node:fs';
+import { existsSync, lstatSync } from 'node:fs';
 import { join, relative } from 'node:path';
 import { cloneEnvironment, createEnvironment, updateEnvironmentAt } from './create.js';
 import { copyMcpEntry, removeMcpEntry, readMcpServers } from './mcp.js';
@@ -295,7 +295,7 @@ function storeOperation(loop: Loop, names: string[]): void {
     // возвращает копию обратно.
     res = enableModelsStorage(dir, storeFile, loop.agentDir, lang, now,
       relative(loop.root, dir).startsWith('..')
-        ? snapshotOwn(dir, storeFile, now)
+        ? snapshotOwn(dir, storeFile, now, lang)
         : fileTrashOwn(loop.root, envName, now, lang));
   } else {
     res = unlinkModels(dir, storeFile, lang);
@@ -313,6 +313,7 @@ function fileTrashOwn(root: string, envName: string, now: number, lang: string):
   let entryName: string | null = null;
   return {
     move: () => {
+      if (!ownRegularFile(join(root, envName))) return { ok: true }; // переносить нечего
       const r = moveFileToTrash(root, envName, 'models.json', now, lang);
       if (r.ok) entryName = trashFileName(envName, 'models.json', now);
       return r;
@@ -322,15 +323,22 @@ function fileTrashOwn(root: string, envName: string, now: number, lang: string):
 }
 
 /** Своя копия каталога вне `<root>` (каталог main-агента) — в снимок хранилища, с откатом. */
-function snapshotOwn(envDir: string, storeFile: string, now: number): { move: () => StoreResult; undo: () => void } {
+function snapshotOwn(envDir: string, storeFile: string, now: number, lang: string): { move: () => StoreResult; undo: () => void } {
   let snapshot: string | null = null;
   return {
     move: () => {
+      if (!ownRegularFile(envDir)) return { ok: true }; // архивировать нечего
       snapshot = archiveEnvModelsIntoStore(envDir, storeFile, now);
-      return snapshot === null ? { ok: false, error: '' } : { ok: true };
+      return snapshot === null ? { ok: false, error: t(lang, 'err.models-link') } : { ok: true };
     },
     undo: () => { if (snapshot !== null) restoreFromStoreSnapshot(snapshot, envDir); },
   };
+}
+
+/** В окружении есть свой обычный `models.json` (не симлинк) — есть что убирать в корзину/снимок. */
+function ownRegularFile(envDir: string): boolean {
+  const st = lstatSync(join(envDir, 'models.json'), { throwIfNoEntry: false });
+  return st !== undefined && st !== null && !st.isSymbolicLink();
 }
 
 function doSubmit(loop: Loop, names: string[]): void {

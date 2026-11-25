@@ -578,3 +578,29 @@ test('trash: статус файловой записи — «окружение
   await runSideEffects(h.loop, [setup.env], prev({ view: null }));
   assert.ok(h.log.some((l) => l.includes('e0 · models.json')), h.log.join('|'));
 });
+
+test('store: у окружения нет своего models.json — подключение проходит, корзины нет', async () => {
+  const setup = storeSetup(); // общего файла нет → источник — models.json main-агента
+  rmSync(setup.storeFile);
+  const agentDir = mkdtempSync(join(tmpdir(), 'pienv-agent-'));
+  tmpDirs.push(agentDir);
+  writeFileSync(join(agentDir, 'models.json'), '{"agent":true}');
+  const h = storeLoop(setup, storeForm({ store: false }), agentDir);
+  await runSideEffects(h.loop, [setup.env], prev({ view: 'form' }));
+  assert.ok(lstatSync(join(setup.envDir, 'models.json')).isSymbolicLink());
+  assert.equal(readFileSync(join(setup.envDir, 'models.json'), 'utf8'), '{"agent":true}');
+  assert.equal(listTrash(setup.root).length, 0);
+  assert.ok(h.state.create!.store);
+});
+
+test('store: основной агент без своего models.json — симлинк и осмысленный статус', async () => {
+  const setup = storeSetup(); // общий файл есть
+  const agentDir = mkdtempSync(join(tmpdir(), 'pienv-agent-'));
+  tmpDirs.push(agentDir);
+  const h = storeLoop(setup, storeForm({ store: false, main: true }), agentDir);
+  await runSideEffects(h.loop, [setup.env], prev({ view: 'form' }));
+  assert.ok(lstatSync(join(agentDir, 'models.json')).isSymbolicLink());
+  assert.ok(h.log.some((l) => l === 'status:' + t('ru', 'status.store-linked')), h.log.join('|'));
+  assert.ok(!h.log.includes('status:'), 'пустых статусов не бывает');
+});
+

@@ -153,12 +153,10 @@ export function moveFileToTrash(root: string, envName: string, fileName: string,
 
 /** Человекочитаемое имя записи для статус-строки: каталог — имя окружения, файл — «окружение · файл». */
 export function trashEntryDisplayName(dirName: string): string {
-  const { name, ts } = parseDirName(dirName);
+  const { name } = parseDirName(dirName);
   const sep = name.lastIndexOf(FILE_SEP);
   if (sep <= 0 || sep + FILE_SEP.length >= name.length) return name;
-  const envName = name.slice(0, sep);
-  const fileName = name.slice(sep + FILE_SEP.length);
-  return ts === null ? `${envName} · ${fileName}` : `${envName} · ${fileName}`;
+  return `${name.slice(0, sep)} · ${name.slice(sep + FILE_SEP.length)}`;
 }
 
 /** Возвращает запись корзины на место: `<root>/<имя>`. Занятое имя — ошибка, запись остаётся в корзине. */
