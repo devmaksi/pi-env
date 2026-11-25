@@ -202,7 +202,7 @@ function applyResults(state: AppState, action: Action, ctx: ReducerCtx): AppStat
   if (typeof action !== 'object') return null;
   if (action.type === 'edit-start') {
     if (state.sub !== null || state.tab !== 'envs') return state;
-    return { ...state, sub: 'create', create: freshEdit(action.name, action.settings, state.catalog, action.mcp ?? []) };
+    return { ...state, sub: 'create', create: freshEdit(action.name, action.settings, state.catalog, action.mcp ?? [], action.main) };
   }
   if (action.type === 'run-result') return { ...state, sub: null };
   if (action.type === 'updates-result') return applyUpdatesResult(state, action);

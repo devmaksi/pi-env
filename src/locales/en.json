@@ -65,6 +65,8 @@
   "picker.author": "Author: {v}",
   "picker.hint.install": "Enter — install",
   "form.name": "Name: ",
+  "form.name-main": "Name (agent dir): ",
+  "err.main-no-action": "The main agent cannot be deleted or renamed",
   "form.model": "Model: ",
   "form.tools": "Custom tools: ",
   "form.packages": "Extensions: ",

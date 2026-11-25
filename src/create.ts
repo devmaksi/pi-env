@@ -116,12 +116,121 @@ export interface UpdateContext {
   agentDir?: string;
 }
 
+/** Что разрешено менять при правке каталога окружения. */
+export interface EditOptions {
+  /** Переименовывать каталог при смене имени (у основного агента — нет). */
+  rename: boolean;
+  /** Синхронизировать `extensions/` и `skills/` по каталогу main-агента. */
+  syncResources: boolean;
+  /** Откуда брать каталог моделей (`models.json`, `models-store.json`, `auth.json`). */
+  modelSource?: string;
+}
+
 /**
- * Обновляет окружение <root>/<oldName>: переименовывает при смене имени,
- * синхронизирует extensions/ и skills/ по полному каталогу main-агента
- * (выбранное копируется, невыбранное среди пунктов каталога удаляется,
- * чужие файлы и каталоги не трогаются), синхронизирует каталог моделей
- * (models.json, models-store.json, auth.json), переписывает settings.json.
+ * Точечная правка `settings.json`: меняются только переданные ключи, остальные
+ * (в том числе незнакомые приложению — `theme`, `enableSkillCommands`, свои пути
+ * `skills`/`extensions`) сохраняются как есть.
+ */
+export function patchSettings(envDir: string, patch: Record<string, unknown>, unset: string[] = []): void {
+  const p = join(envDir, 'settings.json');
+  let raw: Record<string, unknown> = {};
+  try {
+    const parsed = JSON.parse(readFileSync(p, 'utf8')) as unknown;
+    if (parsed !== null && typeof parsed === 'object' && !Array.isArray(parsed)) raw = parsed as Record<string, unknown>;
+  } catch { /* отсутствует или битый — правка начинает с чистого, не падая */ }
+  for (const key of unset) delete raw[key];
+  Object.assign(raw, patch);
+  writeFileSync(p, JSON.stringify(raw, null, 2) + '\n');
+}
+
+/**
+ * Обновляет каталог окружения по пути `sourceDir` (вне `<root>` — тоже, например
+ * каталог main-агента): переименовывает при `rename`, синхронизирует при
+ * `syncResources` extensions/ и skills/ по полному каталогу main-агента (выбранное
+ * копируется, невыбранное среди пунктов каталога удаляется, чужие файлы не трогаются),
+ * копирует каталог моделей из `modelSource`, точечно правит settings.json.
+ */
+export function updateEnvironmentAt(
+  sourceDir: string,
+  req: CreateRequest,
+  ctx: UpdateContext,
+  opts: EditOptions,
+  lang: string = 'ru',
+): CreateResult {
+  if (opts.rename) {
+    const invalid = validateName(req.name, [], lang);
+    if (invalid !== null) return { ok: false, error: invalid };
+  }
+  if (!existsSync(sourceDir)) return { ok: false, error: t(lang, 'err.not-found') };
+  let envDir = sourceDir;
+  if (opts.rename && req.name !== basename(sourceDir)) {
+    const newDir = join(dirname(sourceDir), req.name);
+    if (existsSync(newDir)) return { ok: false, error: t(lang, 'err.name-exists') };
+    try {
+      renameSync(sourceDir, newDir);
+    } catch {
+      return { ok: false, error: t(lang, 'err.rename', { name: req.name }) };
+    }
+    envDir = newDir;
+  }
+  if (opts.modelSource !== undefined) copyModelFiles(opts.modelSource, envDir);
+
+  if (opts.syncResources) {
+    const selectedTools = new Set((req.tools ?? []).map((t) => basename(t.path)));
+    for (const t of ctx.allTools) {
+      const file = join(envDir, 'extensions', t.name);
+      if (selectedTools.has(t.name) && !existsSync(file)) {
+        mkdirSync(join(envDir, 'extensions'), { recursive: true });
+        copyFileSync(t.path, file);
+      } else if (!selectedTools.has(t.name) && existsSync(file)) {
+        unlinkSync(file);
+      }
+    }
+
+    const selectedSkills = new Set((req.skills ?? []).map(envSkillDirName));
+    for (const s of ctx.allSkills) {
+      const dirName = envSkillDirName(s);
+      const dir = join(envDir, 'skills', dirName);
+      if (selectedSkills.has(dirName) && !existsSync(dir)) {
+        copyRecursive(s.path, dir);
+      } else if (!selectedSkills.has(dirName) && existsSync(dir)) {
+        rmSync(dir, { recursive: true, force: true });
+      }
+    }
+  }
+
+  const patch: Record<string, unknown> = {};
+  const unset: string[] = [];
+  if (req.defaultProvider && req.defaultModel) {
+    patch.defaultProvider = req.defaultProvider;
+    patch.defaultModel = req.defaultModel;
+  } else {
+    unset.push('defaultProvider', 'defaultModel');
+  }
+  if (opts.syncResources) {
+    const extDir = join(envDir, 'extensions');
+    const extFiles = existsSync(extDir)
+      ? readdirSync(extDir).filter((f) => statSync(join(extDir, f)).isFile())
+      : [];
+    if (extFiles.length > 0) patch.extensions = extFiles.sort().map((f) => `extensions/${f}`);
+    else unset.push('extensions');
+    const skillDir = join(envDir, 'skills');
+    const skillDirs = existsSync(skillDir)
+      ? readdirSync(skillDir, { withFileTypes: true }).filter((e) => e.isDirectory()).map((e) => e.name)
+      : [];
+    if (skillDirs.length > 0) patch.skills = skillDirs.sort().map((d) => `skills/${d}`);
+    else unset.push('skills');
+  }
+  const packages = uniqueStrings(req.packages ?? []);
+  if (packages.length > 0) patch.packages = packages;
+  else unset.push('packages');
+  patchSettings(envDir, patch, unset);
+  return { ok: true, path: envDir };
+}
+
+/**
+ * Обновляет окружение `<root>/<oldName>` — обёртка над `updateEnvironmentAt`
+ * с прежними разрешениями: переименование, синхронизация ресурсов, модели из main-агента.
  */
 export function updateEnvironment(
   root: string,
@@ -130,64 +239,13 @@ export function updateEnvironment(
   ctx: UpdateContext,
   lang: string = 'ru',
 ): CreateResult {
-  const invalid = validateName(req.name, [], lang);
-  if (invalid !== null) return { ok: false, error: invalid };
-  const oldDir = join(root, oldName);
-  if (!existsSync(oldDir)) return { ok: false, error: t(lang, 'err.not-found') };
-  let envDir = oldDir;
-  if (req.name !== oldName) {
-    const newDir = join(root, req.name);
-    if (existsSync(newDir)) return { ok: false, error: t(lang, 'err.name-exists') };
-    try {
-      renameSync(oldDir, newDir);
-    } catch {
-      return { ok: false, error: t(lang, 'err.rename', { name: req.name }) };
-    }
-    envDir = newDir;
-  }
-  if (ctx.agentDir !== undefined) copyModelFiles(ctx.agentDir, envDir);
-
-  const selectedTools = new Set((req.tools ?? []).map((t) => basename(t.path)));
-  for (const t of ctx.allTools) {
-    const file = join(envDir, 'extensions', t.name);
-    if (selectedTools.has(t.name) && !existsSync(file)) {
-      mkdirSync(join(envDir, 'extensions'), { recursive: true });
-      copyFileSync(t.path, file);
-    } else if (!selectedTools.has(t.name) && existsSync(file)) {
-      unlinkSync(file);
-    }
-  }
-
-  const selectedSkills = new Set((req.skills ?? []).map(envSkillDirName));
-  for (const s of ctx.allSkills) {
-    const dirName = envSkillDirName(s);
-    const dir = join(envDir, 'skills', dirName);
-    if (selectedSkills.has(dirName) && !existsSync(dir)) {
-      copyRecursive(s.path, dir);
-    } else if (!selectedSkills.has(dirName) && existsSync(dir)) {
-      rmSync(dir, { recursive: true, force: true });
-    }
-  }
-
-  const settings: Record<string, unknown> = {};
-  if (req.defaultProvider && req.defaultModel) {
-    settings.defaultProvider = req.defaultProvider;
-    settings.defaultModel = req.defaultModel;
-  }
-  const extDir = join(envDir, 'extensions');
-  const extFiles = existsSync(extDir)
-    ? readdirSync(extDir).filter((f) => statSync(join(extDir, f)).isFile())
-    : [];
-  if (extFiles.length > 0) settings.extensions = extFiles.sort().map((f) => `extensions/${f}`);
-  const skillDir = join(envDir, 'skills');
-  const skillDirs = existsSync(skillDir)
-    ? readdirSync(skillDir, { withFileTypes: true }).filter((e) => e.isDirectory()).map((e) => e.name)
-    : [];
-  if (skillDirs.length > 0) settings.skills = skillDirs.sort().map((d) => `skills/${d}`);
-  const packages = uniqueStrings(req.packages ?? []);
-  if (packages.length > 0) settings.packages = packages;
-  writeFileSync(join(envDir, 'settings.json'), JSON.stringify(settings, null, 2) + '\n');
-  return { ok: true, path: envDir };
+  return updateEnvironmentAt(
+    join(root, oldName),
+    req,
+    ctx,
+    { rename: true, syncResources: true, modelSource: ctx.agentDir },
+    lang,
+  );
 }
 
 /**

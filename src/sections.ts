@@ -79,7 +79,7 @@ function createForm(cr: CreateState, ctx: Ctx): Section {
     : cr.name + '▌';
   const model = cr.provider && cr.model ? cr.provider + '/' + cr.model : cr.provider ?? '—';
   const rows = [
-    t(ctx.lang, 'form.name') + caret,
+    t(ctx.lang, cr.main ? 'form.name-main' : 'form.name') + (cr.main ? cr.name : caret),
     t(ctx.lang, 'form.model') + model,
     t(ctx.lang, 'form.tools') + cr.tools.length,
     t(ctx.lang, 'form.packages') + cr.packages.length,
@@ -87,7 +87,7 @@ function createForm(cr: CreateState, ctx: Ctx): Section {
     t(ctx.lang, 'form.mcp') + (cr.mode === 'edit' ? cr.envMcp.length : cr.mcp.length),
     cr.done !== null ? t(ctx.lang, 'form.done') : cr.mode === 'edit' ? t(ctx.lang, 'form.save') : t(ctx.lang, 'form.create'),
   ];
-  if (cr.mode === 'edit' && cr.done === null) rows.push(t(ctx.lang, 'form.delete'));
+  if (cr.mode === 'edit' && cr.done === null && !cr.main) rows.push(t(ctx.lang, 'form.delete'));
   rows.forEach((t, i) => left.push(listRow(i, cr.cursor, t, ctx.L.leftWidth, ctx.useColor)));
   right.push(c(ANSI.dim, ctx.useColor) + t(ctx.lang, 'form.hint.enter') + c(ANSI.reset, ctx.useColor));
   right.push(c(ANSI.dim, ctx.useColor) + t(ctx.lang, 'form.hint.space') + c(ANSI.reset, ctx.useColor));

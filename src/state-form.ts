@@ -26,6 +26,8 @@ export interface CreateState {
   done: string | null;
   mode: 'create' | 'edit';
   origName: string | null;
+  /** Форма основного агента: имя не редактируется, «Удалить» нет, ресурсы не синхронизируются. */
+  main: boolean;
   installCatalog: CatalogPkg[];
   installStatus: 'idle' | 'loading' | 'ready' | 'error';
   query: string;
@@ -56,16 +58,16 @@ export const ROW_DELETE = 7;
 
 export const FORM_ROWS = 7; // имя, модель, инструменты, расширения, скиллы, MCP, действие
 
-/** Число строк формы: в edit-режиме добавляется «Удалить». */
-export function formRows(mode: 'create' | 'edit'): number {
-  return mode === 'edit' ? FORM_ROWS + 1 : FORM_ROWS;
+/** Число строк формы: в edit-режиме добавляется «Удалить», у основного агента — нет. */
+export function formRows(mode: 'create' | 'edit', main = false): number {
+  return mode === 'edit' && !main ? FORM_ROWS + 1 : FORM_ROWS;
 }
 export const MAX_NAME = 40;
 
 export function freshCreate(): CreateState {
   return {
     name: '', caret: 0, cursor: 0, provider: null, model: null,
-    mode: 'create', origName: null,
+    mode: 'create', origName: null, main: false,
     tools: [], packages: [], skills: [], view: 'form', error: null, done: null,
     removing: null, installCatalog: [], installStatus: 'idle', installing: null, query: '',
     check: 'idle', latest: {},
@@ -74,12 +76,19 @@ export function freshCreate(): CreateState {
 }
 
 /** Чистая форма редактирования: предзаполнение из settings окружения. */
-export function freshEdit(name: string, settings: EnvSettings, catalog: Catalog, envMcp: McpServer[] = []): CreateState {
+export function freshEdit(
+  name: string,
+  settings: EnvSettings,
+  catalog: Catalog,
+  envMcp: McpServer[] = [],
+  main = false,
+): CreateState {
   const ext = settings.extensions ?? [];
   const sk = settings.skills ?? [];
   return {
     mode: 'edit',
     origName: name,
+    main,
     name,
     caret: name.length,
     cursor: 0,
@@ -113,11 +122,13 @@ export function formReducer(c: CreateState, action: Action, envNames: string[], 
   if (action === 'esc') return null;
   if (action === 'up' || action === 'down') {
     const delta = action === 'up' ? -1 : 1;
-    return { ...c, cursor: (c.cursor + delta + formRows(c.mode)) % formRows(c.mode) };
+    return { ...c, cursor: (c.cursor + delta + formRows(c.mode, c.main)) % formRows(c.mode, c.main) };
   }
   if (c.cursor === ROW_NAME) {
     if (action === 'left') return { ...c, caret: Math.max(0, c.caret - 1) };
     if (action === 'right') return { ...c, caret: Math.min(c.name.length, c.caret + 1) };
+    // Имя основного агента — имя его каталога: оно не редактируется (каретка ходит).
+    if (c.main) return c;
     if (action === 'backspace') {
       if (c.caret === 0) return c;
       return { ...c, name: c.name.slice(0, c.caret - 1) + c.name.slice(c.caret), caret: c.caret - 1, error: null };

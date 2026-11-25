@@ -437,3 +437,31 @@ test('install: поиск фильтрует каталог, Backspace стир�
   assert.equal(s.create!.view, 'installing');
   assert.equal(s.create!.installing, 'pi-b');
 });
+
+test('форма основного агента: строки формы без «Удалить»', async () => {
+  const { formRows, FORM_ROWS } = await import('../src/state.js');
+  assert.equal(formRows('edit', true), FORM_ROWS);
+  assert.equal(formRows('edit'), FORM_ROWS + 1);
+  assert.equal(formRows('create', true), FORM_ROWS);
+});
+
+test('форма основного агента: имя не редактируется, каретка ←/→ ходит', () => {
+  const c = freshEdit('agent', {}, catalog, [], true);
+  assert.equal(c.main, true);
+  const st: AppState = { ...initialState(catalog), sub: 'create', create: { ...c, caret: 5 } };
+  const typed = reducer(st, 'x', rc([]));
+  assert.equal(typed.create!.name, 'agent');
+  const back = reducer(typed, 'backspace', rc([]));
+  assert.equal(back.create!.name, 'agent');
+  const moved = reducer(back, 'left', rc([]));
+  assert.equal(moved.create!.caret, 4);
+});
+
+test('форма основного агента: Enter на «Сохранить» отправляет исходное имя', () => {
+  const c = { ...freshEdit('agent', {}, catalog, [], true), cursor: 6 };
+  const st: AppState = { ...initialState(catalog), sub: 'create', create: c };
+  const next = reducer(st, 'enter', rc(['agent']));
+  assert.equal(next.create!.view, 'submitting');
+  assert.equal(next.create!.name, 'agent');
+  assert.equal(next.create!.error, null);
+});

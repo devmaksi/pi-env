@@ -1,5 +1,5 @@
 import { join } from 'node:path';
-import { cloneEnvironment, createEnvironment, updateEnvironment } from './create.js';
+import { cloneEnvironment, createEnvironment, updateEnvironmentAt } from './create.js';
 import { copyMcpEntry, removeMcpEntry, readMcpServers } from './mcp.js';
 import { deleteTrashForever, moveToTrash, restoreTrash } from './trash.js';
 import { t } from './i18n.js';
@@ -128,10 +128,20 @@ function hooksClone(loop: Loop): void {
   loop.repaint();
 }
 
-/** Каталог агента для формы: окружение (edit) или main-агент (create, окружение ещё не существует). */
+/** Каталог, чьи обновления показывает форма: при создании — main-агент (окружение ещё
+ * не создано), при правке обычного окружения — каталог окружения, при правке основного —
+ * каталог main-агента. */
 function formTargetDir(loop: Loop): string {
   const cr = loop.state().create!;
-  return cr.mode === 'edit' ? join(loop.root, cr.origName ?? cr.name) : loop.agentDir;
+  if (cr.mode !== 'edit' || cr.main) return loop.agentDir;
+  return join(loop.root, cr.origName ?? cr.name);
+}
+
+/** Каталог, в который форма устанавливает пакеты и добавляет MCP: при создании это уже
+ *  созданный каталог нового окружения, при правке основного — каталог main-агента. */
+function formInstallDir(loop: Loop): string {
+  const cr = loop.state().create!;
+  return cr.mode === 'edit' && cr.main ? loop.agentDir : join(loop.root, cr.origName ?? cr.name);
 }
 
 function hooksCreate(loop: Loop, prevView: CreateView | null, names: string[]): void {
@@ -149,17 +159,16 @@ function hooksCreate(loop: Loop, prevView: CreateView | null, names: string[]): 
     loop.loadPackageCatalog();
   } else if (v === 'installing' && prevView === 'install') {
     const envName = cr.origName ?? cr.name;
-    loop.doInstall(join(loop.root, envName), 'npm:' + (cr.installing ?? ''), envName);
+    loop.doInstall(formInstallDir(loop), 'npm:' + (cr.installing ?? ''), envName);
   } else if (v === 'mcp-op' && cr.mcpOp !== null) {
     mcpOpSync(loop, cr.mcpOp, names);
   } else if (v === 'mcp-submitting' && prevView === 'mcp' && cr.mcpAdd !== null) {
-    loop.doMcpAdd(join(loop.root, cr.origName ?? cr.name), cr.mcpAdd, 'create');
+    loop.doMcpAdd(formInstallDir(loop), cr.mcpAdd, 'create');
   }
 }
 
 function mcpOpSync(loop: Loop, op: { name: string; kind: 'copy' | 'remove' }, names: string[]): void {
-  const cr = loop.state().create!;
-  const envDir = join(loop.root, cr.origName ?? cr.name);
+  const envDir = formInstallDir(loop);
   const r = op.kind === 'copy' ? copyMcpEntry(loop.agentDir, envDir, op.name) : removeMcpEntry(envDir, op.name);
   loop.invalidate(); // mcp.json окружения — часть снимка
   const list = readMcpServers(envDir);
@@ -247,9 +256,13 @@ function doSubmit(loop: Loop, names: string[]): void {
   if (cr === null || cr.view !== 'submitting') return;
   const cat = loop.catalog();
   const req = buildCreateRequest(cat, cr);
+  const lang = loop.state().language;
   const res = cr.mode === 'edit'
-    ? updateEnvironment(loop.root, cr.origName ?? cr.name, req, { allTools: cat.tools, allSkills: cat.skills, agentDir: loop.agentDir }, loop.state().language)
-    : createEnvironment(loop.root, req, loop.agentDir, loop.state().language);
+    // Основное окружение: имя каталога и ресурсы (extensions/, skills/) не трогаются,
+    // settings.json правится точечно.
+    ? updateEnvironmentAt(formInstallDir(loop), req, { allTools: cat.tools, allSkills: cat.skills },
+      { rename: !cr.main, syncResources: !cr.main, modelSource: cr.main ? undefined : loop.agentDir }, lang)
+    : createEnvironment(loop.root, req, loop.agentDir, lang);
   const message = res.ok ? res.path : res.error;
   loop.invalidate(); // создано/переименовано/обновлено окружение
   loop.setState(reducer(loop.state(), { type: 'create-result', ok: res.ok, message }, rctx(loop, names)));
@@ -259,6 +272,11 @@ function doDelete(loop: Loop, names: string[]): void {
   const cr = loop.state().create;
   if (cr === null || cr.view !== 'deleting') return;
   const name = cr.name;
+  // Защита основного агента: строки «Удалить» в его форме нет, этот путь — оборона.
+  if (cr.main) {
+    loop.setState(reducer(loop.state(), { type: 'delete-result', ok: false, message: t(loop.state().language, 'err.main-no-action') }, rctx(loop, names)));
+    return;
+  }
   const res = moveToTrash(loop.root, name, Date.now(), loop.state().language);
   loop.invalidate(); // окружение переехало в корзину
   if (res.ok) loop.status(t(loop.state().language, 'status.env-trashed', { name }));

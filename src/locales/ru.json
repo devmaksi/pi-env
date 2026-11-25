@@ -65,6 +65,8 @@
   "picker.author": "Автор: {v}",
   "picker.hint.install": "Enter — установить",
   "form.name": "Имя: ",
+  "form.name-main": "Имя (каталог агента): ",
+  "err.main-no-action": "Основной агент нельзя удалить или переименовать",
   "form.model": "Модель: ",
   "form.tools": "Свои инструменты: ",
   "form.packages": "Расширения: ",

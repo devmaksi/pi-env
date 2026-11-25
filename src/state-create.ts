@@ -16,12 +16,12 @@ const passThrough: ViewHandler = (c) => c; // клавиши процесс не
 function createResultReducer(c: CreateState, action: Action, catalog: Catalog): CreateState | null {
   if (typeof action !== 'object') return c;
   if (action.type === 'create-result') {
-    if (action.ok) return { ...c, view: 'form', cursor: formRows(c.mode) - 1, done: action.message, error: null };
+    if (action.ok) return { ...c, view: 'form', cursor: formRows(c.mode, c.main) - 1, done: action.message, error: null };
     return { ...c, view: 'form', error: action.message };
   }
   if (action.type === 'delete-result') {
     if (action.ok) return null; // закрыть форму — назад к списку
-    return { ...c, view: 'form', cursor: formRows(c.mode) - 1, error: action.message };
+    return { ...c, view: 'form', cursor: formRows(c.mode, c.main) - 1, error: action.message };
   }
   if (action.type === 'update-result') {
     return { ...c, view: 'packages', cursor: 0, error: action.ok ? null : action.message };
@@ -175,7 +175,7 @@ const CREATE_VIEWS: Record<CreateView, ViewHandler> = {
   packages: viewPackages,
   submitting: (c, action) => (c.view === 'submitting' && action === 'esc' ? { ...c, view: 'form' } : c),
   'confirm-delete': (c, action) => {
-    if (action === 'esc') return { ...c, view: 'form', cursor: formRows(c.mode) - 1 };
+    if (action === 'esc') return { ...c, view: 'form', cursor: formRows(c.mode, c.main) - 1 };
     if (action === 'enter') return { ...c, view: 'deleting' };
     return c;
   },

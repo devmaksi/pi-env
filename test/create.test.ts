@@ -3,7 +3,7 @@ import assert from 'node:assert';
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync, readFileSync, readdirSync, existsSync, chmodSync, symlinkSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { validateName, createEnvironment, readSettings, updateEnvironment, cloneEnvironment } from '../src/create.js';
+import { validateName, createEnvironment, readSettings, updateEnvironment, updateEnvironmentAt, cloneEnvironment } from '../src/create.js';
 import { t } from '../src/i18n.js';
 import { listSkills } from '../src/catalog.js';
 
@@ -538,3 +538,80 @@ test('cloneEnvironment: сбой копирования не оставляет 
   }
 });
 
+
+test('updateEnvironmentAt: сохраняет поля settings.json, которых не касались', () => {
+  const root = tmpDir();
+  try {
+    const envDir = join(root, 'env1');
+    mkdirSync(envDir, { recursive: true });
+    writeFileSync(join(envDir, 'settings.json'), JSON.stringify({
+      defaultModel: 'm1',
+      theme: 'solarized',
+      enableSkillCommands: false,
+      enablePromptCommands: true,
+    }));
+    const res = updateEnvironmentAt(envDir, { name: 'env1', defaultProvider: 'cpp', defaultModel: 'm2' },
+      { allTools: [], allSkills: [] }, { rename: true, syncResources: true });
+    assert.equal(res.ok, true);
+    const settings = JSON.parse(readFileSync(join(envDir, 'settings.json'), 'utf8'));
+    assert.equal(settings.defaultProvider, 'cpp');
+    assert.equal(settings.defaultModel, 'm2');
+    assert.equal(settings.theme, 'solarized');
+    assert.equal(settings.enableSkillCommands, false);
+    assert.equal(settings.enablePromptCommands, true);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('updateEnvironmentAt: rename:false — переименование игнорируется, каталог на месте', () => {
+  const root = tmpDir();
+  try {
+    const envDir = join(root, 'agent');
+    mkdirSync(envDir, { recursive: true });
+    const res = updateEnvironmentAt(envDir, { name: 'other' }, { allTools: [], allSkills: [] },
+      { rename: false, syncResources: true });
+    assert.equal(res.ok, true);
+    assert.equal(res.path, envDir);
+    assert.ok(existsSync(envDir));
+    assert.equal(existsSync(join(root, 'other')), false);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('updateEnvironmentAt: syncResources:false — extensions/ и skills/ не тронуты', () => {
+  const root = tmpDir();
+  try {
+    const envDir = join(root, 'agent');
+    mkdirSync(join(envDir, 'extensions'), { recursive: true });
+    mkdirSync(join(envDir, 'skills', 'keep'), { recursive: true });
+    writeFileSync(join(envDir, 'extensions', 'tool.ts'), 'KEEP');
+    writeFileSync(join(envDir, 'skills', 'keep', 'SKILL.md'), 'KEEP');
+    writeFileSync(join(envDir, 'settings.json'),
+      JSON.stringify({ extensions: ['/abs/tool.ts'], skills: ['~/shared/skills'] }));
+    const res = updateEnvironmentAt(envDir, { name: 'agent', defaultProvider: 'p', defaultModel: 'm' },
+      { allTools: [], allSkills: [] }, { rename: false, syncResources: false });
+    assert.equal(res.ok, true);
+    assert.equal(readFileSync(join(envDir, 'extensions', 'tool.ts'), 'utf8'), 'KEEP');
+    assert.equal(readFileSync(join(envDir, 'skills', 'keep', 'SKILL.md'), 'utf8'), 'KEEP');
+    const settings = JSON.parse(readFileSync(join(envDir, 'settings.json'), 'utf8'));
+    assert.deepEqual(settings.extensions, ['/abs/tool.ts']);
+    assert.deepEqual(settings.skills, ['~/shared/skills']);
+    assert.equal(settings.packages, undefined);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('updateEnvironmentAt: отсутствует каталог — ошибка, создания нет', () => {
+  const root = tmpDir();
+  try {
+    const res = updateEnvironmentAt(join(root, 'gone'), { name: 'gone' }, { allTools: [], allSkills: [] },
+      { rename: true, syncResources: true });
+    assert.equal(res.ok, false);
+    assert.equal(existsSync(join(root, 'gone')), false);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
