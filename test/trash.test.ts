@@ -218,3 +218,19 @@ test("TRASH_FILES_DIR: ветка файлов — внутри .trash", () => {
   assert.equal(TRASH_FILES_DIR, 'files');
   assert.equal(trashFilesRoot('/r'), join('/r', TRASH_DIR, TRASH_FILES_DIR));
 });
+
+test('корзина файлов: имя окружения с «--» разбирается по последнему разделителю', () => {
+  const root = tmp();
+  const dir = join(root, 'a--b');
+  mkdirSync(dir, { recursive: true });
+  writeFileSync(join(dir, 'models.json'), '{"own":true}');
+  const res = moveFileToTrash(root, 'a--b', 'models.json', 1234, 'ru');
+  assert.ok(res.ok, res.error);
+  const entries = listTrash(root);
+  assert.equal(entries.length, 1);
+  assert.equal(entries[0]!.name, 'a--b');
+  assert.equal(entries[0]!.fileName, 'models.json');
+  const back = restoreTrashFile(root, entries[0]!.dirName, 'ru');
+  assert.ok(back.ok, back.error);
+  assert.equal(readFileSync(join(dir, 'models.json'), 'utf8'), '{"own":true}');
+});

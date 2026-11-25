@@ -442,7 +442,7 @@ export async function run(root: string, term: Term = createTerm(), deps: RunDeps
         enabledModels: settings.enabledModels ?? [],
         modelCatalog: listProviders(row.path),
       }, rctx(names, tnames));
-    } else if (key === 'r' && state.tab === 'envs' && state.sub === null && state.trash === null && state.clone === null && row !== undefined) {
+    } else if ((key === 'r' || key === 'R') && state.tab === 'envs' && state.sub === null && state.trash === null && state.clone === null && row !== undefined) {
       // `R` на вкладке окружений — починка связи с общим каталогом моделей (битый симлинк).
       const file = storeFile;
       if (file !== null && row.details.modelsLink === 'broken') {

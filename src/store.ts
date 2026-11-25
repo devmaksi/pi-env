@@ -83,7 +83,11 @@ export function snapshotStoreModels(storeFile: string, now: number, keep = 5): v
   } catch {
     return;
   }
-  const prefix = `${basename(storeFile)}.bak-`;
+  pruneSnapshots(dirname(storeFile), `${basename(storeFile)}.bak-`, keep);
+}
+
+/** Удаляет снимки старше `keep` (имена `…bak-<мс>` сортируются по времени). */
+function pruneSnapshots(dir: string, prefix: string, keep: number): void {
   let names: string[];
   try {
     names = readdirSync(dir).filter((n) => n.startsWith(prefix)).sort();
@@ -163,6 +167,7 @@ export function archiveEnvModelsIntoStore(envDir: string, storeFile: string, now
     if (!existsSync(src) || lstatSync(src).isSymbolicLink()) return false;
     mkdirSync(dirname(storeFile), { recursive: true });
     copyFileSync(src, join(dirname(storeFile), storeSnapshotName(storeFile, now)));
+    pruneSnapshots(dirname(storeFile), `${basename(storeFile)}.bak-`, 5);
     unlinkSync(src);
     return true;
   } catch {

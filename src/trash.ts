@@ -55,7 +55,9 @@ function parseDirName(dirName: string): { name: string; ts: number | null } {
 /** Разбор имени файловой записи: `<окружение>--<файл>@<мс>`. */
 function parseFileDirName(dirName: string): { envName: string; fileName: string; ts: number | null } {
   const { name, ts } = parseDirName(dirName);
-  const sep = name.indexOf(FILE_SEP);
+  // Разделитель ищется с конца: имя окружения может содержать «--» (`validateName` это
+  // разрешает), а имя файла — нет.
+  const sep = name.lastIndexOf(FILE_SEP);
   if (sep <= 0 || sep + FILE_SEP.length >= name.length) return { envName: name, fileName: '', ts };
   return { envName: name.slice(0, sep), fileName: name.slice(sep + FILE_SEP.length), ts };
 }

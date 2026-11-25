@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
   STORE_DIR, storeRoot, storeModelsFile, modelsLinkState, ensureStoreModels,
-  snapshotStoreModels, linkModels, unlinkModels,
+  snapshotStoreModels, linkModels, unlinkModels, archiveEnvModelsIntoStore, envModelsFile, storeSnapshotName,
 } from '../src/store.js';
 import { t } from '../src/i18n.js';
 
@@ -135,4 +135,18 @@ test('linkModels не трогает models-store.json и auth.json окруже
   assert.deepEqual(JSON.parse(readFileSync(join(env, 'models-store.json'), 'utf8')), { personal: true });
   assert.deepEqual(JSON.parse(readFileSync(join(env, 'auth.json'), 'utf8')), { token: 'x' });
   assert.equal(existsSync(join(root, '.store', 'models', 'models-store.json')), false);
+});
+
+test('снимок из своей копии вне root: старых снимков не больше пяти', () => {
+  const root = tmpDir();
+  const storeFile = storeModelsFile(root);
+  const envDir = tmpDir();
+  for (let i = 0; i < 7; i++) {
+    writeFileSync(envModelsFile(envDir), JSON.stringify({ v: i }));
+    assert.equal(archiveEnvModelsIntoStore(envDir, storeFile, 1000 + i), true);
+  }
+  const snaps = readdirSync(join(root, 'models')).filter((n) => n.includes('.bak-'));
+  assert.equal(snaps.length, 5, JSON.stringify(snaps));
+  assert.deepEqual(snaps.sort(), ['models.json.bak-1002', 'models.json.bak-1003', 'models.json.bak-1004', 'models.json.bak-1005', 'models.json.bak-1006']);
+  assert.equal(storeSnapshotName(storeFile, 1006), 'models.json.bak-1006');
 });

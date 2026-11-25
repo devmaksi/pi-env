@@ -69,7 +69,7 @@ test('сквозной: «R» чинит битую связь с хранили
   const dir = envDir(root, 'e0');
   const file = storeFile(root);
   symlinkSync(join(root, 'нет-такого'), join(dir, 'models.json')); // битый симлинк
-  const frame = await drive(root, ['down', 'r', 'ctrlc']); // курсор с основной строки на e0
+  const frame = await drive(root, ['down', 'R', 'ctrlc']); // курсор с основной строки на e0
   assert.ok(lstatSync(join(dir, 'models.json')).isSymbolicLink());
   assert.equal(readFileSync(join(dir, 'models.json'), 'utf8'), readFileSync(file, 'utf8'));
   assert.ok(frame.includes(t('ru', 'status.store-repaired')), frame.slice(-1500));
