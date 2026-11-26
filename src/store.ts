@@ -106,7 +106,7 @@ export function mergeStoreRegistry(storeDir: string, sources: readonly string[],
   }
   const current = Array.isArray(value.packages) ? value.packages.filter((x): x is string => typeof x === 'string') : [];
   const merged = [...current];
-  for (const src of sources) if (!merged.some((x) => pkgNameOfSourceShared(x) === pkgNameOfSourceShared(src))) merged.push(src);
+  for (const src of sources) if (!merged.some((x) => pkgNameOfSource(x) === pkgNameOfSource(src))) merged.push(src);
   value.packages = merged;
   try {
     mkdirSync(storeDir, { recursive: true });
@@ -117,8 +117,11 @@ export function mergeStoreRegistry(storeDir: string, sources: readonly string[],
   return { ok: true };
 }
 
-/** Имя пакета в объявлении — для сравнения без префикса и версии (то же, что `pkgNameOfSource` в `environments.ts`). */
-function pkgNameOfSourceShared(source: string): string {
+/**
+ * Имя пакета из объявления (`npm:name@1.2`, `@scope/name`, `git:host/org/name@ref` → `name`):
+ * им же сравниваются объявления в реестре, в `settings.packages` и в `node_modules`.
+ */
+export function pkgNameOfSource(source: string): string {
   const spec = source.startsWith('npm:') ? source.slice(4) : source.startsWith('git:') ? source.slice(4) : source;
   const at = spec.indexOf('@', spec.startsWith('@') ? 1 : 0);
   const bare = at > 0 ? spec.slice(0, at) : spec;

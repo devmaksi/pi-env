@@ -1,7 +1,10 @@
 import { existsSync, readdirSync, type Dirent } from 'node:fs';
 import { basename, join, resolve } from 'node:path';
 import { readJsonFileDetailed, readMcpServersDetailed } from './mcp.js';
-import { modelsLinkState, rootLinkState, storeModelsFile, storeRegistrySources, STORE_ROOTS, type ModelsLink, type StoreRoot } from './store.js';
+import {
+  modelsLinkState, pkgNameOfSource, rootLinkState, storeModelsFile, storeRegistrySources,
+  STORE_ROOTS, type ModelsLink, type StoreRoot,
+} from './store.js';
 
 export interface EnvDetails {
   hasSettings: boolean;
@@ -142,13 +145,7 @@ function readMissingPackages(dir: string, storeDir: string | null, packages: str
  * Именно по нему pi размещает пакет в `node_modules`, поэтому два разных объявления
  * с одним именем — это один и тот же установленный пакет.
  */
-export function pkgNameOfSource(source: string): string {
-  const spec = source.startsWith('npm:') ? source.slice(4) : source.startsWith('git:') ? source.slice(4) : source;
-  const at = spec.indexOf('@', spec.startsWith('@') ? 1 : 0);
-  const withoutRef = at > 0 ? spec.slice(0, at) : spec;
-  const last = withoutRef.split('/').filter(Boolean).pop() ?? withoutRef;
-  return last.replace(/^@/, '');
-}
+export { pkgNameOfSource };
 
 /** Имена окружений, объявивших пакет с таким именем в `node_modules` (по всем окружениям). */
 export function storePackageUsage(envs: Environment[], pkgName: string): string[] {

@@ -302,7 +302,8 @@
   с путём агентского каталога, детали — общий `readDetails`), `realEnvNames(envs)` — имена
   обычных окружений для проверки уникальности (чистые); подрез 2a: третий параметр `scan`/`withMain`/
   `readDetails` — каталог хранилища, `EnvDetails.rootLinks`/`missingPackages`, чистые
-  `pkgNameOfSource` (имя пакета из объявления), `packageConflicts(envs)` и `storePackageUsage(envs, name)`
+  `packageConflicts(envs)` и `storePackageUsage(envs, name)`; `pkgNameOfSource` (имя пакета из
+  объявления) живёт в `store.ts` и реэкспортируется отсюда — сравнение объявлений одно на оба слоя
 - `src/debuglog.ts` — журнал отладки (чистое ядро + тонкий writer): `debugEnabled`
   (`PI_ENV_DEBUG=1`), `formatLogLine` (`YYYY-MM-DD HH:MM:SS tag: текст`), `dedupedLog`
   (одна строка на пару `(tag, текст)`), `createDebugLog` (сток и часы инжектятся, сбой стока
@@ -553,6 +554,8 @@
   `AppState.catalog` — каталог main-агента (формы: инструменты, скиллы, MCP), список вкладки
   «Расширения» — `AppState.storePackages`; смешивать их нельзя, иначе формы теряют данные main-агента.
   Доноска реестра — последовательные `pi install` (параллельные спорили бы за `package.json` хранилища).
+  Выключение пакетных корней — синхронное копирование общего содержимого (`copyRecursive`, это сотни
+  МБ), поэтому экран `store-op` может держаться долго; это не дочерний процесс, `Esc` его не снимает.
 - Не добавлять runtime-зависимости без необходимости.
 - Изменять раскладку/поведение клавиш — только вместе с обновлением тестов
   `render`/`state` и этого файла.
