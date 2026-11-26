@@ -3,7 +3,7 @@
  * связывание/разрыв симлинка и снимки общего файла. Вся работа с файлами — здесь,
  * слой эффектов (`run-side.ts`) только вызывает и убирает копии в корзину.
  */
-import { copyFileSync, existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, readlinkSync, rmSync, statSync, symlinkSync, unlinkSync } from 'node:fs';
+import { copyFileSync, existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, readlinkSync, rmSync, symlinkSync, unlinkSync } from 'node:fs';
 import { basename, dirname, isAbsolute, join, resolve } from 'node:path';
 import { t } from './i18n.js';
 
@@ -226,11 +226,4 @@ export function repairModelsLink(envDir: string, storeFile: string, agentDir: st
     return { ok: false, error: t(lang, 'err.models-link') };
   }
   return linkModels(envDir, storeFile, agentDir, lang, now);
-}
-
-/** Значимая часть подписи кэша: mtime общего файла (или его отсутствие). */
-export function storeFileTag(storeFile: string): string {
-  const st = statSync(storeFile, { throwIfNoEntry: false });
-  if (st === undefined || st === null) return '-';
-  return `${Math.trunc(st.mtimeMs)}:${st.size}`;
 }
