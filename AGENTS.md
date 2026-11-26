@@ -99,7 +99,13 @@
   (`Loop.storeInstallSources`, отменяются по Esc). Реестр при первом включении заполняется
   объявлениями того, чьё содержимое переехало в общие корни (`mergeStoreRegistry`: union с
   сохранением других полей, нечитаемый файл не перезаписывается — `err.store-registry`), иначе каждое
-  окружение показывало бы `⚠` на уже переехавших пакетах. При первом включении к общим корням подключается
+  окружение показывало бы `⚠` на уже переехавших пакетах; провал переезда main-агента глушит
+  доноску реестра (`status.store-main-partial`). «Первое включение» считается по содержимому общего
+  корня (`storeRootHasContent`), а не по наличию папки: пустые корни создаёт новое окружение.
+  В хранилище одновременно идёт не более одной команды: `src/oplock.ts` (`createStoreLock`/
+  `targetsStore`) блокирует вторую со статусом `status.store-busy` — два пакетных менеджера портят
+  общий манифест и дерево. Удаление пакета из формы включённого окружения направляется в реестр
+  хранилища (`formRemoveDir`): `pi remove` в каталог окружения стёр бы общие файлы, не тронув реестр. При первом включении к общим корням подключается
   и основной агент (его содержимое переезжает первым; своё содержимое окружения в этом случае —
   в снимок), отключается он так же вручную на своей строке. Инфо-панель окружения показывает
   «Каталог пакетов: из хранилища» (`envs.pkgs`).
@@ -296,6 +302,8 @@
   `start()`); UI-логики и знания о layout в `terminal.ts` нет
 - `src/diff.ts` — построчный дифф кадра: `frameKey`, `diffFrames`, `paintFrame`, типы
   `FrameKey`/`PrevFrame`/`PaintOp`/`FramePatch`/`FrameSink` (чистые; row = индекс строки + 1)
+- `src/oplock.ts` — `createStoreLock`/`targetsStore`: не более одной команды, пишущей в общее
+  хранилище (чистое ядро, `onRefuse` инжектится) (чистые)
 - `src/throttle.ts` — `createThrottle` leading-edge со схлопыванием в одно окно, часы и таймеры
   инжектятся (чистая)
 - `src/environments.ts` — `scan(root)` с детализацией окружения
@@ -362,10 +370,12 @@
   пакетные корни (подрез 2a): `StoreRoot`/`STORE_ROOTS` (`npm`, `git`), `storeSettingsFile` (реестр),
   `storePackagesRoot`, `envRootDir`, `rootLinkState`, `storeLinkSummary` (агрегат
   `off`/`linked`/`partial`/`broken`), `storeRegistrySources`, `snapshotStoreManifest`,
-  `storeRootSnapshotName`, `mergeStoreRegistry` (дополняет реестр, сохраняя прочие поля), `enableStoreRoots` (перенос своего содержимого через `own.move` +
+  `storeRootSnapshotName`, `storeRootHasContent` (пустой общий корень — всё ещё «первое включение»),
+  `mergeStoreRegistry` (дополняет реестр, сохраняя прочие поля), `enableStoreRoots` (перенос своего содержимого через `own.move` +
   симлинк, откат по `own.undo`), `disableStoreRoots` (вместо симлинка — копия общего содержимого;
   нет симлинка — no-op), `repairStoreRootLinks`
-- `src/fscopy.ts` — `copyRecursive` (чистая): копирование каталога с сохранением симлинков;
+- `src/fscopy.ts` — `copyRecursive` (чистая): копирование каталога с сохранением симлинков (`lstat`,
+  битые симлинки переносятся как есть — клон включённого окружения остаётся включённым);
   общая для создания окружения, клонирования и выключения пакетных корней
 - `src/trash.ts` — корзина окружений и одиночных файлов (чистые): `moveToTrash`/`listTrash`/
   `restoreTrash`/`deleteTrashForever` (переносы `fs.rename` между `<root>/<имя>` и
@@ -456,7 +466,9 @@
   окно в цикл (state/setState/status/обёртки команд/`invalidate`/`trashNames`/`storeDir`/
   `storeInstallSources`); `storeOperation` — один диалог «Хранилища» для обоих срезов
   (`enableModelsStorage` + `enableStoreRoots`, при первом включении подключается и main-агент),
-  `rootsOwn` — переезд своего содержимого в хранилище либо снимок `<корень>.from-<окружение>-<мс>`
+  `rootsOwn` — переезд своего содержимого в хранилище либо снимок `<корень>.from-<окружение>-<мс>`;
+  намерение строки «Хранилище» — чистая `storeEnableIntent` (из `off`/`partial`/`broken` — достройка
+  связи, выключение только из `linked`), Enter подтверждает в обе стороны
 - `src/pirun.ts` — `launchPi` (дочерний `pi` с передачей терминала, возврат в
   TUI по exit) и `runPassthrough(envPath, args, lang)` — неинтерактивный проброс
   (код выхода пробрасывается)

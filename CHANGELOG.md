@@ -23,7 +23,12 @@ Russian text: [CHANGELOG.ru.md](CHANGELOG.ru.md).
   catalog and the package roots on and off together, moving the environment's own content into
   the store on the first enable (a redundant copy becomes `<store>/<root>.from-<env>-<ms>`, since
   the file-trash branch only accepts files), then placing the symlinks; declarations missing from
-  the registry are installed into the store by a queue of `pi install` commands. The registry
+  the registry are installed into the store by a queue of `pi install` commands, and only one store
+  write runs at a time (`src/oplock.ts`), so two package managers cannot corrupt the shared tree.
+  Re-enabling a partially linked environment now completes the link instead of breaking it, the toggle
+  always asks for confirmation, `R` also re-creates a missing shared root, disabling copies the store
+  content atomically, package counters and conflict markers work for scoped package names, and cloning
+  an environment keeps its package roots as symlinks. The registry
   itself is seeded on the first enable from the declarations whose content moved into the shared
   roots (`mergeStoreRegistry`), so an environment does not flag packages it already shares. On the
   first enable the main agent joins the shared roots too. `R` on an environment repairs broken model and
