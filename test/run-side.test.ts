@@ -15,7 +15,7 @@ import { listTrash } from '../src/trash.js';
 
 const PKG_A = { source: 'npm:pkg-a', name: 'pkg-a', path: '/p', version: null, description: null, extensions: [], skills: [] };
 const CATALOG: Catalog = { ...emptyCatalog(), packages: [PKG_A] };
-const ENV0: Environment = { name: 'e0', path: '/root/e0', details: { hasSettings: true, model: null, tools: [], skills: [], packages: [], mcp: [], settingsError: null, mcpError: null, mcpSkipped: [] } };
+const ENV0: Environment = { name: 'e0', path: '/root/e0', details: { hasSettings: true, model: null, tools: [], skills: [], packages: [], mcp: [], settingsError: null, mcpError: null, mcpSkipped: [], modelsLink: 'off', rootLinks: { npm: 'off', git: 'off' }, missingPackages: [] } };
 
 /** Фиксированный снимок до обработки клавиши. */
 const prev = (p: Partial<PrevSnap>): PrevSnap => ({ view: null, ext: null, mcp: null, tab: 'envs', mcpCheck: 'idle', createMcpCheck: 'idle', cancelRequested: false, ...p });
@@ -425,7 +425,7 @@ function storeSetup() {
   writeFileSync(storeFile, JSON.stringify({ providers: { shared: { models: {} } } }));
   const env: Environment = {
     name: 'e0', path: envDir,
-    details: { hasSettings: true, model: null, tools: [], skills: [], packages: [], mcp: [], settingsError: null, mcpError: null, mcpSkipped: [], modelsLink: 'off' },
+    details: { hasSettings: true, model: null, tools: [], skills: [], packages: [], mcp: [], settingsError: null, mcpError: null, mcpSkipped: [], modelsLink: 'off', rootLinks: { npm: 'off', git: 'off' }, missingPackages: [] },
   };
   return { root, envDir, storeFile, env };
 }

@@ -139,6 +139,8 @@
   "envs.models": "Model catalog: {v}",
   "envs.models-store": "from the store",
   "envs.problem.models": "the model catalog store link is broken",
+  "envs.problem.store": "Package store link is broken: {v}",
+  "envs.problem.missing": "Not in the package registry: {v}",
   "envs.trash": "Trash ({n})",
   "envs.trash.pick": "Enter — open trash",
   "trash.title": "Trash",

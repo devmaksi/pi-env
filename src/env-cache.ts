@@ -2,6 +2,7 @@ import { readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { scan, withMain, type Environment } from './environments.js';
 import { listTrash, type TrashEntry } from './trash.js';
+import { storeModelsFile } from './store.js';
 
 /** Снимок окружений и корзины: `envs === null` — корень недоступен. */
 export interface ScanSnapshot {
@@ -23,11 +24,12 @@ function statTag(path: string): string {
  * Подпись дерева окружений: имена окружений + для каждого mtime самого каталога и
  * `settings.json`/`mcp.json`/`extensions/`/`skills/`, плюс mtime корня, корзины
  * и каталога main-агента (он вне `<root>`).
- * Общий файл хранилища (`storeFile`) входит в подпись, если хранилище задано.
+ * Каталог хранилища (`storeDir`) входит в подпись, если задан: файл каталога моделей,
+ * реестр пакетов и манифест общего `npm`.
  * Дешевле полного `scan()` и ловит как изменения снаружи, так и свои правки.
  * `null` — корень не читается (кэшировать такой результат нельзя).
  */
-export function scanSignature(root: string, agentDir: string, storeFile: string | null = null): string | null {
+export function scanSignature(root: string, agentDir: string, storeDir: string | null = null): string | null {
   let entries;
   try {
     entries = readdirSync(root, { withFileTypes: true });
@@ -51,7 +53,17 @@ export function scanSignature(root: string, agentDir: string, storeFile: string 
   }
   parts.push('trash:' + statTag(join(root, '.trash')));
   // Общий файл хранилища: его правка меняет каталог моделей всех связанных окружений.
-  if (storeFile !== null) parts.push('store:' + statTag(storeFile));
+  if (storeDir !== null) {
+    parts.push(
+      'store:' + statTag(storeDir),
+      'sm=' + statTag(storeModelsFile(storeDir)),
+      // реестр пакетов хранилища и манифест общего `npm`: их правка меняет состав
+      // расширений всех связанных окружений
+      'sr=' + statTag(join(storeDir, 'settings.json')),
+      'sn=' + statTag(join(storeDir, 'npm', 'package.json')),
+      'sg=' + statTag(join(storeDir, 'git')),
+    );
+  }
   // Каталог main-агента живёт вне `<root>` — его правки иначе не видны совсем.
   parts.push(
     'main:' + statTag(agentDir),
@@ -67,7 +79,7 @@ export function scanSignature(root: string, agentDir: string, storeFile: string 
 export interface ScanCacheDeps {
   scan?: typeof scan;
   listTrash?: typeof listTrash;
-  signature?: (root: string, agentDir: string, storeFile: string | null) => string | null;
+  signature?: (root: string, agentDir: string, storeDir: string | null) => string | null;
 }
 
 /**
@@ -78,7 +90,7 @@ export function createScanCache(
   root: string,
   agentDir: string,
   deps: ScanCacheDeps = {},
-  storeFile: string | null = null,
+  storeDir: string | null = null,
 ): { get(): ScanSnapshot; invalidate(): void } {
   const doScan = deps.scan ?? scan;
   const doTrash = deps.listTrash ?? listTrash;
@@ -93,10 +105,10 @@ export function createScanCache(
 
   return {
     get(): ScanSnapshot {
-      const sig = doSig(root, agentDir, storeFile);
+      const sig = doSig(root, agentDir, storeDir);
       if (sig !== null && cachedSig === sig && snapshot !== null) return snapshot;
-      const scanned = doScan(root, storeFile);
-      const snap: ScanSnapshot = { envs: scanned === null ? null : withMain(scanned, agentDir, storeFile), trash: doTrash(root) };
+      const scanned = doScan(root, storeDir);
+      const snap: ScanSnapshot = { envs: scanned === null ? null : withMain(scanned, agentDir, storeDir), trash: doTrash(root) };
       // Нечитаемый корень и пустой результат скана не кэшируются: следующий get() обязан проверить снова.
       if (sig !== null && scanned !== null) {
         cachedSig = sig;

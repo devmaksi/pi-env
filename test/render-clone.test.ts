@@ -56,6 +56,9 @@ const details = (over: Partial<Environment['details']> = {}): Environment['detai
   settingsError: null,
   mcpError: null,
   mcpSkipped: [],
+  modelsLink: 'off',
+  rootLinks: { npm: 'off', git: 'off' },
+  missingPackages: [],
   ...over,
 });
 

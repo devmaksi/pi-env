@@ -90,8 +90,9 @@ export async function run(root: string, term: Term = createTerm(), deps: RunDeps
   /** Снимок окружений и корзины: перечитывается при смене подписи дерева или после инвалидации. */
   // Хранилище доступно всегда: по умолчанию `<root>/.store`, переезжает настройкой `storeDir`
   // или `PI_ENV_STORE`. Окружение подключается к нему сам — без переключателя «вообще».
-  const storeFile = storeModelsFile(storeRoot(root, app.storeDir, process.env.PI_ENV_STORE));
-  const cache = createScanCache(root, agentDir, {}, storeFile);
+  const storeDir = storeRoot(root, app.storeDir, process.env.PI_ENV_STORE);
+  const storeFile = storeModelsFile(storeDir);
+  const cache = createScanCache(root, agentDir, {}, storeDir);
 
   /**
    * Активные внешние процессы. `cancelOp` — тот, которому принадлежит busy-экран (его снимает

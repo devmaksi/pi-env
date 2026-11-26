@@ -7,7 +7,7 @@ import { visibleWidth, wideCount } from '../src/render.js';
 import type { Environment } from '../src/environments.js';
 
 const env = (name: string): Environment =>
-  ({ name, path: '/root/' + name, details: { hasSettings: true, model: null, tools: [], skills: [], packages: [], mcp: [], settingsError: null, mcpError: null, mcpSkipped: [] } });
+  ({ name, path: '/root/' + name, details: { hasSettings: true, model: null, tools: [], skills: [], packages: [], mcp: [], settingsError: null, mcpError: null, mcpSkipped: [], modelsLink: 'off', rootLinks: { npm: 'off', git: 'off' }, missingPackages: [] } });
 
 const entry = (name: string, ts: number | null): TrashEntry => {
   const dirName = ts === null ? name : `${name}@${ts}`;

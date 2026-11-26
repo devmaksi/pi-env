@@ -163,24 +163,26 @@ test('scanSignature: другой агентский каталог — друг
 
 test('scanSignature: правка общего файла хранилища меняет подпись', () => {
   const root = tmpRoot();
-  const storeFile = join(root, '.store', 'models', 'models.json');
+  const storeDir = join(root, '.store');
+  const storeFile = join(storeDir, 'models', 'models.json');
   mkdirSync(join(storeFile, '..'), { recursive: true });
   writeFileSync(storeFile, '{"providers":{"a":{}}}');
-  const before = scanSignature(root, AGENT, storeFile);
+  const before = scanSignature(root, AGENT, storeDir);
   assert.notEqual(before, null);
   writeFileSync(storeFile, '{"providers":{"a":{},"b":{}}}');
-  assert.notEqual(scanSignature(root, AGENT, storeFile), before);
+  assert.notEqual(scanSignature(root, AGENT, storeDir), before);
   assert.equal(scanSignature(root, AGENT, null), scanSignature(root, AGENT));
 });
 
 test('createScanCache с хранилищем: обрыв симлинка виден без invalidate', () => {
   const root = tmpRoot();
-  const storeFile = join(root, '.store', 'models', 'models.json');
+  const storeDir = join(root, '.store');
+  const storeFile = join(storeDir, 'models', 'models.json');
   mkdirSync(join(storeFile, '..'), { recursive: true });
   writeFileSync(storeFile, '{"providers":{}}');
   symlinkSync(storeFile, join(root, 'dev', 'models.json'));
   let scanCalls = 0;
-  const cache = createScanCache(root, AGENT, { scan: (r, s) => { scanCalls++; return scan(r, s); } }, storeFile);
+  const cache = createScanCache(root, AGENT, { scan: (r, s) => { scanCalls++; return scan(r, s); } }, storeDir);
   assert.equal(dev(cache.get().envs).details.modelsLink, 'linked');
   rmSync(storeFile);
   const snap = cache.get();
@@ -198,4 +200,19 @@ test('scanSignature: правка содержимого своего models.jso
   assert.notEqual(scanSignature(root, agent), before);
   rmSync(root, { recursive: true, force: true });
   rmSync(agent, { recursive: true, force: true });
+});
+
+test('scanSignature: правка реестра хранилища и манифеста общего npm меняет подпись', () => {
+  const root = tmpRoot();
+  const storeDir = join(root, '.store');
+  mkdirSync(join(storeDir, 'npm', 'node_modules'), { recursive: true });
+  writeFileSync(join(storeDir, 'settings.json'), JSON.stringify({ packages: ['npm:pi-zentui'] }));
+  writeFileSync(join(storeDir, 'npm', 'package.json'), JSON.stringify({ dependencies: { 'pi-zentui': '^1' } }));
+  const before = scanSignature(root, AGENT, storeDir);
+  assert.notEqual(before, null);
+  writeFileSync(join(storeDir, 'settings.json'), JSON.stringify({ packages: ['npm:pi-zentui', 'npm:pi-ssh-remote'] }));
+  const afterRegistry = scanSignature(root, AGENT, storeDir);
+  assert.notEqual(afterRegistry, before);
+  writeFileSync(join(storeDir, 'npm', 'package.json'), JSON.stringify({ dependencies: { 'pi-zentui': '^2' } }));
+  assert.notEqual(scanSignature(root, AGENT, storeDir), afterRegistry);
 });

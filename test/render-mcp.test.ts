@@ -175,7 +175,7 @@ test('Список edit в форме: инфо-панель и «В окруж�
 
 test('Детализация окружения: MCP', () => {
   const envsMcp: Environment[] = [
-    { name: 'dev', path: '/root/dev', details: { hasSettings: false, model: null, tools: [], skills: [], packages: [], mcp: ['browsermcp'], settingsError: null, mcpError: null, mcpSkipped: [] } },
+    { name: 'dev', path: '/root/dev', details: { hasSettings: false, model: null, tools: [], skills: [], packages: [], mcp: ['browsermcp'], settingsError: null, mcpError: null, mcpSkipped: [], modelsLink: 'off', rootLinks: { npm: 'off', git: 'off' }, missingPackages: [] } },
   ];
   const s = render({ state: initialState(catalog), envs: envsMcp, width: 62, height: 16, ...base });
   assert.ok(s.includes('MCP: 1'));

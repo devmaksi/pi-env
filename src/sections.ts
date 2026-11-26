@@ -392,6 +392,9 @@ function envProblems(d: Environment['details'], lang: string): string[] {
   if (d.mcpError) out.push(t(lang, 'envs.problem.mcp', { v: d.mcpError }));
   if (d.mcpSkipped.length > 0) out.push(t(lang, 'envs.problem.mcp-skipped', { v: d.mcpSkipped.join(', ') }));
   if (d.modelsLink === 'broken') out.push(t(lang, 'envs.problem.models'));
+  const brokenRoots = Object.entries(d.rootLinks).filter(([, s]) => s === 'broken').map(([r]) => r);
+  if (brokenRoots.length > 0) out.push(t(lang, 'envs.problem.store', { v: brokenRoots.join(', ') }));
+  if (d.missingPackages.length > 0) out.push(t(lang, 'envs.problem.missing', { v: d.missingPackages.join(', ') }));
   return out;
 }
 

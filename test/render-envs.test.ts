@@ -57,6 +57,8 @@ const details = (over: Partial<Environment['details']> = {}): Environment['detai
   mcpError: null,
   mcpSkipped: [],
   modelsLink: 'off' as const,
+  rootLinks: { npm: 'off' as const, git: 'off' as const },
+  missingPackages: [] as string[],
   ...over,
 });
 
@@ -141,6 +143,29 @@ test('свои каталоги моделей не показываются о�
   const s = render({ state: st, envs: [plain], width: 100, height: 20, ...base });
   assert.ok(!s.includes(t('ru', 'envs.models', { v: t('ru', 'envs.models-store') })), s);
 });
+const brokenPackages: Environment = {
+  name: 'nopkgs',
+  path: '/root/nopkgs',
+  details: details({ rootLinks: { npm: 'broken', git: 'off' } }),
+};
+const missingPackageEnv: Environment = {
+  name: 'stale',
+  path: '/root/stale',
+  details: details({ rootLinks: { npm: 'linked', git: 'linked' }, missingPackages: ['pi-zentui'] }),
+};
+
+test('битая связь пакетного корня — ⚠ у имени и текст проблемы', () => {
+  const s = render({ state: st, envs: [brokenPackages], width: 100, height: 20, ...base });
+  assert.ok(s.includes('nopkgs ⚠'), s);
+  assert.ok(s.includes(t('ru', 'envs.problem.store', { v: 'npm' })), s);
+});
+
+test('пакета нет в реестре хранилища — ⚠ и список имён', () => {
+  const s = render({ state: st, envs: [missingPackageEnv], width: 100, height: 20, ...base });
+  assert.ok(s.includes('stale ⚠'), s);
+  assert.ok(s.includes(t('ru', 'envs.problem.missing', { v: 'pi-zentui' })), s);
+});
+
 test('инфо-панель окружения: подсказка «C — создать копию»', () => {
   const s = render({ state: st, envs: [plain], width: 100, height: 20, ...base });
   assert.ok(s.includes(t('ru', 'envs.hint.clone')), s);

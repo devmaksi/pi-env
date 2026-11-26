@@ -3,7 +3,7 @@ import assert from 'node:assert';
 import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { basename, join } from 'node:path';
-import { scan, withMain, realEnvNames } from '../src/environments.js';
+import { scan, withMain, realEnvNames, packageConflicts, pkgNameOfSource } from '../src/environments.js';
 import { symlinkSync } from 'node:fs';
 
 test('scan: отсутствующий корень → null', () => {
@@ -29,8 +29,8 @@ test('scan: только каталоги, сортировка, пустая д
     writeFileSync(join(dir, 'a', 'settings.json'), '{}');
     writeFileSync(join(dir, 'file.txt'), 'x');
     assert.deepEqual(scan(dir), [
-      { name: 'a', path: join(dir, 'a'), details: { hasSettings: true, model: null, tools: [], skills: [], packages: [], mcp: [], settingsError: null, mcpError: null, mcpSkipped: [], modelsLink: 'off' } },
-      { name: 'b', path: join(dir, 'b'), details: { hasSettings: false, model: null, tools: [], skills: [], packages: [], mcp: [], settingsError: null, mcpError: null, mcpSkipped: [], modelsLink: 'off' } },
+      { name: 'a', path: join(dir, 'a'), details: { hasSettings: true, model: null, tools: [], skills: [], packages: [], mcp: [], settingsError: null, mcpError: null, mcpSkipped: [], modelsLink: 'off', rootLinks: { npm: 'off', git: 'off' }, missingPackages: [] } },
+      { name: 'b', path: join(dir, 'b'), details: { hasSettings: false, model: null, tools: [], skills: [], packages: [], mcp: [], settingsError: null, mcpError: null, mcpSkipped: [], modelsLink: 'off', rootLinks: { npm: 'off', git: 'off' }, missingPackages: [] } },
     ]);
   } finally {
     rmSync(dir, { recursive: true });
@@ -50,7 +50,7 @@ test('scan: детализация — модель, инструменты, с�
       {
         name: 'dev',
         path: join(dir, 'dev'),
-        details: { hasSettings: true, model: 'p1/m1', tools: ['tool1.ts'], skills: ['sk-a', 'sk-b'], packages: ['npm:pkg-a'], mcp: [], settingsError: null, mcpError: null, mcpSkipped: [], modelsLink: 'off' },
+        details: { hasSettings: true, model: 'p1/m1', tools: ['tool1.ts'], skills: ['sk-a', 'sk-b'], packages: ['npm:pkg-a'], mcp: [], settingsError: null, mcpError: null, mcpSkipped: [], modelsLink: 'off', rootLinks: { npm: 'off', git: 'off' }, missingPackages: [] },
       },
     ]);
   } finally {
@@ -80,7 +80,7 @@ test('scan: mcp.json окружения — имена в details.mcp', () => {
     writeFileSync(join(dir, 'dev', 'mcp.json'),
       JSON.stringify({ mcpServers: { browsermcp: { command: 'npx' } } }));
     assert.deepEqual(scan(dir), [
-      { name: 'dev', path: join(dir, 'dev'), details: { hasSettings: false, model: null, tools: [], skills: [], packages: [], mcp: ['browsermcp'], settingsError: null, mcpError: null, mcpSkipped: [], modelsLink: 'off' } },
+      { name: 'dev', path: join(dir, 'dev'), details: { hasSettings: false, model: null, tools: [], skills: [], packages: [], mcp: ['browsermcp'], settingsError: null, mcpError: null, mcpSkipped: [], modelsLink: 'off', rootLinks: { npm: 'off', git: 'off' }, missingPackages: [] } },
     ]);
   } finally {
     rmSync(dir, { recursive: true });
@@ -203,27 +203,97 @@ test('realEnvNames: основная запись исключена', () => {
   assert.deepEqual(realEnvNames(withMain(scan(root)!, join(root, 'dev'))), []);
 });
 
-test("scan с файлом хранилища: linked / broken / off", () => {
+test("scan с каталогом хранилища: linked / broken / off", () => {
   const root = tmpFixtureWithEnv('dev');
-  const storeFile = join(root, '.store', 'models', 'models.json');
+  const storeDir = join(root, '.store');
+  const storeFile = join(storeDir, 'models', 'models.json');
   mkdirSync(join(storeFile, '..'), { recursive: true });
   writeFileSync(storeFile, '{"providers":{}}');
   symlinkSync(storeFile, join(root, 'dev', 'models.json'));
-  assert.equal(scan(root, storeFile)![0].details.modelsLink, 'linked');
+  assert.equal(scan(root, storeDir)![0].details.modelsLink, 'linked');
   rmSync(storeFile);
-  assert.equal(scan(root, storeFile)![0].details.modelsLink, 'broken');
+  assert.equal(scan(root, storeDir)![0].details.modelsLink, 'broken');
   assert.equal(scan(root)![0].details.modelsLink, 'off', 'без хранилища — своего файла достаточно');
 });
 
 test("withMain: основная запись получает modelsLink из файла хранилища", () => {
   const root = tmpFixtureWithEnv('dev');
-  const storeFile = join(root, '.store', 'models', 'models.json');
+  const storeDir = join(root, '.store');
+  const storeFile = join(storeDir, 'models', 'models.json');
   mkdirSync(join(storeFile, '..'), { recursive: true });
   writeFileSync(storeFile, '{"providers":{}}');
   const agent = join(tmpDir(), 'agent');   // вне <root> — синтетическая запись
   mkdirSync(agent, { recursive: true });
   symlinkSync(storeFile, join(agent, 'models.json'));
-  const out = withMain(scan(root)!, agent, storeFile);
+  const out = withMain(scan(root)!, agent, storeDir);
   assert.equal(out[0].main, true);
   assert.equal(out[0].details.modelsLink, 'linked');
 });
+
+// --- Подрез 2a: связь пакетных корней, конфликты источников, отсутствующие пакеты ---
+
+test('pkgNameOfSource: имя пакета из объявления', () => {
+  assert.equal(pkgNameOfSource('npm:pi-open-tui'), 'pi-open-tui');
+  assert.equal(pkgNameOfSource('npm:@wangjq4214/pi-open-tui'), 'pi-open-tui');
+  assert.equal(pkgNameOfSource('npm:@sfroment/pi-obsidian@1.2.3'), 'pi-obsidian');
+  assert.equal(pkgNameOfSource('git:github.com/obra/superpowers'), 'superpowers');
+  assert.equal(pkgNameOfSource('git:github.com/obra/superpowers@v1'), 'superpowers');
+  assert.equal(pkgNameOfSource('./tools/pi-local'), 'pi-local');
+});
+
+test('packageConflicts: одно имя — разные объявления видны', () => {
+  const root = mkEnvRoot([
+    ['dev-supo', ['npm:pi-open-tui']],
+    ['dev-vtb', ['npm:@wangjq4214/pi-open-tui']],
+    ['search', ['npm:pi-open-tui']],
+  ]);
+  try {
+    assert.deepEqual(packageConflicts(scan(root)!), [{
+      name: 'pi-open-tui',
+      declarations: [
+        { env: 'dev-supo', source: 'npm:pi-open-tui' },
+        { env: 'dev-vtb', source: 'npm:@wangjq4214/pi-open-tui' },
+        { env: 'search', source: 'npm:pi-open-tui' },
+      ],
+    }]);
+  } finally {
+    rmSync(root, { recursive: true });
+  }
+});
+
+test('packageConflicts: одинаковые объявления одного имени — конфликта нет', () => {
+  const root = mkEnvRoot([['a', ['npm:pi-zentui']], ['b', ['npm:pi-zentui']]]);
+  try {
+    assert.deepEqual(packageConflicts(scan(root)!), []);
+  } finally {
+    rmSync(root, { recursive: true });
+  }
+});
+
+test('scan: rootLinks по каталогу хранилища и missingPackages против реестра', () => {
+  const root = mkEnvRoot([['dev', ['npm:pi-zentui', 'npm:absent-pkg']]]);
+  try {
+    const store = join(root, '.store');
+    mkdirSync(join(store, 'npm'), { recursive: true });
+    writeFileSync(join(store, 'settings.json'), JSON.stringify({ packages: ['npm:pi-zentui'] }));
+    symlinkSync(join(store, 'npm'), join(root, 'dev', 'npm'), 'dir');
+    const env = scan(root, store)!.find((e) => e.name === 'dev')!;
+    assert.deepEqual(env.details.rootLinks, { npm: 'linked', git: 'off' });
+    assert.deepEqual(env.details.missingPackages, ['absent-pkg']);
+    // без хранилища — rootLinks все off и missingPackages пустые
+    const plain = scan(root)!.find((e) => e.name === 'dev')!;
+    assert.deepEqual(plain.details.rootLinks, { npm: 'off', git: 'off' });
+    assert.deepEqual(plain.details.missingPackages, []);
+  } finally {
+    rmSync(root, { recursive: true });
+  }
+});
+
+function mkEnvRoot(pkgs: Array<[string, string[]]>): string {
+  const root = mkdtempSync(join(tmpdir(), 'pienv-'));
+  for (const [name, sources] of pkgs) {
+    mkdirSync(join(root, name), { recursive: true });
+    writeFileSync(join(root, name, 'settings.json'), JSON.stringify({ packages: sources }));
+  }
+  return root;
+}
