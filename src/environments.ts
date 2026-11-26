@@ -168,8 +168,24 @@ export function storeOrphanNames(envs: Environment[], pkgNames: string[]): strin
   return pkgNames.filter((n) => storePackageUsage(envs, n).length === 0).sort((a, b) => a.localeCompare(b));
 }
 
+/** Одно имя пакета, объявленное разными источниками. */
+export interface PackageConflict {
+  name: string;
+  declarations: Array<{ env: string; source: string }>;
+}
+
+/**
+ * Уникальный источник группы конфликта и окружения, которые его объявили.
+ * Суб-экран выбора победителя показывает источники, а не окружения: все окружения,
+ * объявившие один и тот же источник, получают его вместе.
+ */
+export interface ConflictSource {
+  source: string;
+  envs: string[];
+}
+
 /** Конфликты источников: одно имя пакета объявлено по-разному в разных окружениях. */
-export function packageConflicts(envs: Environment[]): Array<{ name: string; declarations: Array<{ env: string; source: string }> }> {
+export function packageConflicts(envs: Environment[]): PackageConflict[] {
   const byName = new Map<string, Array<{ env: string; source: string }>>();
   for (const env of envs) {
     for (const source of env.details.packages) {
@@ -178,10 +194,26 @@ export function packageConflicts(envs: Environment[]): Array<{ name: string; dec
       byName.set(pkgNameOfSource(source), list);
     }
   }
-  const out: Array<{ name: string; declarations: Array<{ env: string; source: string }> }> = [];
+  const out: PackageConflict[] = [];
   for (const [name, declarations] of byName) {
     const distinct = new Set(declarations.map((d) => d.source));
     if (distinct.size > 1) out.push({ name, declarations });
   }
   return out.sort((a, b) => a.name.localeCompare(b.name));
+}
+
+/**
+ * Варианты выбора победителя: объявления группы, сжатые до уникальных источников
+ * (4 объявления — 2 источника), с окружениями, которые каждый из них объявил.
+ */
+export function conflictSources(conflict: PackageConflict): ConflictSource[] {
+  const bySource = new Map<string, string[]>();
+  for (const d of conflict.declarations) {
+    const envs = bySource.get(d.source) ?? [];
+    if (!envs.includes(d.env)) envs.push(d.env);
+    bySource.set(d.source, envs);
+  }
+  return [...bySource.entries()]
+    .map(([source, envs]) => ({ source, envs: envs.sort((a, b) => a.localeCompare(b)) }))
+    .sort((a, b) => a.source.localeCompare(b.source));
 }

@@ -79,7 +79,9 @@ different purpose.
   are symlinks into `<root>/.store`, so `pi install`, `pi update` and `pi remove` there
   serve every environment at once. The “Extensions” tab is the store registry
   (`<store>/settings.json`): each package shows how many environments use it, conflicting
-  sources are marked, and removal warns which environments will lose the package. A package
+  sources are marked (`S` picks the winning source and reconciles every environment's
+  declarations and the store with one action), and removal warns which environments will lose
+  the package. A package
   left in the registry with no environment declaring it is marked «0 envs» with `⚠` and can be
   removed from the registry with `X`.
   The main agent joins the shared package directories when the store is enabled for the

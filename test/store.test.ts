@@ -9,7 +9,7 @@ import {
   enableModelsStorage, restoreFromStoreSnapshot,
   STORE_ROOTS, storeSettingsFile, storePackagesRoot, envRootDir, rootLinkState,
   storeLinkSummary, snapshotStoreManifest, storeRegistrySources,
-  enableStoreRoots, disableStoreRoots, repairStoreRootLinks, mergeStoreRegistry,
+  enableStoreRoots, disableStoreRoots, repairStoreRootLinks, mergeStoreRegistry, rewritePackages,
 } from '../src/store.js';
 import { t } from '../src/i18n.js';
 
@@ -472,4 +472,41 @@ test('mergeStoreRegistry: нечитаемый реестр — ошибка, ф
   const r = mergeStoreRegistry(store, ['npm:x'], 'ru');
   assert.equal(r.ok, false);
   assert.equal(readFileSync(storeSettingsFile(store), 'utf8'), before);
+});
+
+// ─── разрешение конфликта источников пакета одним действием ──────────
+
+test('rewritePackages: все объявления имени свёрнуты в победителя, прочие — в порядке', () => {
+  const got = rewritePackages(
+    ['npm:pi-zentui', 'npm:pi-open-tui', 'npm:@sfroment/pi-obsidian', 'npm:pi-ssh-remote'],
+    'pi-open-tui', 'npm:@wangjq4214/pi-open-tui',
+  );
+  assert.deepEqual(got, [
+    'npm:pi-zentui', 'npm:@wangjq4214/pi-open-tui', 'npm:@sfroment/pi-obsidian', 'npm:pi-ssh-remote',
+  ]);
+});
+
+// Ключ имени не различает scope: «пишем по ключу» обязано убирать и scoped-, и unscoped-объявление,
+// иначе в settings.packages останутся оба источника и конфликт вернётся на следующем скане.
+test('rewritePackages: scoped- и unscoped-объявление одного имени заменяются одним победителем', () => {
+  assert.deepEqual(
+    rewritePackages(['npm:@wangjq4214/pi-open-tui', 'npm:pi-open-tui'], 'pi-open-tui', 'npm:pi-open-tui'),
+    ['npm:pi-open-tui'],
+  );
+  assert.deepEqual(
+    rewritePackages(['npm:pi-open-tui', 'npm:@wangjq4214/pi-open-tui'], 'pi-open-tui', 'npm:@wangjq4214/pi-open-tui'),
+    ['npm:@wangjq4214/pi-open-tui'],
+  );
+});
+
+test('rewritePackages: объявленного имени нет — массив не меняется', () => {
+  assert.deepEqual(rewritePackages(['npm:pi-zentui'], 'pi-open-tui', 'npm:pi-open-tui'), ['npm:pi-zentui']);
+});
+
+test('rewritePackages: дубликаты объявления и git-объявление того же имени сворачиваются', () => {
+  assert.deepEqual(
+    rewritePackages(['git:github.com/x/pi-open-tui@v1', 'npm:pi-open-tui@1.2.3', 'npm:pi-open-tui'],
+      'pi-open-tui', 'npm:pi-open-tui'),
+    ['npm:pi-open-tui'],
+  );
 });

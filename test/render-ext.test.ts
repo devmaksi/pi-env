@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert';
 import { render, visibleWidth } from '../src/render.js';
-import { initialState } from '../src/state.js';
+import { freshExt, initialState } from '../src/state.js';
 import { type Environment } from '../src/environments.js';
 import { type CatalogPkg } from '../src/catalog.js';
 import { t } from '../src/i18n.js';
@@ -91,7 +91,7 @@ test('подтверждение удаления из хранилища: сп�
   const state = {
     ...st,
     storePackages: [pkg('pi-zentui')],
-    ext: { view: 'confirm-remove' as const, cursor: 0, updating: null, installing: null, removing: 'pi-zentui', catalog: [], catalogStatus: 'ready' as const, query: '' },
+    ext: freshExt({ view: 'confirm-remove', removing: 'pi-zentui' }),
   };
   const s = render({ state, envs, width: 90, height: 20, ...base });
   assert.ok(s.includes(t('ru', 'busy.delete-ext', { name: 'pi-zentui' })), s);
@@ -151,7 +151,7 @@ test('подтверждение удаления осиротевшего па�
   const state = {
     ...st,
     storePackages: [pkg('pi-orphan-ext')],
-    ext: { view: 'confirm-remove' as const, cursor: 0, updating: null, installing: null, removing: 'pi-orphan-ext', catalog: [], catalogStatus: 'ready' as const, query: '' },
+    ext: freshExt({ view: 'confirm-remove', removing: 'pi-orphan-ext' }),
   };
   const s = render({ state, envs, width: 90, height: 20, ...base });
   assert.ok(s.includes(t('ru', 'busy.delete-ext', { name: 'pi-orphan-ext' })), s);
@@ -159,4 +159,75 @@ test('подтверждение удаления осиротевшего па�
   // «Перестанут использовать: …» при пустом списке окружений было бы пустой строкой-обманкой
   const usedBy = t('ru', 'ext.store.used-by', { v: 'dev-supo' });
   assert.ok(!s.includes(usedBy.slice(0, usedBy.indexOf(':') + 1)), s);
+});
+
+// Действие «разрешить конфликт одним действием»: без подсказки в инфо-панели о нём
+// нельзя догадаться, а на пакете без конфликта она была бы обманкой.
+test('конфликт источников: подсказка «S — выбрать источник-победитель» только у конфликта', () => {
+  const conf = [env('dev-supo', ['npm:pi-open-tui']), env('dev-vtb', ['npm:@wangjq4214/pi-open-tui'])];
+  const withConflict = render({
+    state: { ...st, storePackages: [pkg('pi-open-tui')] }, envs: conf, width: 90, height: 20, ...base,
+  });
+  assert.ok(withConflict.includes(t('ru', 'ext.conflict.hint')), withConflict);
+  const clean = render({
+    state: { ...st, storePackages: [pkg('pi-open-tui')] },
+    envs: [env('dev-supo', ['npm:pi-open-tui']), env('dev-vtb', ['npm:pi-open-tui'])],
+    width: 90, height: 20, ...base,
+  });
+  assert.ok(!clean.includes(t('ru', 'ext.conflict.hint')), clean);
+});
+
+// 4 объявления — 2 источника: суб-экран выбирает источник, а не строку на окружение.
+test('суб-экран выбора победителя: уникальные источники и окружения в инфо-панели', () => {
+  const envs = [
+    env('dev-java', ['npm:pi-open-tui']), env('dev-supo', ['npm:pi-open-tui']),
+    env('search', ['npm:pi-open-tui']), env('dev-vtb', ['npm:@wangjq4214/pi-open-tui']),
+  ];
+  const state = { ...st, ext: freshExt({ view: 'resolve', conflictName: 'pi-open-tui' }) };
+  const s = render({ state, envs, width: 90, height: 20, ...base });
+  assert.ok(s.includes(t('ru', 'ext.conflict.title', { name: 'pi-open-tui' })), s);
+  assert.equal((s.match(/npm:pi-open-tui/g) ?? []).length, 1, s);
+  assert.ok(s.includes('npm:@wangjq4214/pi-open-tui'), s);
+  assert.ok(s.includes(t('ru', 'ext.conflict.envs', { v: 'dev-vtb' })), s);
+  assert.ok(s.includes(t('ru', 'ext.conflict.apply')), s);
+  assert.ok(s.includes(t('ru', 'hint.confirm')), s);
+});
+
+test('суб-экран выбора победителя: курсор переводится по вариантам', () => {
+  const envs = [env('dev-supo', ['npm:pi-open-tui']), env('dev-vtb', ['npm:@wangjq4214/pi-open-tui'])];
+  for (const cursor of [0, 1]) {
+    const state = { ...st, ext: freshExt({ view: 'resolve', conflictName: 'pi-open-tui', cursor }) };
+    const s = render({ state, envs, width: 90, height: 20, ...base });
+    assert.ok(s.includes('> ' + ['npm:@wangjq4214/pi-open-tui', 'npm:pi-open-tui'][cursor]), `cursor=${cursor}: ${s}`);
+  }
+});
+
+test('экран приведения хранилища: текст операции и подсказка отмены', () => {
+  const state = { ...st, ext: freshExt({ view: 'resolving', conflictName: 'pi-open-tui', resolving: 'npm:pi-open-tui' }) };
+  const s = render({ state, envs: [env('dev-supo', ['npm:pi-open-tui'])], width: 90, height: 20, ...base });
+  assert.ok(s.includes(t('ru', 'busy.resolving', { name: 'npm:pi-open-tui' })), s);
+  assert.ok(s.includes(t('ru', 'hint.kill')), s);
+});
+
+test('кадр суб-экрана выбора источника: ровно height строк фиксированной ширины', () => {
+  const envs = [
+    env('dev-java', ['npm:pi-open-tui']), env('dev-supo', ['npm:pi-open-tui']),
+    env('search', ['npm:pi-open-tui']), env('dev-vtb', ['npm:@wangjq4214/pi-open-tui']),
+  ];
+  for (const view of ['resolve', 'resolving'] as const) {
+    for (const width of [40, 62, 90]) {
+      const state = {
+        ...st,
+        ext: freshExt({ view, conflictName: 'pi-open-tui', resolving: 'npm:@wangjq4214/pi-open-tui', cursor: 1 }),
+      };
+      const s = render({ state, envs, width, height: 20, ...base });
+      const lines = s.split('\n');
+      assert.equal(lines.length, 20, `${view} width=${width}`);
+      for (const line of lines) {
+        assert.equal(lastCol(line, () => 1, width), width, `1-клеточный ${view} w=${width}: ${JSON.stringify(line)}`);
+        assert.equal(lastCol(line, wide, width), width, `2-клеточный ${view} w=${width}: ${JSON.stringify(line)}`);
+        assert.equal(visibleWidth(line) <= width, true, `ширина ${view} w=${width}: ${JSON.stringify(line)}`);
+      }
+    }
+  }
 });

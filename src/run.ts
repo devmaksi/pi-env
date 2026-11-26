@@ -2,9 +2,9 @@ import { existsSync, writeSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { withShutdown } from './shutdown.js';
-import { realEnvNames, type Environment } from './environments.js';
+import { packageConflicts, pkgNameOfSource, realEnvNames, type Environment, type PackageConflict } from './environments.js';
 import { createScanCache } from './env-cache.js';
-import { repairModelsLink, repairStoreRootLinks, storeModelsFile, storeRoot, STORE_ROOTS, type StoreResult } from './store.js';
+import { repairModelsLink, repairStoreRootLinks, rewritePackages, storeModelsFile, storeRegistrySources, storeRoot, STORE_ROOTS, type StoreResult } from './store.js';
 import { loadAppSettings, saveAppSettings } from './appsettings.js';
 import { listProviders, loadCatalog, fetchPackageCatalog, normalizePkgSource, type CatalogPkg } from './catalog.js';
 import { computeLayout } from './layout.js';
@@ -13,7 +13,7 @@ import { createThrottle, type Throttle, type ThrottleDeps } from './throttle.js'
 import { createTicker } from './ticker.js';
 import { createStoreLock, targetsStore } from './oplock.js';
 import { render } from './render.js';
-import { readSettings } from './create.js';
+import { patchSettings, readSettings } from './create.js';
 import { parseMcpList, readMcpServers } from './mcp.js';
 import { AppState, busyProcessView, initialState, Key, reducer, type Action, type McpFormAdd, makeCtx, type ReducerCtx } from './state.js';
 import { createTerm, Term } from './terminal.js';
@@ -220,8 +220,11 @@ export async function run(root: string, term: Term = createTerm(), deps: RunDeps
    * Именованные поля, а не три позиционных `string[]`: переставленные местами список строк и
    * список имён компилируются и воспроизводят ровно этот дефект.
    */
-  function rctx(over: { rows?: string[]; tnames?: string[]; names?: string[] } = {}): ReducerCtx {
-    return makeCtx(over.rows ?? envRows(), twoColumns(), over.tnames ?? trashNames(), over.names ?? realNames());
+  function rctx(over: { rows?: string[]; tnames?: string[]; names?: string[]; conflicts?: PackageConflict[] } = {}): ReducerCtx {
+    return makeCtx(
+      over.rows ?? envRows(), twoColumns(), over.tnames ?? trashNames(), over.names ?? realNames(),
+      over.conflicts ?? packageConflicts(load().envs),
+    );
   }
 
   /**
@@ -340,6 +343,66 @@ export async function run(root: string, term: Term = createTerm(), deps: RunDeps
     }
     state = reducer(state, { type: 'install-result', ok: r.ok, message: r.ok ? source : cmdFailureText(r, state.language, 'status.install-error', source), sources }, rctx());
     repaint();
+  }
+
+  /**
+   * Разрешение конфликта источников пакета (один выбор — «победитель»):
+   * (а) `settings.packages` каждого окружения, объявившего это имя (основной агент — тоже,
+   *     его каталог лежит вне `<root>`), переписывается точечно; (б) хранилище приводится
+   *     к тому же источнику: `pi remove` проигравшего (только если он в реестре) и
+   *     `pi install` победителя — последовательно, под замком хранилища.
+   *
+   * Порядок выбран так, чтобы отмена в хранилище не оставляла невидимого поломанного
+   * состояния: объявления уже единые, а реестр на проигравшем — это `missingPackages` у
+   * окружений и «осиротевший» пакет на вкладке, то есть видимые ⚠, которые лечатся
+   * повторной операцией. Реестр правят сами `pi remove`/`pi install` — своего писателя нет.
+   */
+  async function doResolveConflict(name: string, winner: string): Promise<void> {
+    const lang = state.language;
+    const finish = (ok: boolean, message: string): void => {
+      statusMsg = message;
+      state = reducer(state, { type: 'resolve-result', ok, message }, rctx());
+      repaint();
+    };
+    if (winner === '') {
+      finish(false, t(lang, 'status.conflict-error', { name, v: t(lang, 'err.conflict-no-source') }));
+      return;
+    }
+    const envs = load().envs;
+    const group = envs.filter((e) => e.details.packages.some((s) => pkgNameOfSource(s) === name));
+    try {
+      for (const e of group) patchSettings(e.path, { packages: rewritePackages(e.details.packages, name, winner) });
+    } catch (err) {
+      log('store', `конфликт «${name}»: settings.json — ${errText(err)}`);
+      finish(false, t(lang, 'status.conflict-error', { name, v: errText(err) }));
+      return;
+    }
+    cache.invalidate(); // settings.json окружений группы переписаны
+
+    const registry = storeRegistrySources(storeDir);
+    const losers = registry.filter((s) => pkgNameOfSource(s) === name && s !== winner);
+    const needInstall = !registry.includes(winner);
+    const got = await storeLock.attempt(storeDir, async (): Promise<string | null> => {
+      for (const loser of losers) {
+        const r = await startOp((signal) => piRemove(storeDir, loser, signal, runCmdFn), 'busy');
+        if (!r.ok) return cmdFailureText(r, lang, 'status.remove-error', loser);
+      }
+      if (!needInstall) return null;
+      const r = await startOp((signal) => piInstall(storeDir, winner, signal, runCmdFn), 'busy');
+      return r.ok ? null : cmdFailureText(r, lang, 'status.install-error', winner);
+    });
+    if (!got.ran) {
+      // Замок занят: причину уже сказал `onRefuse` (status.store-busy) — экран закрываем.
+      state = reducer(state, { type: 'resolve-result', ok: false, message: '' }, rctx());
+      repaint();
+      return;
+    }
+    reloadCatalog();
+    void checkUpdates(storeDir, 'main');
+    const failed = got.value;
+    finish(failed === null, failed === null
+      ? t(lang, 'status.conflict-resolved', { name, winner, envs: group.length })
+      : t(lang, 'status.conflict-error', { name, v: failed }));
   }
 
   /**
@@ -465,6 +528,7 @@ export async function run(root: string, term: Term = createTerm(), deps: RunDeps
     doUpdateAll: (dir, scope) => { void doUpdateAll(dir, scope); },
     doUpdateOne: (dir, source) => { void doUpdateOne(dir, source); },
     doInstall: (dir, source, envName) => { void doInstall(dir, source, envName); },
+    doResolveConflict: (name, winner) => { void doResolveConflict(name, winner); },
     storeInstallSources: (sources) => { void doStoreInstallSources(sources); },
     doMcpAdd: (dir, form, scope) => { void doMcpAdd(dir, form, scope); },
     doMcpCheck: (dir, scope) => { void doMcpCheck(dir, scope); },
@@ -518,7 +582,7 @@ export async function run(root: string, term: Term = createTerm(), deps: RunDeps
         statusMsg = r.ok ? t(state.language, 'status.store-repaired') : r.error;
       }
     } else {
-      state = reducer(state, key, rctx({ rows, tnames, names }));
+      state = reducer(state, key, rctx({ rows, tnames, names, conflicts: packageConflicts(envs) }));
     }
     // Заявка на отмену считается после reducer: экран процесса — тот, что стал текущим.
     prev.cancelRequested = key === 'esc' && busyProcessView(state);

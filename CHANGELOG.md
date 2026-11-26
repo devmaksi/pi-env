@@ -43,13 +43,28 @@ Russian text: [CHANGELOG.ru.md](CHANGELOG.ru.md).
   (“Orphaned packages: {n}”), including while «Update all» is selected. `storeOrphanNames` is
   the pure helper behind the marker, keyed by the same declaration name as the counters, so a
   scoped `package.json` name is not a false orphan.
-- Tests: `test/store.test.ts` (root link states, enable/disable/rollback, store snapshots),
-  `test/environments.test.ts` (`rootLinks`, `missingPackages`, `packageConflicts`,
+- **A source conflict is resolved in one action.** A package name declared by different sources used
+  to be a permanent `⚠` with no way out: whichever environment updated last silently won, because the
+  store registry keeps exactly one declaration per package name. Now the info panel of a conflicting
+  package offers `S`, which opens a sub-screen of the group's **unique sources** (four declarations —
+  two choices) with the environments that declared each one; Enter applies the winner. The action
+  rewrites `settings.packages` of every environment that declared the name — the main agent included,
+  other fields and other packages preserved (`rewritePackages` + `patchSettings`) — and then brings the
+  store to the same source: `pi remove` of the loser (only if it is in the registry) and `pi install`
+  of the winner in `<store>`, sequentially under the store lock, with the «⏳ N s» counter and `Esc`
+  cancelling the process. If the winner is already in the registry there are no store operations at all;
+  the registry itself is edited by pi, not by us.
+- Tests: `test/store.test.ts` (root link states, enable/disable/rollback, store snapshots,
+  `rewritePackages` with scoped names),
+  `test/environments.test.ts` (`rootLinks`, `missingPackages`, `packageConflicts`, `conflictSources`,
   `storePackageUsage`, `storeOrphanNames`), `test/env-cache.test.ts` (registry and shared manifest in the signature),
-  `test/render-ext.test.ts` and `test/render-store.test.ts` (the tab as the store registry, the
-  form row aggregate), `test/run-side.test.ts` (operations in the store directory, the combined
-  storage dialog, the install queue), `test/app-store.test.ts` and `test/app-main-row.test.ts`
-  (a real `run()`: `PI_CODING_AGENT_DIR=<store>`, the main agent linked on first enable).
+  `test/state-ext.test.ts` (the `S` sub-screen: conflict-only opening, the cursor over unique sources,
+  `resolving` as a process screen), `test/render-ext.test.ts` and `test/render-store.test.ts` (the tab as the store registry, the
+  form row aggregate, the conflict hint and the chooser frame), `test/run-side.test.ts` (operations in the store directory, the combined
+  storage dialog, the install queue, one `doResolveConflict` per transition), `test/app-store.test.ts`
+  and `test/app-main-row.test.ts`
+  (a real `run()`: `PI_CODING_AGENT_DIR=<store>`, the main agent linked on first enable, a conflict
+  resolved end to end — declarations on disk, `pi remove`/`pi install` arguments, `Esc` mid-operation).
 
 ### Cursor of the environments list
 

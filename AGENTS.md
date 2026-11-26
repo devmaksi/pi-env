@@ -117,6 +117,22 @@
   («Осиротевших пакетов: N», есть и когда выбрана строка «Обновить все» — иначе эти пакеты
   обновляются вхолостую), а подтверждение `X` вместо пустого списка `ext.store.used-by` печатает
   `ext.store.orphan-unused`. Убирается пакет тем же `X` → `pi remove` в каталог хранилища.
+- Разрешение конфликта источников пакета одним действием (`S` на вкладке «Расширения»): у пакета,
+  где одно имя объявлено разными источниками (`packageConflicts`, `⚠` после счётчика «N окр.»),
+  инфо-панель добавляет подсказку `ext.conflict.hint`, а `S` открывает суб-экран выбора
+  источника-победителя (`view: 'resolve'`). Варианты — **уникальные источники** группы,
+  а не строка на окружение (`conflictSources` в `src/environments.ts`: 4 объявления — 2 варианта),
+  в инфо-панели — полный источник и `ext.conflict.envs` («Этот источник объявили: …»);
+  ↑↓ по вариантам, Enter — применить, Esc — отмена. Выбранный источник выполняется в два шага
+  (`doResolveConflict` в `run.ts`): сначала `patchSettings` каждого окружения группы
+  (`rewritePackages` из `src/store.ts`, основной агент — тоже, его каталог вне `<root>`; прочие поля
+  и прочие пакеты сохранены), затем хранилище приводится к тому же источнику — `pi remove`
+  проигравшего (только если он в реестре) и `pi install` победителя в `<store>` под `storeLock`
+  (`view: 'resolving'`, «⏳ N с», Esc снимает процесс). Реестр хранилища правят сами pi — своего
+  писателя нет; если победитель уже в реестре, операций в хранилище ноль. Статус —
+  `status.conflict-resolved` (победитель и число окружений) либо `status.conflict-error`
+  (объявления уже переписаны, хранилище — нет: это видимые `missingPackages` и «осиротевший» пакет,
+  повтор операции идемпотентен). Отказ замка — обычный `status.store-busy`.
 - Живой статус MCP (`pi mcp list --json`, этап 3): маркеры подключения в списке
   вкладки «MCP» и в списке MCP формы окружения (`✓ N` — подключён и N инструментов,
   `⚠ вход`, `✗ ошибка`, `— выкл`), в инфо-панели — состояние, текст ошибки,
@@ -170,8 +186,10 @@
   `pi` (`Term.screenKnown()` после `start()` снова `false`). Прогресс загрузки каталога
   pi.dev репакется не чаще одного раза в `PROGRESS_THROTTLE_MS` = 70 мс
   (`src/throttle.ts` + `makeProgressPainter` в `run.ts`; финальный результат — без задержки).
-  Замер — `npm run bench` (100×40): сдвиг курсора 4743 → 1483 байт/репок, идентичный репок
-  3 репака → 1, прогресс каталога 4163 → 325 байт/репок.
+  Замер — `npm run bench` (100×40): сдвиг курсора 4759 → 1487 байт/репок, идентичный репок
+  3 репака → 1, прогресс каталога 4163 → 325 байт/репок. Фикстура `bench/paint-bench.ts`
+  обязана нести все поля `EnvDetails` (в т.ч. `modelsLink`/`rootLinks`/`missingPackages`):
+  кадр их читает, и устаревшая фикстура валит замер исключением, а не числом.
 - Гарантия терминала: весь терминальный участок запуска (`start → repaint → цикл клавиш`) обёрнут в `withShutdown` (`src/shutdown.ts`) — `term.stop()` вызывается ровно один раз: при нормальном выходе, исключении из цикла (в т.ч. из `doSubmit`/`updateEnvironment`), rejection из необранной pi-команды (`void checkUpdates/...`) и по `SIGINT`/`SIGTERM`/`SIGHUP`. Исключение — строка `crash.terminal` + stack в stderr и код 1; сигналы восстанавливают терминал молча. `start()/stop()` идемпотентны (флаг `running` в `terminal.ts`), поэтому cleanup не пишет escape-коды в экран, когда терминалом владеет дочерний `pi`.
 - Детализация окружения: инфо-панель выбранного (settings.json, модель,
   инструменты — файлы extensions/, скиллы — подкаталоги skills/,
@@ -322,7 +340,9 @@
   с путём агентского каталога, детали — общий `readDetails`), `realEnvNames(envs)` — имена
   обычных окружений для проверки уникальности (чистые); подрез 2a: третий параметр `scan`/`withMain`/
   `readDetails` — каталог хранилища, `EnvDetails.rootLinks`/`missingPackages`, чистые
-  `packageConflicts(envs)`, `storePackageUsage(envs, name)` и `storeOrphanNames(envs, pkgNames)`; `pkgNameOfSource` (имя пакета из
+  `packageConflicts(envs)` (тип `PackageConflict`), `conflictSources(conflict)` (уникальные источники
+  группы с окружениями — варианты суб-экрана `S`), `storePackageUsage(envs, name)` и
+  `storeOrphanNames(envs, pkgNames)`; `pkgNameOfSource` (имя пакета из
   объявления) живёт в `store.ts` и реэкспортируется отсюда — сравнение объявлений одно на оба слоя
 - `src/debuglog.ts` — журнал отладки (чистое ядро + тонкий writer): `debugEnabled`
   (`PI_ENV_DEBUG=1`), `formatLogLine` (`YYYY-MM-DD HH:MM:SS tag: текст`), `dedupedLog`
@@ -379,7 +399,9 @@
   `storePackagesRoot`, `envRootDir`, `rootLinkState`, `storeLinkSummary` (агрегат
   `off`/`linked`/`partial`/`broken`), `storeRegistrySources`, `snapshotStoreManifest`,
   `storeRootSnapshotName`, `storeRootHasContent` (пустой общий корень — всё ещё «первое включение»),
-  `mergeStoreRegistry` (дополняет реестр, сохраняя прочие поля), `enableStoreRoots` (перенос своего содержимого через `own.move` +
+  `mergeStoreRegistry` (дополняет реестр, сохраняя прочие поля), `rewritePackages(packages, key, winner)`
+  (все объявления имени свёрнуты в победителя — правка `settings.packages` при разрешении конфликта),
+  `enableStoreRoots` (перенос своего содержимого через `own.move` +
   симлинк, откат по `own.undo`), `disableStoreRoots` (вместо симлинка — копия общего содержимого;
   нет симлинка — no-op), `repairStoreRootLinks`
 - `src/fscopy.ts` — `copyRecursive` (чистая): копирование каталога с сохранением симлинков (`lstat`,
@@ -413,6 +435,8 @@
   курсор/`listLength`/Enter; `realNames` + `realNamesOf` — имена обычных окружений для уникальности;
   `trashNames`, `twoColumns`),
   `busyProcessView(state)`/`PROCESS_VIEWS` — какие экраны принадлежат процессу (его снимает Esc),
+  `conflicts` в `ReducerCtx` — конфликты источников из того же снимка окружений (по ним `S` понимает,
+  есть ли конфликт, и чем цикл ↑↓ суб-экрана),
   `reducer` — диспетчер (`applyResults` → `createReducer` → `extMachine` →
   `mcpMachine` → `trashMachine` → `reducerMain`: esc/tab/↑↓/←→/Enter/Space/X);
   список вкладка «Окружения» = окружения + «Создать» + «Корзина (N)»,
@@ -429,7 +453,9 @@
   (views `install`/`installing`, `check`/`latest`, `mcp`/`mcp-op`/
   `mcp-submitting`/`mcp-confirm-remove`) (чистые)
 - `src/state-ext.ts` — `ExtState`/`freshExt` вкладки «Расширения» (каталог,
-  установка, обновление, удаление; `query` — поиск) + `extMachine` (чистые)
+  установка, обновление, удаление; `query` — поиск; `resolve`/`resolving` — выбор источника-победителя
+  и процесс приведения хранилища, поля `conflictName`/`resolving`) + `extMachine(state, action, ctx)`
+  и чистая `conflictSourcesOf(ctx, name)` — варианты суб-экрана из снимка окружений (чистые)
 - `src/state-mcp.ts` — `McpTab`/`freshMcpForm` вкладки «MCP», `McpFormAdd`,
   `mcpFormStep`/`mcpFormRows`, `MCP_ENUM_ROWS`/`enumValues` (закрытые списки значений формы: `type`, `exposure`),
   `mcpListNames`, `applyMcpLiveMain`/`onRefreshMcp` + `mcpMachine`; UI-поля `McpFormAdd` — `cursor`/`caret`/`error`
@@ -446,7 +472,7 @@
   (настройки приложения в `<root>/.pi-env.json`)
 - `src/run.ts` — цикл приложения: `applyKey` (reducer + снимок `PrevSnap`,
   сохранение настроек), обёртки команд (`checkUpdates`, `doUpdateAll`,
-  `doUpdateOne`, `doRemove`, `doInstall`, `doMcpAdd`, `loadPackageCatalog`)
+  `doUpdateOne`, `doRemove`, `doInstall`, `doResolveConflict`, `doMcpAdd`, `loadPackageCatalog`)
   поверх `pi-actions.ts`/`cmd.ts`, объект `Loop` для побочных эффектов
   (`prevFrame` + `paintFrame` — дифф-репок; `makeProgressPainter`/`PROGRESS_THROTTLE_MS` — throttle прогресса каталога; `cache` — снимок окружений из `env-cache.ts`, `startOp`/`cancelBusy`/`cancelAll` — отмена процессов, `opTicker` — секунды, `Loop` отдаёт `invalidate`/`trashNames`;
   `envRows` — строки списка окружений для курсора, `realNames` — имена для уникальности)
@@ -472,7 +498,9 @@
   в корзину (`moveToTrash`), не `rm -rf`; каждая мутация зовёт `loop.invalidate()` (кэш снимка),
   `prev.cancelRequested` → `loop.cancelBusy()`; интерфейс `Loop` —
   окно в цикл (state/setState/status/обёртки команд/`invalidate`/`trashNames`/`storeDir`/
-  `storeInstallSources`); `storeOperation` — один диалог «Хранилища» для обоих срезов
+  `storeInstallSources`/`doResolveConflict`); `hooksExt` по переходу `resolve` → `resolving` зовёт
+  разрешение конфликта (только с экрана выбора — иначе операция перезапускалась бы на каждом репаке);
+  `storeOperation` — один диалог «Хранилища» для обоих срезов
   (`enableModelsStorage` + `enableStoreRoots`, при первом включении подключается и main-агент),
   `rootsOwn` — переезд своего содержимого в хранилище либо снимок `<корень>.from-<окружение>-<мс>`;
   намерение строки «Хранилище» — чистая `storeEnableIntent` (из `off`/`partial`/`broken` — достройка
@@ -488,6 +516,10 @@
   `state-mcp.test.ts`, `state-create-mcp.test.ts`, `render-mcp.test.ts`, `shutdown.test.ts`, `terminal.test.ts` — гарантия терминала, `paint.test.ts` — `paint`/`screenKnown`, `diff.test.ts` — построчный дифф, `throttle.test.ts` — схлопывание прогресс-репоков, `app-paint.test.ts` — реальный цикл `run()` на фейковом терминале (сколько байт ушло на репок), `trash.test.ts`/`state-trash.test.ts`/`render-trash.test.ts` — корзина (переносы, машина суб-экрана, кадра), `app-trash.test.ts` — сквозной прогон `run()`: удаление → «Корзина (1)» → восстановить → удалить совсем, `ci.test.ts` — согласие `engines`/матрицы CI/документов и гейт `needs: test` перед публикацией,
   `selfupdate.test.ts`/`selfupdate-net.test.ts` — версия, способ установки, парсер и диапазон чейнджлога, фолбэк языка; `state-update.test.ts` — динамические вкладки и клавиши вкладки;
   `render-update.test.ts` — `wrapVisible`, план таб-бара и invariant кадра; `app-update.test.ts` — сквозной `run()` с вкладкой и копированием; `debuglog.test.ts` — формат строки журнала, дедуп и writer; `app-debug.test.ts` — сквозной `run()` с `debugLog` (ровно одна строка на проблему при двойном `scan()`); `render-envs.test.ts` — маркер `⚠`, тексты проблемы и кадры с ним;
+  `state-ext.test.ts` — машина вкладки «Расширения» для `S`: суб-экран только на пакете с
+  конфликтом (и по scoped-имени из package.json), цикл ↑↓ по уникальным источникам,
+  Enter → `resolving` с выбранным источником, `resolve-result` закрывает экран процесса,
+  `busyProcessView` различает `resolve` (не процесс) и `resolving` (процесс),
   `render-ext.test.ts` — вкладка «Расширения» как реестр хранилища (счётчик «N окр.», конфликт,
   осиротевший пакет — `⚠` у счётчика, сводка, подсказка убрать из реестра, — пустое хранилище,
   инвариант кадра); `render-store.test.ts` — агрегат строки «Хранилище»
@@ -498,7 +530,11 @@
   `cmd.test.ts` — отмена по `AbortSignal`, отличимый таймаут (`cancelled`/`timedOut`/`timeoutMs`),
   `pi-actions.test.ts` — проброс сигнала и тексты `cmdFailureText`, `ticker.test.ts` — цепочка таймеров,
   `env-cache.test.ts` — подпись дерева, кэш и инвалидация, `state.test.ts` — `busyProcessView`,
-  `run-side.test.ts` — `cancelBusy`, вызовы `invalidate` по мутациям и `storeOperation`
+  `state.test.ts`/`environments.test.ts`/`store.test.ts` — конфликты источников: `conflictSources`
+  (объявления сгруппированы по источникам), «конфликт пуст после перезаписи объявлений»
+  (перечитанный снимок) и `rewritePackages` с scoped-именами,
+  `run-side.test.ts` — `cancelBusy`, вызовы `invalidate` по мутациям, `storeOperation` и
+  `hooksExt` (`resolve` → `resolving` — ровно один запуск `doResolveConflict`)
   (включение/выключение хранилища, снимок хранилища для каталога вне `<root>`, корзина файлов),
   `store.test.ts` — путь хранилища, состояния связи, снимки, `link`/`unlink`/`repair`,
   `app-store.test.ts` — сквозной `run()`: `R` чинит битый симлинк, включение хранилища в форме
@@ -582,6 +618,12 @@
   Доноска реестра — последовательные `pi install` (параллельные спорили бы за `package.json` хранилища).
   Выключение пакетных корней — синхронное копирование общего содержимого (`copyRecursive`, это сотни
   МБ), поэтому экран `store-op` может держаться долго; это не дочерний процесс, `Esc` его не снимает.
+- Конфликт источников лечится одним действием, и порядок шагов в нём не случаен: сначала
+  объявления окружений (`patchSettings` + `rewritePackages`), потом `pi remove`/`pi install` в `<store>`.
+  Реестр `<store>/settings.json` дедуплицируется по имени пакета, поэтому в нём ровно ОДИН источник
+  группы: победителя, которого в реестре нет, обязан поставить `pi install`, иначе пакет окажется
+  неустановленным ни у кого, а `missingPackages` этого не покажет (он ищет «объявлено окружением,
+  но нет в реестре», а не наоборот). Своего писателя реестра не заводим.
 - Не добавлять runtime-зависимости без необходимости.
 - Изменять раскладку/поведение клавиш — только вместе с обновлением тестов
   `render`/`state` и этого файла.
@@ -678,6 +720,11 @@
   строке и в форме основного агента удаление недоступно (строки «Удалить» нет, `doDelete` защищён)
 - Enter на строке команды вкладки «Обновление» — скопировать команду в буфер (OSC 52); на остальных строках вкладки — ничего
 - ↑/↓ на вкладке «Обновление» — курсор по списку (версии, команды, строки чейнджлога); `R` на этой вкладке — перечитать реестр и чейнджлог
+- S — разрешить конфликт источников пакета: на строке пакета с `⚠` конфликта во вкладке
+  «Расширения» открывает суб-экран выбора источника-победителя (↑↓ по уникальным источникам,
+  Enter — применить: объявления окружений группы + переустановка в хранилище, Esc — отмена);
+  на пакете без конфликта, на строках «Обновить все»/«Установить», на других вкладках и внутри
+  других суб-экранов вкладки — игнор
 - R — обновить живой статус MCP (`pi mcp list`): на вкладке «MCP» (список) и
   в списке MCP формы окружения; во время проверки повторный R не запускает
   вторую проверку; в суб-экранах (форма добавления, подтверждение удаления) — игнор
@@ -727,6 +774,10 @@
   со сводкой и предложением убрать их из реестра), строка «Хранилище»
   формы включает модели и пакеты разом, `R` чинит все корни, основной агент подключается при первом
   включении.
+- Этап 3 (готов): разрешение конфликта источников пакета одним действием — `S` на вкладке
+  «Расширения», суб-экран выбора источника-победителя (уникальные источники группы), перезапись
+  `settings.packages` всех окружений, объявивших имя (включая основной агент), и переустановка
+  хранилища (`pi remove` проигравшего + `pi install` победителя) под замком хранилища.
 - Подрез 2b (не начат): общие `extensions/`, `skills/`, `prompts/`, `themes/` — симлинк корня плюс
   отметки состава через `+path`/`-path`/`!pattern` в `settings.json`; отдельный план по той же спеке
   (`docs/superpowers/specs/2026-11-26-env-store-artifacts-design.md`).

@@ -16,7 +16,7 @@ import { reducer, makeCtx, storeEnableIntent, storeSummaryOf } from './state.js'
 import { buildCreateRequest } from './pi-actions.js';
 import { launchPi } from './pirun.js';
 import type { Catalog } from './catalog.js';
-import { realEnvNames, type Environment } from './environments.js';
+import { packageConflicts, realEnvNames, type Environment } from './environments.js';
 import type { AppState, CreateView, ExtState, McpFormAdd, McpTab, PkgCheck, Tab, UpdateCheck, ReducerCtx } from './state.js';
 import type { Term } from './terminal.js';
 
@@ -54,6 +54,8 @@ export interface Loop {
   doUpdateAll(targetDir: string, scope: 'main' | 'create'): void;
   doUpdateOne(dir: string, source: string): void;
   doInstall(installDir: string, source: string, envName: string | null): void;
+  /** Разрешить конфликт источников: объявления окружений группы + переустановка в <store>. */
+  doResolveConflict(name: string, winner: string): void;
   doMcpAdd(dir: string, form: McpFormAdd, scope: 'main' | 'create'): void;
   doMcpCheck(dir: string, scope: 'main' | 'create'): void;
   /** Снять процесс, которому принадлежит текущий busy-экран (Esc). */
@@ -78,7 +80,7 @@ export interface Loop {
  */
 function rctx(loop: Loop, names: string[]): ReducerCtx {
   const envs = loop.envs();
-  return makeCtx(envs.map((e) => e.name), loop.twoColumns(), loop.trashNames(), names);
+  return makeCtx(envs.map((e) => e.name), loop.twoColumns(), loop.trashNames(), names, packageConflicts(envs));
 }
 
 /** Имена обычных окружений (без основной записи) из снимка — для проверки уникальности имён. */
@@ -243,6 +245,8 @@ function hooksExt(loop: Loop, prevExt: ExtState | null): void {
   } else if (e.view === 'removing' && prevExt !== null && prevExt.view === 'confirm-remove') {
     const pkg = loop.state().storePackages.find((p) => p.name === e.removing);
     if (pkg) loop.doRemove(loop.storeDir, pkg.source);
+  } else if (e.view === 'resolving' && prevExt !== null && prevExt.view === 'resolve') {
+    loop.doResolveConflict(e.conflictName ?? '', e.resolving ?? '');
   } else if (e.view === 'updating' && prevExt === null) {
     if (e.updating === null) {
       loop.doUpdateAll(loop.storeDir, 'main');

@@ -1,5 +1,6 @@
 import { type EnvSettings } from './create.js';
 import type { Catalog, PkgItem, Provider } from './catalog.js';
+import { pkgNameOfSource, type PackageConflict } from './environments.js';
 import { localeCodes } from './i18n.js';
 import type { McpLiveReport, McpServer } from './mcp.js';
 import { mcpMachine, freshMcpForm, freshMcpTab, applyMcpLiveMain, onRefreshMcp } from './state-mcp.js';
@@ -26,7 +27,7 @@ export {
 export type { CreateView, CreateState } from './state-form.js';
 export { mcpFormRows, mcpFormStep, mcpListNames, freshMcpForm, freshMcpTab, MCP_TYPES, MCP_EXPOSURES, MCP_ENUM_ROWS, enumValues, TEXT_ROWS } from './state-mcp.js';
 export type { McpFormAdd, McpTabView, McpTab, McpFormStep, McpExposure } from './state-mcp.js';
-export { freshExt } from './state-ext.js';
+export { freshExt, conflictSourcesOf } from './state-ext.js';
 export { freshTrash, applyTrashResult, trashMachine } from './state-trash.js';
 export type { TrashPending, TrashState } from './state-trash.js';
 export { freshClone, cloneMachine, applyCloneResult } from './state-clone.js';
@@ -36,6 +37,7 @@ export type { UpdateCheck, UpdateUi } from './state-update.js';
 export type { SelfUpdate } from './selfupdate-net.js';
 export type { InstallKind, ChangelogRow } from './selfupdate.js';
 export type { ExtView, ExtState } from './state-ext.js';
+export type { PackageConflict, ConflictSource } from './environments.js';
 
 export type Tab = 'envs' | 'extensions' | 'mcp' | 'settings' | 'update' | 'about';
 export type Sub = 'create' | 'run' | null;
@@ -116,6 +118,7 @@ export type Action =
   | { type: 'update-result'; ok: boolean; message: string }
   | { type: 'remove-result'; ok: boolean; message: string }
   | { type: 'install-result'; ok: boolean; message: string; sources?: string[] }
+  | { type: 'resolve-result'; ok: boolean; message: string }
   | { type: 'mcp-result'; ok: boolean; message: string; scope: 'main' | 'create'; list?: McpServer[] }
   | { type: 'mcp-live-result'; ok: boolean; message: string; scope: 'main' | 'create'; report: McpLiveReport | null }
   | { type: 'trash-result'; ok: boolean; message: string }
@@ -159,6 +162,11 @@ export interface ReducerCtx {
   twoColumns: boolean;
   /** Имена записей корзины (`dirName` из `.trash`) — Enter/X в суб-экране корзины. */
   trashNames?: string[];
+  /**
+   * Конфликты источников пакетов из того же снимка окружений: суб-экран «Разрешить
+   * конфликт» выбирает источник, а не имя — без снимка reducer не знает, есть ли конфликт.
+   */
+  conflicts?: PackageConflict[];
 }
 
 /** Имена для проверки уникальности: обычное окружение, основная запись вне списка имён. */
@@ -168,7 +176,7 @@ export function realNamesOf(ctx: ReducerCtx): string[] {
 
 /** View, за которыми стоит дочерний процесс (его и отменяет Esc); файловые view формы — вне списка. */
 const PROCESS_VIEWS: Record<'ext' | 'create' | 'mcp', readonly string[]> = {
-  ext: ['installing', 'updating', 'removing'],
+  ext: ['installing', 'updating', 'removing', 'resolving'],
   create: ['installing', 'updating', 'removing', 'mcp-submitting'],
   mcp: ['submitting', 'removing'],
 };
@@ -188,8 +196,9 @@ export function busyProcessView(state: AppState): boolean {
  */
 export function makeCtx(
   envNames: string[], twoColumns: boolean, trashNames: string[] = [], realNames: string[] = envNames,
+  conflicts: PackageConflict[] = [],
 ): ReducerCtx {
-  return { envNames, realNames, twoColumns, trashNames };
+  return { envNames, realNames, twoColumns, trashNames, conflicts };
 }
 
 /** Действие — результат сервисной команды (не клавиша): явная проверка для createReducer. */
@@ -208,7 +217,7 @@ export function reducer(state: AppState, action: Action, ctx: ReducerCtx): AppSt
     return { ...state, create: next };
   }
   if (state.tab === 'extensions' && state.ext !== null) {
-    const next = extMachine(state, action);
+    const next = extMachine(state, action, ctx);
     if (next !== null) return next;
   }
   if (state.tab === 'mcp' && state.mcp !== null) {
@@ -307,7 +316,8 @@ function applyExtResult(state: AppState, action: Action, ctx: ReducerCtx): AppSt
   const matches =
     (action.type === 'update-result' && extView === 'updating') ||
     (action.type === 'remove-result' && extView === 'removing') ||
-    (action.type === 'install-result' && extView === 'installing');
+    (action.type === 'install-result' && extView === 'installing') ||
+    (action.type === 'resolve-result' && extView === 'resolving');
   return matches ? { ...state, ext: null, selected: clampSelected(state, ctx) } : null;
 }
 
@@ -321,6 +331,9 @@ function reducerMain(state: AppState, action: Action, ctx: ReducerCtx): AppState
   if (action === 'space') return onSpace(state);
   if ((action === 'x' || action === 'X') && state.sub === null && state.ext === null && state.mcp === null &&
       (state.tab === 'extensions' || state.tab === 'mcp')) return onX(state);
+  // `S` — разрешить конфликт источников пакета (только на списке вкладки «Расширения»).
+  if (action === 'S' && state.sub === null && state.ext === null && state.mcp === null &&
+      state.tab === 'extensions') return onS(state, ctx);
   if (action === 'R') return state.tab === 'update' ? onRefreshUpdate(state) : onRefreshMcp(state);
   return state;
 }
@@ -396,6 +409,18 @@ function onSpace(state: AppState): AppState {
   if (state.selected === 2) return { ...state, recheckUpdates: !state.recheckUpdates };
   if (state.selected === 3) return { ...state, recheckMcp: !state.recheckMcp };
   return state;
+}
+
+/**
+ * `S` на строке пакета с конфликтом источников — суб-экран выбора победителя.
+ * Пакета без конфликта в снимке действие не касается (список выбира — `⚠` уже ушёл).
+ */
+function onS(state: AppState, ctx: ReducerCtx): AppState {
+  const p = packagesOf(state, 'extensions')[state.selected];
+  if (p === undefined) return state;
+  const key = pkgNameOfSource(p.name);
+  if (!ctx.conflicts?.some((c) => c.name === key)) return state;
+  return { ...state, ext: freshExt({ view: 'resolve', conflictName: key, cursor: 0 }) };
 }
 
 function onX(state: AppState): AppState {

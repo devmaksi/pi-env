@@ -3,7 +3,9 @@ import assert from 'node:assert';
 import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { basename, join } from 'node:path';
-import { scan, withMain, realEnvNames, packageConflicts, pkgNameOfSource, storeOrphanNames, storePackageUsage } from '../src/environments.js';
+import { conflictSources, scan, withMain, realEnvNames, packageConflicts, pkgNameOfSource, storeOrphanNames, storePackageUsage } from '../src/environments.js';
+import { rewritePackages } from '../src/store.js';
+import { patchSettings } from '../src/create.js';
 import { symlinkSync } from 'node:fs';
 
 test('scan: отсутствующий корень → null', () => {
@@ -356,5 +358,44 @@ test('storeOrphanNames: основной агент тоже пользоват�
   } finally {
     rmSync(root, { recursive: true });
     rmSync(agent, { recursive: true });
+  }
+});
+
+// Суб-экран выбора победителя показывает уникальные источники: 4 объявления — 2 варианта,
+// иначе окружения с одним источником плодили бы одинаковые строки.
+test('conflictSources: объявления группы сжаты до уникальных источников с окружениями', () => {
+  const root = mkEnvRoot([
+    ['dev-java', ['npm:pi-open-tui']],
+    ['dev-supo', ['npm:pi-open-tui']],
+    ['search', ['npm:pi-open-tui']],
+    ['dev-vtb', ['npm:@wangjq4214/pi-open-tui']],
+  ]);
+  try {
+    const [conf] = packageConflicts(scan(root)!);
+    assert.deepEqual(conflictSources(conf), [
+      { source: 'npm:@wangjq4214/pi-open-tui', envs: ['dev-vtb'] },
+      { source: 'npm:pi-open-tui', envs: ['dev-java', 'dev-supo', 'search'] },
+    ]);
+  } finally {
+    rmSync(root, { recursive: true });
+  }
+});
+
+// Критерий «после разрешения packageConflicts пуст»: правка объявлений и перечитка снимка.
+test('разрешение конфликта: переписка объявлений убирает конфликт из перечитанного снимка', () => {
+  const root = mkEnvRoot([
+    ['dev-java', ['npm:pi-open-tui', 'npm:pi-zentui']],
+    ['dev-vtb', ['npm:@wangjq4214/pi-open-tui']],
+  ]);
+  try {
+    assert.equal(packageConflicts(scan(root)!).length, 1);
+    const winner = 'npm:pi-open-tui';
+    for (const e of scan(root)!) patchSettings(e.path, { packages: rewritePackages(e.details.packages, 'pi-open-tui', winner) });
+    const after = scan(root)!;
+    assert.deepEqual(packageConflicts(after), []);
+    assert.deepEqual(after.find((e) => e.name === 'dev-java')!.details.packages, ['npm:pi-open-tui', 'npm:pi-zentui']);
+    assert.deepEqual(after.find((e) => e.name === 'dev-vtb')!.details.packages, ['npm:pi-open-tui']);
+  } finally {
+    rmSync(root, { recursive: true });
   }
 });

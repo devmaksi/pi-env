@@ -130,6 +130,28 @@ export function pkgNameOfSource(source: string): string {
 }
 
 /**
+ * Новый `settings.packages` окружения после разрешения конфликта источников:
+ * все объявления с именем `key` свёрнуты в одно — `winner` (на месте первого из них),
+ * прочие объявления сохранены в исходном порядке. Так «победитель» становится
+ * единственным объявлением этого пакета во всех окружениях группы.
+ */
+export function rewritePackages(packages: readonly string[], key: string, winner: string): string[] {
+  const out: string[] = [];
+  let placed = false;
+  for (const src of packages) {
+    if (pkgNameOfSource(src) !== key) {
+      out.push(src);
+      continue;
+    }
+    if (!placed) {
+      out.push(winner);
+      placed = true;
+    }
+  }
+  return out;
+}
+
+/**
  * Есть ли у общего корневого каталога содержимое. Пустая папка — это ещё НЕ «хранилище занято»:
  * пустые корни создаёт новое окружение (`createEnvironment`), и первое включение должно
  * переносить в них своё содержимое, а не снимать его копией.

@@ -40,6 +40,7 @@ function makeLoop(initial: AppState, root = '/root', agentDir = '/agent', envs: 
     doUpdateAll: (d, s) => { log.push(`doUpdateAll:${d}:${s}`); },
     doUpdateOne: (d, src) => { log.push(`doUpdateOne:${d}:${src}`); },
     doInstall: (d, src, env) => { log.push(`doInstall:${d}:${src}:${env}`); },
+    doResolveConflict: (name, winner) => { log.push(`doResolveConflict:${name}:${winner}`); },
     storeInstallSources: (srcs) => { log.push('storeInstallSources:' + srcs.join(',')); },
     doMcpAdd: (d, f, s) => { log.push(`doMcpAdd:${d}:${f.name}:${s}`); },
     doMcpCheck: (d, s) => { log.push(`doMcpCheck:${d}:${s}`); },
@@ -120,6 +121,24 @@ test('create: mcp-submitting — pi mcp add в каталог окружения
   const form = { ...freshMcpForm(), name: 'srv' };
   const h = await run(cr({ view: 'mcp-submitting', name: 'e1', mcpAdd: form }), { view: 'mcp'});
   assert.deepEqual(h.log, ['doMcpAdd:/root/e1:srv:create']);
+});
+
+// Переход «выбран источник» → операция;PrevExt обязан быть именно экраном выбора,
+// иначе операция запускалась бы на каждом репаке экрана процесса.
+test('ext: resolve → resolving — конфликт источников уходит в цикл разрешения', async () => {
+  const h = await run(
+    { ...initialState(CATALOG), tab: 'extensions', ext: freshExt({ view: 'resolving', conflictName: 'pi-open-tui', resolving: 'npm:pi-open-tui' }) },
+    { tab: 'extensions', ext: freshExt({ view: 'resolve', conflictName: 'pi-open-tui' }) },
+  );
+  assert.deepEqual(h.log, ['doResolveConflict:pi-open-tui:npm:pi-open-tui']);
+});
+
+test('ext: resolving без экрана выбора до перехода — операция не перезапускается', async () => {
+  const h = await run(
+    { ...initialState(CATALOG), tab: 'extensions', ext: freshExt({ view: 'resolving', conflictName: 'pi-open-tui', resolving: 'npm:pi-open-tui' }) },
+    { tab: 'extensions', ext: freshExt({ view: 'resolving', conflictName: 'pi-open-tui', resolving: 'npm:pi-open-tui' }) },
+  );
+  assert.deepEqual(h.log, []);
 });
 
 test('ext: вход во вкладку (catalog, loading) — загрузка каталога', async () => {

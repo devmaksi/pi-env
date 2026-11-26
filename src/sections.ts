@@ -22,7 +22,7 @@ import {
 } from './state.js';
 import type { Environment } from './environments.js';
 import type { PkgItem } from './catalog.js';
-import { packageConflicts, pkgNameOfSource, storeOrphanNames, storePackageUsage } from './environments.js';
+import { conflictSources, packageConflicts, pkgNameOfSource, storeOrphanNames, storePackageUsage } from './environments.js';
 import { filterPackages } from './catalog.js';
 import { liveMarker, mergeLive } from './mcp.js';
 import { formatTs, trashLabel, type TrashEntry } from './trash.js';
@@ -564,6 +564,7 @@ export function renderExtTab(ext: ExtState | null, ctx: Ctx): Section {
   const r =
     ext === null ? extList(ctx)
     : ext.view === 'catalog' ? extCatalogView(ext, ctx)
+    : ext.view === 'resolve' ? extResolveView(ext, ctx)
     : busySection(EXT_BUSY, ext.view, ext, ctx);
   if (!ctx.twoCol) r.left.push(...r.right);
   return r;
@@ -661,6 +662,7 @@ function extList(ctx: Ctx): Section {
     if (conf !== undefined) {
       right.push(c(ANSI.bold, ctx.useColor) + '⚠ ' + t(ctx.lang, 'ext.store.conflict', { name: conf.name }) + c(ANSI.reset, ctx.useColor));
       for (const d of conf.declarations) right.push('  ' + d.env + ': ' + d.source);
+      right.push(c(ANSI.dim, ctx.useColor) + t(ctx.lang, 'ext.conflict.hint') + c(ANSI.reset, ctx.useColor));
     }
     for (const u of storePackageUsage(ctx.envs, selectedPkg.name)) right.push('  ' + u);
     if (orphans.has(pkey(selectedPkg))) {
@@ -700,11 +702,41 @@ function extCatalogView(ext: ExtState, ctx: Ctx): Section {
   return { left, right, cursorRow: ext.catalogStatus === 'ready' ? 2 + ext.cursor : -1 };
 }
 
+// Вкладка «Расширения»: суб-экран «Разрешить конфликт источников» (выбор победителя).
+// Варианты — уникальные источники группы из снимка окружений: окружения, объявившие один
+// источник, получают его все, поэтому строка на объявление была бы обманкой.
+function extResolveView(ext: ExtState, ctx: Ctx): Section {
+  const left: string[] = [];
+  const right: string[] = [];
+  const dim = (s: string): string => c(ANSI.dim, ctx.useColor) + s + c(ANSI.reset, ctx.useColor);
+  const bold = (s: string): string => c(ANSI.bold, ctx.useColor) + s + c(ANSI.reset, ctx.useColor);
+  const conf = packageConflicts(ctx.envs).find((c) => c.name === ext.conflictName);
+  const sources = conf === undefined ? [] : conflictSources(conf);
+  left.push(bold(t(ctx.lang, 'ext.conflict.title', { name: ext.conflictName ?? '' })));
+  if (sources.length === 0) left.push(dim(t(ctx.lang, 'empty')));
+  // Выбор обрезается только когда колонка уже источника: обрезанное объявление
+  // было бы нечем отличить, а различие источников — весь смысл экрана.
+  const srcMax = Math.max(PKG_NAME_MAX, ctx.L.leftWidth - 4);
+  sources.forEach((s, i) => left.push(listRow(i, ext.cursor, truncateName(s.source, srcMax), ctx.L.leftWidth, ctx.useColor)));
+  if (conf !== undefined) right.push(bold('⚠ ' + t(ctx.lang, 'ext.store.conflict', { name: conf.name })));
+  const cur = sources[ext.cursor];
+  if (cur !== undefined) {
+    right.push(cur.source);
+    right.push(t(ctx.lang, 'ext.conflict.envs', { v: cur.envs.join(', ') }));
+  }
+  right.push(dim(t(ctx.lang, 'ext.conflict.apply')));
+  right.push(dim(t(ctx.lang, 'hint.confirm')));
+  right.push(dim(t(ctx.lang, 'hint.cancel')));
+  return { left, right, cursorRow: sources.length === 0 ? -1 : 1 + Math.min(ext.cursor, sources.length - 1) };
+}
+
 // Вкладка «Расширения»: состояния установки/обновления/удаления
 const EXT_BUSY: Record<string, { text: (ext: ExtState, lang: string) => string; bold?: boolean; hints: StrKey[]; extra?: (ext: ExtState, ctx: Ctx) => string[] }> = {
   'installing': { text: (ext, lang) => t(lang, 'busy.installing', { name: ext.installing ?? '' }), hints: ['hint.kill'] },
   'updating': { text: (ext, lang) => ext.updating === null ? t(lang, 'busy.updating') : t(lang, 'busy.updating.named', { name: ext.updating }), hints: ['hint.kill'] },
   'removing': { text: (_ext, lang) => t(lang, 'busy.deleting'), hints: ['hint.kill'] },
+  // Приведение хранилища к выбранному источнику: `pi remove` + `pi install` в <store>.
+  'resolving': { text: (ext, lang) => t(lang, 'busy.resolving', { name: ext.resolving ?? '' }), hints: ['hint.kill'] },
   'confirm-remove': {
     text: (ext, lang) => t(lang, 'busy.delete-ext', { name: ext.removing ?? '' }),
     bold: true,
