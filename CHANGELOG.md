@@ -5,6 +5,35 @@ Russian text: [CHANGELOG.ru.md](CHANGELOG.ru.md).
 
 ## [Unreleased]
 
+### Shared package storage (slice 2a)
+
+- **One place to update extensions.** An enabled environment's whole package roots `npm/` and
+  `git/` become symlinks into `<root>/.store/npm` and `<root>/.store/git` — pi looks for packages
+  only inside its own agent directory, so the root is linked whole. The shared registry is
+  `<store>/settings.json`, and the “Extensions” tab now runs every `pi install`, `pi update`,
+  `pi remove` and `npm outdated` with `PI_CODING_AGENT_DIR=<store>`: one update serves every
+  environment linked to the store.
+- **The tab shows who uses what.** Each package row carries a «N envs» counter, a package name
+  declared by different sources is marked with `⚠` (with the list of declarations in the info
+  panel), removal warns which environments will stop using the package, and the environments info
+  panel says “Package directory: from the store”. `scan()` reports the link state per root
+  (`EnvDetails.rootLinks`), packages declared but absent from the registry (`missingPackages`) and
+  cross-environment source conflicts (`packageConflicts`).
+- **One switch for both slices.** The «Storage» row of the environment form turns the model
+  catalog and the package roots on and off together, moving the environment's own content into
+  the store on the first enable (a redundant copy becomes `<store>/<root>.from-<env>-<ms>`, since
+  the file-trash branch only accepts files), then placing the symlinks; declarations missing from
+  the registry are installed into the store by a queue of `pi install` commands. On the first
+  enable the main agent joins the shared roots too. `R` on an environment repairs broken model and
+  package links.
+- Tests: `test/store.test.ts` (root link states, enable/disable/rollback, store snapshots),
+  `test/environments.test.ts` (`rootLinks`, `missingPackages`, `packageConflicts`,
+  `storePackageUsage`), `test/env-cache.test.ts` (registry and shared manifest in the signature),
+  `test/render-ext.test.ts` and `test/render-store.test.ts` (the tab as the store registry, the
+  form row aggregate), `test/run-side.test.ts` (operations in the store directory, the combined
+  storage dialog, the install queue), `test/app-store.test.ts` and `test/app-main-row.test.ts`
+  (a real `run()`: `PI_CODING_AGENT_DIR=<store>`, the main agent linked on first enable).
+
 ### Cursor of the environments list
 
 - **«Trash (N)» is reachable again.** The environments list numbers its rows by the whole list —

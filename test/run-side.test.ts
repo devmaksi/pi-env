@@ -705,3 +705,40 @@ test('включение хранилища: всё уже в реестре —
   const h = await storeRun(storeCr({ view: 'store-op' }), root, agent);
   assert.deepEqual(h.log.filter((l) => l.startsWith('storeInstallSources')), []);
 });
+
+test('включение хранилища: своё содержимое main переезжает раньше содержимого окружения', async () => {
+  const { root, agent, env } = rootWithOwnRoots();
+  mkdirSync(join(agent, 'npm', 'node_modules', 'pi-ssh-remote'), { recursive: true });
+  mkdirSync(join(agent, 'git'), { recursive: true });
+  const h = await storeRun(storeCr({ view: 'store-op' }), root, agent);
+  assert.equal(lstatSync(join(agent, 'npm')).isSymbolicLink(), true, 'main — на общем корне');
+  assert.ok(existsSync(join(root, '.store', 'npm', 'node_modules', 'pi-ssh-remote')));
+  const snaps = readdirSync(join(root, '.store')).filter((n) => n.startsWith('npm.from-'));
+  assert.equal(snaps.length, 1, 'лишняя копия окружения — снимок хранилища');
+  assert.ok(h.log.includes('invalidate'));
+});
+
+test('включение хранилища: у main своего содержимого нет — симлинки ставятся после окружения', async () => {
+  const { root, agent, env } = rootWithOwnRoots();
+  await storeRun(storeCr({ view: 'store-op' }), root, agent);
+  assert.equal(lstatSync(join(agent, 'npm')).isSymbolicLink(), true);
+  assert.ok(existsSync(join(root, '.store', 'npm', 'node_modules', 'pi-zentui')), 'своё содержимое окружения стало общим');
+});
+
+test('выключение хранилища на окружении основной агент не трогает', async () => {
+  const { root, agent, env } = rootWithOwnRoots();
+  const store = join(root, '.store');
+  mkdirSync(join(store, 'npm', 'node_modules', 'pi-zentui'), { recursive: true });
+  mkdirSync(join(store, 'git'), { recursive: true });
+  mkdirSync(join(store, 'models'), { recursive: true });
+  writeFileSync(join(store, 'models', 'models.json'), '{"providers":{}}');
+  rmSync(join(env, 'npm'), { recursive: true });
+  rmSync(join(env, 'git'), { recursive: true });
+  symlinkSync(join(store, 'npm'), join(env, 'npm'), 'dir');
+  symlinkSync(join(store, 'git'), join(env, 'git'), 'dir');
+  symlinkSync(join(store, 'npm'), join(agent, 'npm'), 'dir');
+  const h = await storeRun(storeCr({ view: 'store-op', store: true, storeRoots: true }), root, agent);
+  assert.equal(lstatSync(join(env, 'npm')).isDirectory(), true);
+  assert.equal(lstatSync(join(agent, 'npm')).isSymbolicLink(), true, 'main остаётся на общем корне');
+  assert.deepEqual(h.log.filter((l) => l.startsWith('storeInstallSources')), []);
+});

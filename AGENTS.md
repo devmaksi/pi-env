@@ -19,7 +19,7 @@
   в текущей рабочей директории. Основной агент запускается тем же способом — его
   каталог это `PI_CODING_AGENT_DIR` (по умолчанию `~/.pi/agent`).
 
-## Текущий статус (этап 2 готов; этап 3: живой статус MCP, вкладка «Обновление», отзывчивость долгих операций и основной агент в списке окружений готовы)
+## Текущий статус (этап 2 готов; этап 3: живой статус MCP, вкладка «Обновление», отзывчивость долгих операций, основной агент в списке окружений и общее хранилище пакетов (подрез 2a) готовы)
 
 - Основной агент — первой строкой списка окружений (`withMain(envs, agentDir)` в
   `src/environments.ts`): каталог `PI_CODING_AGENT_DIR` или `~/.pi/agent`. Если он уже
@@ -81,6 +81,25 @@
   перед разрушительными правками общего файла — снимок `models.json.bak-<мс>` (хранится 5).
   Новое окружение создаётся с включённым хранилищем, «создать из основного» (`C` на основной
   строке) — с выключенным.
+- Хранилище пакетов (подрез 2a общего хранилища): пакетные корни `npm/` и `git/` включённого
+  окружения целиком становятся симлинками на `<store>/npm` и `<store>/git` (pi ищет пакеты только
+  внутри каталога агента, поэтому корень линкуется целиком). Общий реестр — `<store>/settings.json`
+  (`storeRegistrySources`), и все `pi install`/`pi update`/`pi remove`/`npm outdated` вкладки
+  «Расширения» идут с `PI_CODING_AGENT_DIR=<store>` (`loop.storeDir`): вкладка = точка обновления
+  пакетов для всех окружений. Состояние связи каждого корня — `EnvDetails.rootLinks`
+  (`off`/`linked`/`broken`, агрегат строки формы — `storeLinkSummary` → `store.linked|partial|broken|off`),
+  плюс `missingPackages` (объявлен, но отсутствует в реестре) и `packageConflicts` (одно имя пакета
+  объявлено разными источниками) — всё это даёт `⚠` в списке и строки проблемы в инфо-панели
+  (`envs.problem.store`, `envs.problem.missing`). Строка «Хранилище» формы — один переключатель на
+  оба среза (`store` + `storeRoots`, `storeSummaryOf`): Enter — подтверждение, повторный Enter —
+  файловая операция `enableStoreRoots`/`disableStoreRoots` (своё содержимое переезжает в хранилище
+  при первом включении, иначе лишняя копия уходит в снимок `<store>/<корень>.from-<окружение>-<мс>`;
+  в файловую корзину каталог класть нельзя). После включения — доноска реестра: объявления окружения,
+  которых нет в `<store>/settings.json`, ставятся в хранилище последовательными `pi install`
+  (`Loop.storeInstallSources`, отменяются по Esc). При первом включении к общим корням подключается
+  и основной агент (его содержимое переезжает первым; своё содержимое окружения в этом случае —
+  в снимок), отключается он так же вручную на своей строке. Инфо-панель окружения показывает
+  «Каталог пакетов: из хранилища» (`envs.pkgs`).
 - Живой статус MCP (`pi mcp list --json`, этап 3): маркеры подключения в списке
   вкладки «MCP» и в списке MCP формы окружения (`✓ N` — подключён и N инструментов,
   `⚠ вход`, `✗ ошибка`, `— выкл`), в инфо-панели — состояние, текст ошибки,
@@ -278,7 +297,9 @@
   и неразобранные записи отдаёт в `settingsError`/`mcpError`/`mcpSkipped`; `Environment.main`
   (основная запись), `withMain(envs, agentDir)` (пометка существующей записи или ведущая запись
   с путём агентского каталога, детали — общий `readDetails`), `realEnvNames(envs)` — имена
-  обычных окружений для проверки уникальности (чистые)
+  обычных окружений для проверки уникальности (чистые); подрез 2a: третий параметр `scan`/`withMain`/
+  `readDetails` — каталог хранилища, `EnvDetails.rootLinks`/`missingPackages`, чистые
+  `pkgNameOfSource` (имя пакета из объявления), `packageConflicts(envs)` и `storePackageUsage(envs, name)`
 - `src/debuglog.ts` — журнал отладки (чистое ядро + тонкий writer): `debugEnabled`
   (`PI_ENV_DEBUG=1`), `formatLogLine` (`YYYY-MM-DD HH:MM:SS tag: текст`), `dedupedLog`
   (одна строка на пару `(tag, текст)`), `createDebugLog` (сток и часы инжектятся, сбой стока
@@ -329,7 +350,15 @@
   (источник — `models.json` main-агента, битый общий файл сначала в снимок), `linkModels`/
   `unlinkModels`/`repairModelsLink`, `enableModelsStorage` (порядок «общий файл → своя копия →
   симлинк», с `undo` при провале симлинка), `archiveEnvModelsIntoStore` (своя копия вне `<root>` →
-  снимок хранилища, отдаёт путь снимка) и `restoreFromStoreSnapshot` (откат), `storeFileUsable`
+  снимок хранилища, отдаёт путь снимка) и `restoreFromStoreSnapshot` (откат), `storeFileUsable`;
+  пакетные корни (подрез 2a): `StoreRoot`/`STORE_ROOTS` (`npm`, `git`), `storeSettingsFile` (реестр),
+  `storePackagesRoot`, `envRootDir`, `rootLinkState`, `storeLinkSummary` (агрегат
+  `off`/`linked`/`partial`/`broken`), `storeRegistrySources`, `snapshotStoreManifest`,
+  `storeRootSnapshotName`, `enableStoreRoots` (перенос своего содержимого через `own.move` +
+  симлинк, откат по `own.undo`), `disableStoreRoots` (вместо симлинка — копия общего содержимого;
+  нет симлинка — no-op), `repairStoreRootLinks`
+- `src/fscopy.ts` — `copyRecursive` (чистая): копирование каталога с сохранением симлинков;
+  общая для создания окружения, клонирования и выключения пакетных корней
 - `src/trash.ts` — корзина окружений и одиночных файлов (чистые): `moveToTrash`/`listTrash`/
   `restoreTrash`/`deleteTrashForever` (переносы `fs.rename` между `<root>/<имя>` и
   `<root>/.trash/<имя>@<мс>`; одно имя = последняя запись, `@` разделитель — его
@@ -351,7 +380,8 @@
   Esc — закрыть, TAB не уходит с вкладки; `null` не возвращает ни для одной клавиши),
   `applyCloneResult` (успех — курсор на копии в `ctx.envNames`; ошибка — суб-экран открыт
   с текстом)
-- `src/state.ts` — ядро состояния: `AppState` (+ `pkgCheck`, `pkgLatest`, `ext`,
+- `src/state.ts` — ядро состояния: `AppState` (+ `pkgCheck`, `pkgLatest`, `storePackages`
+  (реестр хранилища — список вкладки «Расширения»), `ext`,
   `mcp`, `trash`, `clone`, `opSeconds`), `Action` (`clone-start`/`clone-result`),
   `ReducerCtx` (`envNames` — строки списка окружений целиком, с основной записью: по ним живут
   курсор/`listLength`/Enter; `realNames` + `realNamesOf` — имена обычных окружений для уникальности;
@@ -360,7 +390,8 @@
   `reducer` — диспетчер (`applyResults` → `createReducer` → `extMachine` →
   `mcpMachine` → `trashMachine` → `reducerMain`: esc/tab/↑↓/←→/Enter/Space/X);
   список вкладка «Окружения» = окружения + «Создать» + «Корзина (N)»,
-  `enterEnvs` открывает суб-экран корзины; ре-экспортирует всё из
+  `enterEnvs` открывает суб-экран корзины; источник пакетов по вкладке — `packagesOf`
+  («Расширения» — `storePackages`, формы — `catalog.packages`); ре-экспортирует всё из
   `state-*.ts` (внешние импорты `./state.js` не менялись) (чистые)
 - `src/state-form.ts` — `CreateState`/`freshCreate`/`freshEdit` (+`modelsSel`,
   `modelCatalog`, `modelsTouched`, `store`), строки формы
@@ -414,7 +445,10 @@
   `doSubmit`/`doRun` (create.js, launchPi) и `doDelete` — окружение переносится
   в корзину (`moveToTrash`), не `rm -rf`; каждая мутация зовёт `loop.invalidate()` (кэш снимка),
   `prev.cancelRequested` → `loop.cancelBusy()`; интерфейс `Loop` —
-  окно в цикл (state/setState/status/обёртки команд/`invalidate`/`trashNames`)
+  окно в цикл (state/setState/status/обёртки команд/`invalidate`/`trashNames`/`storeDir`/
+  `storeInstallSources`); `storeOperation` — один диалог «Хранилища» для обоих срезов
+  (`enableModelsStorage` + `enableStoreRoots`, при первом включении подключается и main-агент),
+  `rootsOwn` — переезд своего содержимого в хранилище либо снимок `<корень>.from-<окружение>-<мс>`
 - `src/pirun.ts` — `launchPi` (дочерний `pi` с передачей терминала, возврат в
   TUI по exit) и `runPassthrough(envPath, args, lang)` — неинтерактивный проброс
   (код выхода пробрасывается)
@@ -426,6 +460,11 @@
   `state-mcp.test.ts`, `state-create-mcp.test.ts`, `render-mcp.test.ts`, `shutdown.test.ts`, `terminal.test.ts` — гарантия терминала, `paint.test.ts` — `paint`/`screenKnown`, `diff.test.ts` — построчный дифф, `throttle.test.ts` — схлопывание прогресс-репоков, `app-paint.test.ts` — реальный цикл `run()` на фейковом терминале (сколько байт ушло на репок), `trash.test.ts`/`state-trash.test.ts`/`render-trash.test.ts` — корзина (переносы, машина суб-экрана, кадра), `app-trash.test.ts` — сквозной прогон `run()`: удаление → «Корзина (1)» → восстановить → удалить совсем, `ci.test.ts` — согласие `engines`/матрицы CI/документов и гейт `needs: test` перед публикацией,
   `selfupdate.test.ts`/`selfupdate-net.test.ts` — версия, способ установки, парсер и диапазон чейнджлога, фолбэк языка; `state-update.test.ts` — динамические вкладки и клавиши вкладки;
   `render-update.test.ts` — `wrapVisible`, план таб-бара и invariant кадра; `app-update.test.ts` — сквозной `run()` с вкладкой и копированием; `debuglog.test.ts` — формат строки журнала, дедуп и writer; `app-debug.test.ts` — сквозной `run()` с `debugLog` (ровно одна строка на проблему при двойном `scan()`); `render-envs.test.ts` — маркер `⚠`, тексты проблемы и кадры с ним;
+  `render-ext.test.ts` — вкладка «Расширения» как реестр хранилища (счётчик «N окр.», конфликт,
+  пустое хранилище, инвариант кадра); `render-store.test.ts` — агрегат строки «Хранилище»
+  (`store.linked|partial|broken|off`); `app-store.test.ts` — сквозной `run()`: операции вкладки
+  идут в каталог хранилища (`PI_CODING_AGENT_DIR=<store>`); `app-main-row.test.ts` — первое
+  включение хранилища подключает и основной агент;
   `cmd.test.ts` — отмена по `AbortSignal`, отличимый таймаут (`cancelled`/`timedOut`/`timeoutMs`),
   `pi-actions.test.ts` — проброс сигнала и тексты `cmdFailureText`, `ticker.test.ts` — цепочка таймеров,
   `env-cache.test.ts` — подпись дерева, кэш и инвалидация, `state.test.ts` — `busyProcessView`,
@@ -501,6 +540,16 @@
   (`storeTouched`) сохранение не перезаписывает `models.json` из каталога main-агента. Операция
   хранилища синхронная (свои `fs.rename`/`symlink`, не дочерний процесс): экран `store-op`
   не процессный, `Esc` его не прерывает — подсказка `hint.kill` на нём не показывается.
+- Хранилище пакетов (подрез 2a): пакетные операции (`pi install`/`update`/`remove`,
+  `npm outdated --prefix`) вкладки «Расширения» выполняются только с
+  `PI_CODING_AGENT_DIR=<store>` и `--prefix <store>/npm`; реестр — `<store>/settings.json`
+  (pi читает `settings.packages`, а не `node_modules`). Линкуется корень целиком (`npm/`, `git/`):
+  pi не умеет общие `node_modules`, зато композировать состав умеет `settings.json` (`+path`/`-path`/
+  `!pattern`) — это подрез 2b. Лишняя своя копия корня — снимок `<store>/<корень>.from-<окружение>-<мс>`,
+  не запись файловой корзины (ветка файлов принимает только файлы, каталог в ней не виден).
+  `AppState.catalog` — каталог main-агента (формы: инструменты, скиллы, MCP), список вкладки
+  «Расширения» — `AppState.storePackages`; смешивать их нельзя, иначе формы теряют данные main-агента.
+  Доноска реестра — последовательные `pi install` (параллельные спорили бы за `package.json` хранилища).
 - Не добавлять runtime-зависимости без необходимости.
 - Изменять раскладку/поведение клавиш — только вместе с обновлением тестов
   `render`/`state` и этого файла.
@@ -600,8 +649,10 @@
 - R — обновить живой статус MCP (`pi mcp list`): на вкладке «MCP» (список) и
   в списке MCP формы окружения; во время проверки повторный R не запускает
   вторую проверку; в суб-экранах (форма добавления, подтверждение удаления) — игнор
-- R на вкладке «Окружения» — починить связь `models.json` с общим хранилищем
-  (только при `modelsLink === 'broken'`; на остальных состояниях — ничего)
+- R на вкладке «Окружения» — починить связи общего хранилища: симлинк `models.json` и
+  битые пакетные корни (`rootLinks.* === 'broken'`; на остальных состояниях — ничего)
+- X на вкладке «Расширения» — удалить пакет из общего хранилища (с подтверждением; в подтверждении
+  показан список окружений, которые пакет перестанут использовать — `ext.store.used-by`)
 - ←/→ на enum-строке формы (закрытый список значений: «Тип» и «Exposure» в форме добавления MCP) —
   сменить значение со циклом по списку, без Enter-режима; на текстовой строке формы — двигать caret
 - Печатные символы / Backspace — ввод имени (строка «Имя» формы), поиска
@@ -635,8 +686,15 @@
   `<root>/.store/models/models.json`, симлинк `models.json` окружения, `enabledModels`
   как видимость моделей, файловая корзина `<root>/.trash/files/`, починка по `R`.
   Общими пока не являются: `models-store.json` (персонализируется окружением), `auth.json`
-  (один битый файл выключил бы все агенты), `npm/`+`git/` пакетов, скиллы, промпты, темы —
-  следующие срезы.
+  (один битый файл выключил бы все агенты), скиллы, промпты, темы — следующие срезы.
+- Этап 3 (готов, подрез 2a общего хранилища): хранилище пакетов — симлинки `npm/` и `git/`
+  на `<root>/.store`, реестр `<store>/settings.json`, вкладка «Расширения» = точка обновления для
+  всех окружений (счётчик «N окр.», `⚠` конфликта, список теряющих пакет), строка «Хранилище»
+  формы включает модели и пакеты разом, `R` чинит все корни, основной агент подключается при первом
+  включении.
+- Подрез 2b (не начат): общие `extensions/`, `skills/`, `prompts/`, `themes/` — симлинк корня плюс
+  отметки состава через `+path`/`-path`/`!pattern` в `settings.json`; отдельный план по той же спеке
+  (`docs/superpowers/specs/2026-11-26-env-store-artifacts-design.md`).
 - Ограничения MCP (осознанно): `headers`/oauth/`timeout` — только в ручном
   `mcp.json`; правка существующего сервера — удалить + добавить; значения env/args
   в форме — без пробелов (разбор по пробелам); `pi mcp login`/`logout` из TUI не

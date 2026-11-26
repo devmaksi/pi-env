@@ -75,6 +75,14 @@ different purpose.
   repaired with `R` on the environment; the storage lives in `<root>/.store` by
   default and moves with the `storeDir` entry of `<root>/.pi-env.json` or the
   `PI_ENV_STORE` variable;
+- shared package storage: the `npm/` and `git/` directories of an enabled environment
+  are symlinks into `<root>/.store`, so `pi install`, `pi update` and `pi remove` there
+  serve every environment at once. The “Extensions” tab is the store registry
+  (`<store>/settings.json`): each package shows how many environments use it, conflicting
+  sources are marked, and removal warns which environments will lose the package.
+  The main agent joins the shared package directories when the store is enabled for the
+  first time; the “Storage” row of the environment form turns both slices (models and
+  packages) on and off together;
 - extension management: update checks («↑ latest» markers), updating
   one/all packages (`pi update`), removal (`pi remove`);
 - installing extensions from the `https://pi.dev/packages` catalog: globally

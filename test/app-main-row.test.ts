@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert';
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, lstatSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { DEFAULT_APP_SETTINGS, saveAppSettings } from '../src/appsettings.js';
@@ -115,3 +115,32 @@ test('app: E правит именно подсвеченную строку, а
   assert.ok(!form.some((l) => l.includes(`${nameRow}e0▌`)), 'форма открылась для e0');
 });
 
+
+test('app: первое включение хранилища на окружении поднимает и основной агент', async () => {
+  const root = tmpRoot();
+  const agent = mkdtempSync(join(tmpdir(), 'pienv-agent-'));
+  dirs.push(agent);
+  writeFileSync(join(agent, 'models.json'), '{"providers":{}}');
+  mkdirSync(join(agent, 'npm', 'node_modules', 'pi-zentui'), { recursive: true });
+  mkdirSync(join(agent, 'git'), { recursive: true });
+  const saved = process.env.PI_CODING_AGENT_DIR;
+  process.env.PI_CODING_AGENT_DIR = agent;
+  const keys = ['down', 'e', 'down', 'down', 'down', 'enter', 'enter', 'esc', 'ctrlc'];
+  let next = 0;
+  const term: Term = {
+    noColor: true,
+    start() {}, stop() {}, width: () => 80, height: () => 24,
+    key: async () => keys[next++] ?? 'ctrlc',
+    onResize() {}, paint() { return true; }, screenKnown: () => true, copy() {},
+  };
+  try {
+    await run(root, term);
+  } finally {
+    if (saved === undefined) delete process.env.PI_CODING_AGENT_DIR;
+    else process.env.PI_CODING_AGENT_DIR = saved;
+  }
+  assert.equal(lstatSync(join(root, 'e0', 'npm')).isSymbolicLink(), true, 'окружение получило общий корень');
+  assert.equal(lstatSync(join(agent, 'npm')).isSymbolicLink(), true, 'основной агент — тоже');
+  assert.equal(lstatSync(join(agent, 'git')).isSymbolicLink(), true);
+  assert.ok(existsSync(join(root, '.store', 'npm', 'node_modules', 'pi-zentui')), 'своё содержимое main переехало в хранилище');
+});

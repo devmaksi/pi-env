@@ -217,3 +217,19 @@ test('кадр с основной записью: средняя граница
     }
   }
 });
+
+const linkedRoots: Environment = {
+  name: 'sharedpkgs',
+  path: '/root/sharedpkgs',
+  details: details({ rootLinks: { npm: 'linked', git: 'linked' }, modelsLink: 'linked' }),
+};
+
+test('инфо-панель: каталог пакетов из хранилища', () => {
+  const s = render({ state: st, envs: [linkedRoots], width: 100, height: 20, ...base });
+  assert.ok(s.includes(t('ru', 'envs.pkgs', { v: t('ru', 'envs.pkgs-store') })), s);
+});
+
+test('инфо-панель: свои пакетные корни строки не показывают', () => {
+  const s = render({ state: st, envs: [plain], width: 100, height: 20, ...base });
+  assert.equal(s.includes(t('ru', 'envs.pkgs', { v: t('ru', 'envs.pkgs-store') })), false, s);
+});

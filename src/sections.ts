@@ -455,6 +455,9 @@ export function renderEnvList(envs: Environment[], state: AppState, ctx: Ctx, tr
     if (d.modelsLink === 'linked') {
       right.push(t(ctx.lang, 'envs.models', { v: t(ctx.lang, 'envs.models-store') }));
     }
+    if (d.rootLinks.npm === 'linked' || d.rootLinks.git === 'linked') {
+      right.push(t(ctx.lang, 'envs.pkgs', { v: t(ctx.lang, 'envs.pkgs-store') }));
+    }
     for (const problem of envProblems(d, ctx.lang)) {
       right.push(c(ANSI.dim, ctx.useColor) + problem + c(ANSI.reset, ctx.useColor));
     }
@@ -539,6 +542,9 @@ export function renderCloneTab(cl: CloneState, source: Environment | undefined, 
     right.push(t(ctx.lang, 'form.model') + (d.model ?? '—'));
     if (d.modelsLink === 'linked') {
       right.push(t(ctx.lang, 'envs.models', { v: t(ctx.lang, 'envs.models-store') }));
+    }
+    if (d.rootLinks.npm === 'linked' || d.rootLinks.git === 'linked') {
+      right.push(t(ctx.lang, 'envs.pkgs', { v: t(ctx.lang, 'envs.pkgs-store') }));
     }
     for (const problem of envProblems(d, ctx.lang)) right.push(dim(problem));
     detailSection(t(ctx.lang, 'envs.tools'), d.tools, right, ctx.L.rightWidth, ctx.lang);

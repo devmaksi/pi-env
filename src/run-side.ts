@@ -309,9 +309,19 @@ function storeOperation(loop: Loop, names: string[]): void {
   const store = loop.storeDir;
   const now = Date.now();
   let res: StoreResult = { ok: true };
+  // Первое включение: общий пакетный корень ещё не создан. Основной агент подключается тем же
+  // диалогом — иначе он молча останется на своей копии и версии пакеты разойдутся снова.
+  const fresh = !STORE_ROOTS.some((r) => existsSync(storePackagesRoot(store, r)));
+  const linkMain = (): StoreResult =>
+    enableStoreRoots(agentDirOf(loop), store, STORE_ROOTS, lang, rootsOwn(agentDirOf(loop), 'main', store, now, lang));
+  const mainHasOwn = STORE_ROOTS.some((r) => {
+    try { return lstatSync(envRootDir(agentDirOf(loop), r), { throwIfNoEntry: false })?.isDirectory() === true; } catch { return false; }
+  });
   if (wanted) {
     // Порядок: сначала общий файл моделей, потом свои пакетные корни (переезд в хранилище
     // при первом включении, иначе снимок `<корень>.from-<окружение>-<мс>`), и лишь затем симлинки.
+    // Если у основного агента есть своё содержимое, оно переезжает раньше содержимого окружения.
+    if (fresh && mainHasOwn) linkMain();
     res = enableModelsStorage(dir, storeFile, loop.agentDir, lang, now,
         relative(loop.root, dir).startsWith('..')
           ? snapshotOwn(dir, storeFile, now, lang)
@@ -324,7 +334,14 @@ function storeOperation(loop: Loop, names: string[]): void {
     res = disableStoreRoots(dir, store, STORE_ROOTS, lang);
     if (res.ok) res = unlinkModels(dir, storeFile, lang);
   }
-  const message = res.ok ? t(lang, wanted ? 'status.store-enabled' : 'status.store-disabled') : res.error;
+  let mainNote: string | null = null;
+  if (wanted && res.ok && fresh && !(fresh && mainHasOwn)) {
+    const main = linkMain();
+    if (!main.ok) mainNote = t(lang, 'status.store-main-partial', { v: main.error });
+  }
+  const message = res.ok
+    ? (mainNote ?? t(lang, wanted ? 'status.store-enabled' : 'status.store-disabled'))
+    : res.error;
   loop.status(message);
   loop.invalidate(); // менялись models.json и пакетные корни окружения (или их не стало)
   // Провал — флаги остаются прежними: файловое состояние не изменилось, врать про него нельзя.
@@ -347,6 +364,11 @@ function storeOperation(loop: Loop, names: string[]): void {
  * переезжает в хранилище и становится общим, иначе это лишняя копия — снимок внутри
  * хранилища. В файловую корзину каталог класть нельзя (он там не виден).
  */
+/** Каталог основного агента: его пакетные корни подключаются к хранилищу вместе с окружением. */
+function agentDirOf(loop: Loop): string {
+  return loop.agentDir;
+}
+
 function rootsOwn(
   envDir: string, envName: string, storeDir: string, now: number, lang: string,
 ): { move: (root: StoreRoot) => StoreResult; undo: (root: StoreRoot) => void } {

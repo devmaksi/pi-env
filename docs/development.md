@@ -28,6 +28,8 @@ npm run start          # run the built CLI (node dist/index.js)
 | `src/catalog.ts`      | model/tool/package/skill catalogs, pi.dev catalog (pure)     |
 | `src/create.ts`       | creating/updating/deleting environments, name validation                    |
 | `src/trash.ts`        | environment trash (`<root>/.trash`): move, list, restore                    |
+| `src/store.ts`        | shared storage (`<root>/.store`): model file link, package roots, registry, snapshots (pure) |
+| `src/fscopy.ts`       | `copyRecursive` — directory copy shared by create and clone                |
 | `src/state-trash.ts`  | “Trash” sub-screen: ↑↓/Enter/X/Esc (pure)                                   |
 | `src/state-clone.ts`  | “Clone environment” sub-screen: name field, Enter/Esc (pure)                |
 | `src/state.ts`        | `AppState`, `reducer`, create/edit form machines (pure)        |
@@ -114,6 +116,16 @@ mentioned by name here rather than linked.
   becomes a symlink to it, per-environment model visibility is the pi `enabledModels` setting,
   and the environment's own copy moves into the file-trash branch
   `<root>/.trash/files/<env>--<file>@<ms>`.
+- Shared package storage (slice 2a) — `docs/superpowers/specs/2026-11-26-env-store-artifacts-design.md`:
+  the whole `npm/` and `git/` package roots of an environment are symlinks to `<root>/.store/npm`
+  and `<root>/.store/git`, because pi keeps its package roots inside the agent directory; the
+  shared registry is `<store>/settings.json` and every `pi install/update/remove` of the
+  “Extensions” tab runs with `PI_CODING_AGENT_DIR=<store>`. `scan()` reports the link state per
+  root (`EnvDetails.rootLinks`), plus `packageConflicts` (same package name declared by different
+  sources) and `missingPackages` (declared but absent from the registry). An environment's own
+  redundant package directory becomes a store snapshot `<store>/<root>.from-<env>@<ms>`, not a
+  file-trash entry: the file branch only accepts files. Enabling the store links the main agent
+  to the shared roots as well.
 - Environment cloning — `docs/superpowers/specs/2026-11-19-env-clone-design.md`:
   `C` on an environment opens a name prompt and copies the environment directory
   verbatim (its own files included), instead of rebuilding it from the main agent.
