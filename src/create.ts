@@ -4,6 +4,7 @@ import { uniqueName, type SkillItem, type ToolItem } from './catalog.js';
 import { t } from './i18n.js';
 import { writeMcpFile, type McpServer } from './mcp.js';
 import { linkModels } from './store.js';
+import { copyRecursive } from './fscopy.js';
 
 export interface CreateRequest {
   name: string;
@@ -319,18 +320,6 @@ function uniqueStrings(list: string[]): string[] {
   return [...new Set(list)];
 }
 
-function copyRecursive(src: string, dest: string): void {
-  const st = statSync(src);
-  if (st.isDirectory()) {
-    mkdirSync(dest, { recursive: true });
-    for (const entry of readdirSync(src)) {
-      copyRecursive(join(src, entry), join(dest, entry));
-    }
-  } else {
-    mkdirSync(dirname(dest), { recursive: true });
-    copyFileSync(src, dest);
-  }
-}
 
 /** Копирует каталог моделей (models.json, models-store.json, auth.json) main-агента в окружение. */
 function copyModelFiles(agentDir: string, envDir: string, withCatalog = true): void {

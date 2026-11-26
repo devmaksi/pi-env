@@ -162,6 +162,7 @@
   "err.trash-delete": "Failed to delete \"{name}\" forever",
   "err.store-no-source": "No source model catalog — nothing to create the store from",
   "err.models-link": "Could not link the model catalog to the store",
+  "err.link-root": "Could not link the package directory to the store",
   "err.trash-bad-name": "Trash entry \"{name}\" is unsafe",
   "err.clone": "Failed to copy environment \"{name}\"",
   "clone.name-default": "{name}-copy",

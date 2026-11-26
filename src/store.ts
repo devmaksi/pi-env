@@ -6,6 +6,7 @@
 import { copyFileSync, existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, readlinkSync, rmSync, symlinkSync, unlinkSync } from 'node:fs';
 import { basename, dirname, isAbsolute, join, resolve } from 'node:path';
 import { t } from './i18n.js';
+import { copyRecursive } from './fscopy.js';
 
 /** Каталог хранилища по умолчанию — служебная папка внутри корня окружений. */
 export const STORE_DIR = '.store';
@@ -290,4 +291,121 @@ export function repairModelsLink(envDir: string, storeFile: string, agentDir: st
     return { ok: false, error: t(lang, 'err.models-link') };
   }
   return linkModels(envDir, storeFile, agentDir, lang, now);
+}
+
+/**
+ * Ставит симлинк пакетного корня окружения на корень хранилища. Путь окружения обязан
+ * быть свободен (или быть симлинком): обычный каталог молча не удаляется (anti-goal
+ * «потерять пакеты окружения»).
+ */
+function placeRootLink(envDir: string, storeDir: string, root: StoreRoot, lang: string): StoreResult {
+  const link = envRootDir(envDir, root);
+  const target = storePackagesRoot(storeDir, root);
+  try {
+    const st = lstatSync(link, { throwIfNoEntry: false });
+    if (st !== undefined && st !== null) {
+      if (!st.isSymbolicLink()) return { ok: false, error: t(lang, 'err.link-root') };
+      unlinkSync(link);
+    }
+    mkdirSync(envDir, { recursive: true });
+    symlinkSync(target, link, 'dir');
+  } catch {
+    return { ok: false, error: t(lang, 'err.link-root') };
+  }
+  return { ok: true };
+}
+
+/**
+ * Включение пакетного хранилища на окружении: для каждого корня в состоянии `off` или
+ * `broken` — сначала перенос своего содержимого (`own.move` решает, куда: переезд в
+ * хранилище при первом включении или корзина), затем симлинк. Провал откатывает уже
+ * сделанные корни через `own.undo`; `linked` корень не трогается (идемпотентность).
+ */
+export function enableStoreRoots(
+  envDir: string,
+  storeDir: string,
+  roots: readonly StoreRoot[],
+  lang: string,
+  own: { move: (root: StoreRoot) => StoreResult; undo: (root: StoreRoot) => void },
+): StoreResult {
+  const done: StoreRoot[] = [];
+  const rollback = (list: StoreRoot[]): void => {
+    for (const root of list) {
+      try {
+        const st = lstatSync(envRootDir(envDir, root), { throwIfNoEntry: false });
+        if (st !== undefined && st !== null && st.isSymbolicLink()) unlinkSync(envRootDir(envDir, root));
+      } catch {
+        /* симлинк остался — own.undo вернёт содержимое, это хуже всего, но не потеря */
+      }
+      own.undo(root);
+    }
+  };
+  for (const root of roots) {
+    const state = rootLinkState(envDir, storeDir, root);
+    if (state === 'linked') continue;
+    if (state === 'broken') {
+      try {
+        unlinkSync(envRootDir(envDir, root));
+      } catch {
+        rollback(done);
+        return { ok: false, error: t(lang, 'err.link-root') };
+      }
+    }
+    const moved = own.move(root);
+    if (!moved.ok) {
+      rollback(done);
+      return moved;
+    }
+    const link = placeRootLink(envDir, storeDir, root, lang);
+    if (!link.ok) {
+      own.undo(root);
+      rollback(done);
+      return link;
+    }
+    done.push(root);
+  }
+  return { ok: true };
+}
+
+/** Выключение: вместо симлинка — обычная копия содержимого хранилища. Своя копия не трогается. */
+export function disableStoreRoots(
+  envDir: string,
+  storeDir: string,
+  roots: readonly StoreRoot[],
+  lang: string,
+): StoreResult {
+  for (const root of roots) {
+    const target = storePackagesRoot(storeDir, root);
+    if (!existsSync(target)) return { ok: false, error: t(lang, 'err.store-no-source') };
+    const link = envRootDir(envDir, root);
+    try {
+      const st = lstatSync(link, { throwIfNoEntry: false });
+      if (st !== undefined && st !== null && !st.isSymbolicLink()) continue;
+      if (st !== undefined && st !== null) unlinkSync(link);
+      copyRecursive(target, link);
+    } catch {
+      return { ok: false, error: t(lang, 'err.link-root') };
+    }
+  }
+  return { ok: true };
+}
+
+/** Починка: снимает битые симлинки корней и ставит новые. `linked` не пересоздаются. */
+export function repairStoreRootLinks(
+  envDir: string,
+  storeDir: string,
+  roots: readonly StoreRoot[],
+  lang: string,
+): StoreResult {
+  for (const root of roots) {
+    if (rootLinkState(envDir, storeDir, root) !== 'broken') continue;
+    try {
+      unlinkSync(envRootDir(envDir, root));
+    } catch {
+      return { ok: false, error: t(lang, 'err.link-root') };
+    }
+    const link = placeRootLink(envDir, storeDir, root, lang);
+    if (!link.ok) return link;
+  }
+  return { ok: true };
 }

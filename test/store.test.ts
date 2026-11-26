@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert';
-import { existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, symlinkSync, unlinkSync, writeFileSync } from 'node:fs';
+import { existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, renameSync, rmSync, symlinkSync, unlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
@@ -9,6 +9,7 @@ import {
   enableModelsStorage, restoreFromStoreSnapshot,
   STORE_ROOTS, storeSettingsFile, storePackagesRoot, envRootDir, rootLinkState,
   storeLinkSummary, snapshotStoreManifest, storeRegistrySources,
+  enableStoreRoots, disableStoreRoots, repairStoreRootLinks,
 } from '../src/store.js';
 import { t } from '../src/i18n.js';
 
@@ -297,4 +298,102 @@ test('storeRegistrySources: packages из реестра, [] если файла
   assert.deepEqual(storeRegistrySources(store), []);
   writeFileSync(storeSettingsFile(store), JSON.stringify({ packages: ['npm:pi-zentui', 5, 'git:github.com/obra/superpowers'] }));
   assert.deepEqual(storeRegistrySources(store), ['npm:pi-zentui', 'git:github.com/obra/superpowers']);
+});
+
+// --- Подрез 2a: включение/выключение пакетных корней ---
+
+function mkStoreEnv(roots: StoreRoot[] = [...STORE_ROOTS]): { root: string; store: string; env: string } {
+  const root = tmpDir();
+  const store = join(root, STORE_DIR);
+  const env = join(root, 'e1');
+  mkdirSync(env);
+  for (const r of roots) {
+    mkdirSync(join(env, r, 'node_modules'), { recursive: true });
+    writeFileSync(join(env, r, 'package.json'), '{}');
+  }
+  return { root, store, env };
+}
+
+test('enableStoreRoots: первый переезжает, второй получает симлинк поверх move', () => {
+  const { root, store, env: e1 } = mkStoreEnv();
+  const moved: StoreRoot[] = [];
+  const r1 = enableStoreRoots(e1, store, STORE_ROOTS, 'ru', {
+    move: (r) => { moved.push(r); mkdirSync(store, { recursive: true }); renameSync(envRootDir(e1, r), storePackagesRoot(store, r)); return { ok: true }; },
+    undo: () => {},
+  });
+  assert.equal(r1.ok, true);
+  assert.equal(lstatSync(join(e1, 'npm')).isSymbolicLink(), true);
+  assert.equal(rootLinkState(e1, store, 'npm'), 'linked');
+  assert.ok(existsSync(join(store, 'npm', 'package.json')));   // переехал, не скопирован
+
+  const e2 = join(root, 'e2');
+  mkdirSync(join(e2, 'npm'), { recursive: true });
+  mkdirSync(join(e2, 'git'), { recursive: true });
+  const r2 = enableStoreRoots(e2, store, STORE_ROOTS, 'ru', {
+    move: (r) => { moved.push(r); rmSync(envRootDir(e2, r), { recursive: true }); return { ok: true }; },
+    undo: () => {},
+  });
+  assert.equal(r2.ok, true);
+  assert.deepEqual(moved, ['npm', 'git', 'npm', 'git']);
+  assert.equal(rootLinkState(e2, store, 'npm'), 'linked');
+});
+
+test('enableStoreRoots: уже linked — no-op без move', () => {
+  const { store, env } = mkStoreEnv();
+  mkdirSync(join(store, 'npm'), { recursive: true });
+  mkdirSync(join(store, 'git'), { recursive: true });
+  rmSync(join(env, 'npm'), { recursive: true });
+  rmSync(join(env, 'git'), { recursive: true });
+  symlinkSync(join(store, 'npm'), join(env, 'npm'), 'dir');
+  symlinkSync(join(store, 'git'), join(env, 'git'), 'dir');
+  let calls = 0;
+  const r = enableStoreRoots(env, store, STORE_ROOTS, 'ru', {
+    move: () => { calls++; return { ok: true }; }, undo: () => { calls++; },
+  });
+  assert.equal(r.ok, true);
+  assert.equal(calls, 0);
+});
+
+test('enableStoreRoots: путь окружения остался занят — ошибка и undo, симлинков нет', () => {
+  const { store, env } = mkStoreEnv(['git']);
+  const undone: StoreRoot[] = [];
+  const r = enableStoreRoots(env, store, ['git'], 'ru', {
+    move: () => ({ ok: true }),                       // move ничего не освободил
+    undo: (root) => { undone.push(root); },
+  });
+  assert.equal(r.ok, false);
+  assert.deepEqual(undone, ['git']);
+  assert.equal(lstatSync(join(env, 'git')).isSymbolicLink(), false);
+  assert.ok(existsSync(join(env, 'git', 'package.json')));  // своё содержимое на месте
+});
+
+test('repairStoreRootLinks: чинит только broken, linked не трогает', () => {
+  const { store, env } = mkStoreEnv();
+  rmSync(join(env, 'npm'), { recursive: true });
+  rmSync(join(env, 'git'), { recursive: true });
+  mkdirSync(join(store, 'npm'), { recursive: true });
+  mkdirSync(join(store, 'git'), { recursive: true });
+  symlinkSync(join(store, 'npm'), join(env, 'npm'), 'dir');
+  symlinkSync('/nonexistent-path', join(env, 'git'), 'dir');
+  assert.equal(rootLinkState(env, store, 'git'), 'broken');
+  const r = repairStoreRootLinks(env, store, STORE_ROOTS, 'ru');
+  assert.equal(r.ok, true);
+  assert.equal(rootLinkState(env, store, 'npm'), 'linked');
+  assert.equal(rootLinkState(env, store, 'git'), 'linked');
+});
+
+test('disableStoreRoots: вместо симлинка — обычная копия содержимого хранилища', () => {
+  const { store, env } = mkStoreEnv();
+  rmSync(join(env, 'npm'), { recursive: true });
+  rmSync(join(env, 'git'), { recursive: true });
+  mkdirSync(join(store, 'npm', 'node_modules'), { recursive: true });
+  writeFileSync(join(store, 'npm', 'package.json'), '{}');
+  mkdirSync(join(store, 'git'), { recursive: true });
+  symlinkSync(join(store, 'npm'), join(env, 'npm'), 'dir');
+  symlinkSync(join(store, 'git'), join(env, 'git'), 'dir');
+  const r = disableStoreRoots(env, store, STORE_ROOTS, 'ru');
+  assert.equal(r.ok, true);
+  assert.equal(lstatSync(join(env, 'npm')).isSymbolicLink(), false);
+  assert.ok(existsSync(join(env, 'npm', 'package.json')));
+  assert.ok(existsSync(join(env, 'npm', 'node_modules')));
 });
