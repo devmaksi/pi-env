@@ -7,6 +7,8 @@ import {
   STORE_DIR, storeRoot, storeModelsFile, modelsLinkState, ensureStoreModels,
   snapshotStoreModels, linkModels, unlinkModels, archiveEnvModelsIntoStore, envModelsFile, storeSnapshotName,
   enableModelsStorage, restoreFromStoreSnapshot,
+  STORE_ROOTS, storeSettingsFile, storePackagesRoot, envRootDir, rootLinkState,
+  storeLinkSummary, snapshotStoreManifest, storeRegistrySources,
 } from '../src/store.js';
 import { t } from '../src/i18n.js';
 
@@ -232,4 +234,67 @@ test('restoreFromStoreSnapshot: откат возвращает файл и уб
   restoreFromStoreSnapshot(snap!, envDir);
   assert.equal(readFileSync(envModelsFile(envDir), 'utf8'), ownBytes);
   assert.equal(existsSync(snap!), false);
+});
+
+// --- Подрез 2a: пакетные корни хранилища (npm/git) ---
+
+test('rootLinkState: off / linked / broken для каталога', () => {
+  const root = tmpDir();
+  const env = join(root, 'e1');
+  const store = join(root, STORE_DIR);
+  mkdirSync(env);
+  assert.equal(rootLinkState(env, store, 'npm'), 'off');          // папки нет
+  mkdirSync(join(env, 'npm'));
+  assert.equal(rootLinkState(env, store, 'npm'), 'off');          // обычный каталог — не связь
+  rmSync(join(env, 'npm'), { recursive: true });
+  mkdirSync(join(store, 'npm'), { recursive: true });
+  symlinkSync(join(store, 'npm'), join(env, 'npm'), 'dir');
+  assert.equal(rootLinkState(env, store, 'npm'), 'linked');
+  rmSync(join(store, 'npm'), { recursive: true });
+  assert.equal(rootLinkState(env, store, 'npm'), 'broken');       // симлинк в никуда
+});
+
+test('rootLinkState: симлинк не в хранилище — broken', () => {
+  const root = tmpDir();
+  const env = join(root, 'e1');
+  const store = join(root, STORE_DIR);
+  const elsewhere = join(root, 'other', 'npm');
+  mkdirSync(env);
+  mkdirSync(elsewhere, { recursive: true });
+  symlinkSync(elsewhere, join(env, 'npm'), 'dir');
+  assert.equal(rootLinkState(env, store, 'npm'), 'broken');
+});
+
+test('storeLinkSummary: off / linked / partial / broken', () => {
+  const root = tmpDir();
+  const env = join(root, 'e1');
+  const store = join(root, STORE_DIR);
+  mkdirSync(env);
+  assert.equal(storeLinkSummary(env, store), 'off');
+  mkdirSync(join(store, 'npm'), { recursive: true });
+  mkdirSync(join(store, 'git'), { recursive: true });
+  symlinkSync(join(store, 'npm'), join(env, 'npm'), 'dir');
+  symlinkSync(join(store, 'git'), join(env, 'git'), 'dir');
+  assert.equal(storeLinkSummary(env, store), 'linked');
+  rmSync(join(env, 'git'));
+  mkdirSync(join(env, 'git'));                       // git снова своя копия
+  assert.equal(storeLinkSummary(env, store), 'partial');
+  rmSync(join(store, 'npm'), { recursive: true });                    // симлинк npm в никуда
+  assert.equal(storeLinkSummary(env, store), 'broken');
+});
+
+test('snapshotStoreManifest: package.json и package-lock.json уходят в .bak-<мс>', () => {
+  const store = tmpDir();
+  writeJson(join(store, 'npm', 'package.json'), { dependencies: {} });
+  writeJson(join(store, 'npm', 'package-lock.json'), { lockfileVersion: 3 });
+  snapshotStoreManifest(store, 123);
+  assert.ok(existsSync(join(store, 'npm', 'package.json.bak-123')));
+  assert.ok(existsSync(join(store, 'npm', 'package-lock.json.bak-123')));
+});
+
+test('storeRegistrySources: packages из реестра, [] если файла или поля нет', () => {
+  const store = tmpDir();
+  assert.deepEqual(storeRegistrySources(store), []);
+  writeFileSync(storeSettingsFile(store), JSON.stringify({ packages: ['npm:pi-zentui', 5, 'git:github.com/obra/superpowers'] }));
+  assert.deepEqual(storeRegistrySources(store), ['npm:pi-zentui', 'git:github.com/obra/superpowers']);
 });

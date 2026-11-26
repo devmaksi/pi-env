@@ -39,6 +39,62 @@ export function envModelsFile(envDir: string): string {
   return join(envDir, 'models.json');
 }
 
+/** Пакетные корни: общие `npm` и `git`, которые окружения получают симлинками. */
+export type StoreRoot = 'npm' | 'git';
+export const STORE_ROOTS: readonly StoreRoot[] = ['npm', 'git'];
+
+/** Реестр пакетов хранилища: `settings.json` каталога агента, которым является хранилище. */
+export function storeSettingsFile(storeDir: string): string {
+  return join(storeDir, 'settings.json');
+}
+
+/** Общий пакетный корень хранилища (`<store>/npm` | `<store>/git`). */
+export function storePackagesRoot(storeDir: string, root: StoreRoot): string {
+  return join(storeDir, root);
+}
+
+/** Пакетный корень внутри окружения: обычный каталог либо симлинк на хранилище. */
+export function envRootDir(envDir: string, root: StoreRoot): string {
+  return join(envDir, root);
+}
+
+/** Состояние связи пакетного корня окружения с хранилищем. */
+export function rootLinkState(envDir: string, storeDir: string, root: StoreRoot): ModelsLink {
+  return linkStateTo(envRootDir(envDir, root), storePackagesRoot(storeDir, root));
+}
+
+/**
+ * Агрегат связи окружения с хранилищем: `linked` — все пакетные корни на хранилище,
+ * `off` — ни один, `broken` — есть битый, `partial` — смесь (обычно после ручных
+ * правок на диске; лечится починкой).
+ */
+export function storeLinkSummary(envDir: string, storeDir: string): 'off' | 'linked' | 'partial' | 'broken' {
+  const states = STORE_ROOTS.map((root) => rootLinkState(envDir, storeDir, root));
+  if (states.some((s) => s === 'broken')) return 'broken';
+  if (states.every((s) => s === 'linked')) return 'linked';
+  if (states.every((s) => s === 'off')) return 'off';
+  return 'partial';
+}
+
+/** Снимок манифеста пакетного корня хранилища перед разрушительной операцией. */
+export function snapshotStoreManifest(storeDir: string, now: number, keep = 5): void {
+  const npm = storePackagesRoot(storeDir, 'npm');
+  for (const file of ['package.json', 'package-lock.json']) {
+    snapshotStoreModels(join(npm, file), now, keep);
+  }
+}
+
+/** Реестр хранилища: объявления пакетов из `settings.json` каталога хранилища. */
+export function storeRegistrySources(storeDir: string): string[] {
+  try {
+    const value: unknown = JSON.parse(readFileSync(storeSettingsFile(storeDir), 'utf8'));
+    const packages = (value as { packages?: unknown })?.packages;
+    return Array.isArray(packages) ? packages.filter((s): s is string => typeof s === 'string') : [];
+  } catch {
+    return [];
+  }
+}
+
 /** Снимок общего файла: `models.json.bak-<мс>`, рядом с оригиналом. */
 export function storeSnapshotName(storeFile: string, now: number): string {
   return `${basename(storeFile)}.bak-${now}`;
@@ -60,7 +116,16 @@ export function storeFileUsable(storeFile: string): boolean {
  * это обычный файл (в том числе когда-то заменённый симлинок: отличить нельзя).
  */
 export function modelsLinkState(envDir: string, storeFile: string): ModelsLink {
-  const path = envModelsFile(envDir);
+  return linkStateTo(envModelsFile(envDir), storeFile);
+}
+
+/**
+ * Состояние связи одного пути окружения с общим путём хранилища:
+ * `linked` — симлинк ровно на общий путь, `broken` — симлинк в никуда или не в
+ * хранилище, `off` — своего файла/каталога нет либо это обычный объект (когда-то
+ * заменённый симлинк отличить нельзя).
+ */
+function linkStateTo(path: string, target: string): ModelsLink {
   let link;
   try {
     link = lstatSync(path, { throwIfNoEntry: false });
@@ -69,11 +134,10 @@ export function modelsLinkState(envDir: string, storeFile: string): ModelsLink {
   }
   if (link === undefined || link === null || !link.isSymbolicLink()) return 'off';
   if (!existsSync(path)) return 'broken';
-  const target = readlinkSync(path);
-  const abs = isAbsolute(target) ? resolve(target) : resolve(dirname(path), target);
-  return abs === resolve(storeFile) ? 'linked' : 'broken';
+  const dest = readlinkSync(path);
+  const abs = isAbsolute(dest) ? resolve(dest) : resolve(dirname(path), dest);
+  return abs === resolve(target) ? 'linked' : 'broken';
 }
-
 /** Снимок общего файла перед разрушительной операцией; старше `keep` удаляются. */
 export function snapshotStoreModels(storeFile: string, now: number, keep = 5): void {
   if (!existsSync(storeFile)) return;
