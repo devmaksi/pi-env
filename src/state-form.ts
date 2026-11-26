@@ -101,6 +101,15 @@ export function storeSummaryOf(cr: Pick<CreateState, 'store' | 'storeRoots' | 's
   return 'partial';
 }
 
+/**
+ * Намерение по агрегату связи: `off`/`partial`/`broken` — включение (спец: «включить все» доводит
+ * до конца все `off` и чинит все `broken`, уже `linked` не трогается), выключение — только из
+ * `linked`. Иначе повторный Enter после частичного сбоя рвал бы рабочую связь моделей.
+ */
+export function storeEnableIntent(summary: 'off' | 'linked' | 'partial' | 'broken'): boolean {
+  return summary !== 'linked';
+}
+
 /** Чистая форма редактирования: предзаполнение из settings окружения. */
 export function freshEdit(
   name: string,
@@ -196,7 +205,8 @@ export function formReducer(c: CreateState, action: Action, envNames: string[], 
     if (c.cursor === ROW_MODELS) return { ...c, view: 'model-list', cursor: 0 };
     // Хранилище: включение — разрушительная операция (копия уходит в корзину), нужно
     // подтверждение; выключение — обычная, делаем сразу.
-    if (c.cursor === ROW_STORE) return { ...c, view: storeSummaryOf(c) === 'off' ? 'store-confirm' : 'store-op' };
+    // Подтверждение в обе стороны: выключение копирует из хранилища сотни МБ, это не «мгновенный» переключатель.
+    if (c.cursor === ROW_STORE) return { ...c, view: 'store-confirm' };
     if (c.cursor === ROW_TOOLS) return { ...c, view: 'tools', cursor: ROW_NAME };
     if (c.cursor === ROW_PACKAGES) return { ...c, view: 'packages', cursor: ROW_NAME };
     if (c.cursor === ROW_MCP) return { ...c, view: 'mcp', cursor: 0 };

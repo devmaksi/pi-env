@@ -55,6 +55,16 @@ test('вкладка «Расширения»: конфликт источник
   assert.ok(s.includes('npm:@wangjq4214/pi-open-tui'), s);
 });
 
+// package.json всегда отдаёт имя со scope — сравнение должен давать один и тот же ключ,
+// иначе счётчик, конфликт и предупреждение при удалении молчат на scoped-пакетах.
+test('вкладка «Расширения»: scoped-имя пакета из package.json считает окружения и конфликт', () => {
+  const envs = [env('dev-supo', ['npm:pi-open-tui']), env('dev-vtb', ['npm:@wangjq4214/pi-open-tui'])];
+  const state = { ...st, storePackages: [pkg('@wangjq4214/pi-open-tui')] };
+  const s = render({ state, envs, width: 90, height: 20, ...base });
+  assert.ok(s.includes(t('ru', 'ext.store.usage', { n: 2 })), s);
+  assert.ok(s.includes(t('ru', 'ext.store.conflict', { name: 'pi-open-tui' })), s);
+});
+
 test('пустое хранилище: пустой список с подсказкой, операции недоступны', () => {
   const s = render({ state: st, envs: [env('test-ai', [])], width: 90, height: 20, ...base });
   assert.ok(s.includes(t('ru', 'ext.store.empty')), s);

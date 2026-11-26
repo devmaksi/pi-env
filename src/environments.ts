@@ -149,8 +149,11 @@ export { pkgNameOfSource };
 
 /** Имена окружений, объявивших пакет с таким именем в `node_modules` (по всем окружениям). */
 export function storePackageUsage(envs: Environment[], pkgName: string): string[] {
+  // Ключ один для обеих форм имени: UI знает и `name` из `package.json` (со scope), и строку
+  // объявления `npm:@scope/name@1.2` — иначе scoped-пакеты не находятся никогда.
+  const key = pkgNameOfSource(pkgName);
   return envs
-    .filter((e) => e.details.packages.some((src) => pkgNameOfSource(src) === pkgName))
+    .filter((e) => e.details.packages.some((src) => pkgNameOfSource(src) === key))
     .map((e) => e.name)
     .sort();
 }

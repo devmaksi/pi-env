@@ -19,9 +19,9 @@ import type { ExtState } from './state-ext.js';
 import type { McpTab } from './state-mcp.js';
 
 export {
-  freshCreate, freshEdit, packageListSources, formRows, modelRows, defaultModelRef,
+  freshCreate, freshEdit, packageListSources, formRows, modelRows, defaultModelRef, storeSummaryOf, storeEnableIntent,
   ROW_NAME, ROW_MODEL, ROW_MODELS, ROW_STORE, ROW_TOOLS, ROW_PACKAGES, ROW_SKILLS, ROW_MCP, ROW_ACTION, ROW_DELETE,
-  FORM_ROWS, MAX_NAME, UPDATE_ALL_ROW, INSTALL_ROW, storeSummaryOf,
+  FORM_ROWS, MAX_NAME, UPDATE_ALL_ROW, INSTALL_ROW,
 } from './state-form.js';
 export type { CreateView, CreateState } from './state-form.js';
 export { mcpFormRows, mcpFormStep, mcpListNames, freshMcpForm, freshMcpTab, MCP_TYPES, MCP_EXPOSURES, MCP_ENUM_ROWS, enumValues, TEXT_ROWS } from './state-mcp.js';

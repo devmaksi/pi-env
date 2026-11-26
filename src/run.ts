@@ -11,6 +11,7 @@ import { computeLayout } from './layout.js';
 import { frameKey, paintFrame, type PrevFrame } from './diff.js';
 import { createThrottle, type Throttle, type ThrottleDeps } from './throttle.js';
 import { createTicker } from './ticker.js';
+import { createStoreLock, targetsStore } from './oplock.js';
 import { render } from './render.js';
 import { readSettings } from './create.js';
 import { parseMcpList, readMcpServers } from './mcp.js';
@@ -130,6 +131,13 @@ export async function run(root: string, term: Term = createTerm(), deps: RunDeps
       h.unref(); // счётчик не держит процесс
     },
   });
+
+  // Один процесс, пишущий в общее хранилище: его корни — общие для всех окружений, два npm
+  // одновременно портят манифест и дерево на весь парк агентов.
+  const storeLock = createStoreLock(
+    (dir) => targetsStore(dir, storeDir),
+    () => { statusMsg = t(state.language, 'status.store-busy'); repaint(); },
+  );
 
   async function startOp<T>(make: (signal: AbortSignal) => Promise<T>, kind: 'busy' | 'bg'): Promise<T> {
     const controller = new AbortController();
@@ -273,19 +281,25 @@ export async function run(root: string, term: Term = createTerm(), deps: RunDeps
   }
 
   async function doUpdateAll(targetDir: string, scope: 'main' | 'create'): Promise<void> {
-    const r = await startOp((signal) => piUpdateAll(targetDir, signal, runCmdFn), 'busy');
+    const got = await storeLock.attempt(targetDir, () => startOp((signal) => piUpdateAll(targetDir, signal, runCmdFn), 'busy'));
+    if (!got.ran) return;
+    const r = got.value;
     if (r.ok) statusMsg = t(state.language, 'status.ext-updated');
     afterPiCommand(r, { type: 'update-result', ok: r.ok, message: r.ok ? t(state.language, 'status.ext-updated') : cmdFailureText(r, state.language, 'status.update-error', null) }, targetDir, scope);
   }
 
   async function doRemove(dir: string, source: string): Promise<void> {
-    const r = await startOp((signal) => piRemove(dir, source, signal, runCmdFn), 'busy');
+    const got = await storeLock.attempt(dir, () => startOp((signal) => piRemove(dir, source, signal, runCmdFn), 'busy'));
+    if (!got.ran) return;
+    const r = got.value;
     if (r.ok) statusMsg = t(state.language, 'status.ext-removed', { name: source });
     afterPiCommand(r, { type: 'remove-result', ok: r.ok, message: r.ok ? source : cmdFailureText(r, state.language, 'status.remove-error', source) }, dir, 'main');
   }
 
   async function doUpdateOne(dir: string, source: string): Promise<void> {
-    const r = await startOp((signal) => piUpdateOne(dir, source, signal, runCmdFn), 'busy');
+    const got = await storeLock.attempt(dir, () => startOp((signal) => piUpdateOne(dir, source, signal, runCmdFn), 'busy'));
+    if (!got.ran) return;
+    const r = got.value;
     if (r.ok) statusMsg = t(state.language, 'status.updated', { name: source });
     afterPiCommand(r, { type: 'update-result', ok: r.ok, message: r.ok ? source : cmdFailureText(r, state.language, 'status.update-error', source) }, dir, 'main');
   }
@@ -296,7 +310,9 @@ export async function run(root: string, term: Term = createTerm(), deps: RunDeps
    */
   async function doStoreInstallSources(sources: string[]): Promise<void> {
     for (const source of sources) {
-      const r = await startOp((signal) => piInstall(storeDir, source, signal, runCmdFn), 'busy');
+      const got = await storeLock.attempt(storeDir, () => startOp((signal) => piInstall(storeDir, source, signal, runCmdFn), 'busy'));
+      if (!got.ran) return;
+      const r = got.value;
       if (!r.ok) {
         statusMsg = t(state.language, 'status.store-partial-install', { name: source });
         break;
@@ -308,7 +324,9 @@ export async function run(root: string, term: Term = createTerm(), deps: RunDeps
   }
 
   async function doInstall(installDir: string, source: string, envName: string | null): Promise<void> {
-    const r = await startOp((signal) => piInstall(installDir, source, signal, runCmdFn), 'busy');
+    const got = await storeLock.attempt(installDir, () => startOp((signal) => piInstall(installDir, source, signal, runCmdFn), 'busy'));
+    if (!got.ran) return;
+    const r = got.value;
     if (r.ok) statusMsg = t(state.language, 'status.installed', { name: source });
     let sources: string[] | undefined;
     if (r.ok) {

@@ -537,10 +537,12 @@ test('строка «Хранилище»: Enter при выключенном �
   assert.equal(s.create!.view, 'store-op');
 });
 
-test('строка «Хранилище»: Enter при включённом — сразу операция выключения', () => {
+test('строка «Хранилище»: Enter при включённом — подтверждение выключения, не мгновенная операция', () => {
   let s = { ...initialState(catalog), sub: 'create' as const, create: freshEdit('e1', {}, catalog, [], false, true) };
   for (let i = 0; i < ROW_STORE; i++) s = reducer(s, 'down', rc([]));
   s = reducer(s, 'enter', rc([]));
+  assert.equal(s.create!.view, 'store-confirm');
+  s = reducer(s, 'enter', rc([]));                       // подтверждение — и только тогда операция
   assert.equal(s.create!.view, 'store-op');
   assert.equal(s.create!.store, true);
 });

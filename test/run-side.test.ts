@@ -161,19 +161,21 @@ test('mcp-вкладка: confirm-remove → removing — удаление из 
   assert.equal(h.state.mcp, null);
 });
 
-test('вход во вкладку «Расширения» — проверка обновлений хранилища', async () => {
+// Реестр хранилища меняют не только команды pi-env (pi доустанавливает пакеты при старте
+// агента), поэтому при входе на вкладку список перечитывается с диска всегда.
+test('вход во вкладку «Расширения» — перечитать список и проверить обновления хранилища', async () => {
   const h = await run({ ...initialState(CATALOG), tab: 'extensions', pkgCheck: 'idle' }, { tab: 'envs' });
-  assert.deepEqual(h.log, ['checkUpdates:/root/.store:main']);
+  assert.deepEqual(h.log, ['reloadCatalog', 'checkUpdates:/root/.store:main']);
 });
 
 test('recheckUpdates: повторная проверка при pkgCheck done', async () => {
   const h = await run({ ...initialState(CATALOG), tab: 'extensions', pkgCheck: 'done', recheckUpdates: true }, { tab: 'envs' });
-  assert.deepEqual(h.log, ['checkUpdates:/root/.store:main']);
+  assert.deepEqual(h.log, ['reloadCatalog', 'checkUpdates:/root/.store:main']);
 });
 
-test('pkgCheck done без recheck — повторной проверки нет', async () => {
+test('pkgCheck done без recheck — список перечитывается, проверки нет', async () => {
   const h = await run({ ...initialState(CATALOG), tab: 'extensions', pkgCheck: 'done', recheckUpdates: false }, { tab: 'envs' });
-  assert.deepEqual(h.log, []);
+  assert.deepEqual(h.log, ['reloadCatalog']);
 });
 
 test('вкладка уже «Расширения» — recheck не срабатывает', async () => {
@@ -448,6 +450,24 @@ const storeForm = (p: Partial<CreateState>): AppState => {
   return { ...cr({ view: 'store-op', mode: 'edit', origName: 'e0', ...p, ...both }), language: 'ru' };
 };
 
+// У включённого окружения `npm/` — симлинк на хранилище: `pi remove` в каталог окружения
+// стёр бы общие файлы, не тронув реестр. Удаление из формы идёт в реестр хранилища.
+test('create (edit): удаление пакета из включённого окружения идёт в реестр хранилища', async () => {
+  const root = tmp();
+  const envDir = join(root, 'e0');
+  const storeDir = join(root, '.store');
+  mkdirSync(join(storeDir, 'npm', 'node_modules', 'pkg-a'), { recursive: true });
+  mkdirSync(envDir, { recursive: true });
+  symlinkSync(join(storeDir, 'npm'), join(envDir, 'npm'), 'dir');
+  const st: AppState = {
+    ...cr({ view: 'removing', mode: 'edit', origName: 'e0', packages: [PKG_A], removing: 'pkg-a', store: true, storeRoots: true }),
+    language: 'ru',
+  };
+  const h = makeLoop(st, root, join(root, 'main-agent'), [ENV0]);
+  await runSideEffects(h.loop, [ENV0], prev({ view: 'confirm-remove' }));
+  assert.deepEqual(h.log, ['doRemove:' + storeDir + ':npm:pkg-a']);
+});
+
 test('store: включение — своя копия в корзину файлов, models.json становится симлинком', async () => {
   const setup = storeSetup();
   writeFileSync(join(setup.envDir, 'models.json'), '{"own":true}');
@@ -474,6 +494,28 @@ test('store: выключение — вместо симлинка обычна
   assert.equal(readFileSync(join(setup.envDir, 'models.json'), 'utf8'), readFileSync(setup.storeFile, 'utf8'));
   assert.ok(h.log.some((l) => l === 'status:' + t('ru', 'status.store-disabled')), h.log.join('|'));
   assert.equal(h.state.create!.store, false);
+});
+
+// Новое окружение создаёт пустые общие корни заранее, поэтому «первое включение» считается по
+// содержимому хранилища, а не по наличию папки: иначе содержимое окружения и main-агента уехало
+// бы в снимок, а симлинк смотрел бы в пустой каталог.
+test('store: пустые общие корни — всё ещё первое включение, своё содержимое переезжает', async () => {
+  const setup = storeSetup();
+  const agentDir = join(setup.root, 'main-agent');
+  mkdirSync(join(setup.root, '.store', 'npm'), { recursive: true });
+  mkdirSync(join(setup.root, '.store', 'git'), { recursive: true });
+  mkdirSync(join(setup.envDir, 'npm', 'node_modules', 'pkg-a'), { recursive: true });
+  mkdirSync(join(agentDir, 'npm', 'node_modules', 'pkg-a'), { recursive: true });
+  writeFileSync(join(agentDir, 'settings.json'), JSON.stringify({ packages: ['npm:pkg-a'] }));
+  const h = storeLoop(setup, storeForm({ store: false }), agentDir);
+  await runSideEffects(h.loop, [setup.env], prev({ view: 'form' }));
+  assert.ok(lstatSync(join(setup.envDir, 'npm')).isSymbolicLink(), 'окружение на общих корнях');
+  assert.ok(lstatSync(join(agentDir, 'npm')).isSymbolicLink(), 'main-агент тоже на общих корнях');
+  assert.ok(existsSync(join(setup.root, '.store', 'npm', 'node_modules', 'pkg-a')), 'содержимое main переехало в хранилище');
+  // Лишняя копия окружения — снимок (ruling: версии задаёт main), но пустое хранилище больше не
+  // «занято»: без правки сюда уезжало содержимое окружения, а main оставался на своей копии.
+  assert.deepEqual(readdirSync(join(setup.root, '.store')).filter((n) => n.includes('.from-')).length, 1);
+  assert.ok(h.log.some((l) => l === 'status:' + t('ru', 'status.store-enabled')), h.log.join('|'));
 });
 
 test('store: каталог main-агента вне root — своя копия в снимок хранилища, не в корзину', async () => {

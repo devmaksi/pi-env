@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert';
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync, readFileSync, readdirSync, existsSync, chmodSync, symlinkSync, lstatSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync, readFileSync, readdirSync, existsSync, symlinkSync, lstatSync, readlinkSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { validateName, createEnvironment, readSettings, updateEnvironment, updateEnvironmentAt, cloneEnvironment } from '../src/create.js';
@@ -481,6 +481,27 @@ test('cloneEnvironment: копирует дерево как есть, вклю�
   }
 });
 
+// Клон включённого окружения обязан оставаться включённым: разыменованные общие корни
+// означают сотни МБ копии и тихий выход из хранилища.
+test('cloneEnvironment: симлинки пакетных корней сохраняются симлинками, битый симлинк не роняет клон', () => {
+  const root = tmpDir();
+  try {
+    const src = makeSource(root, 'src');
+    mkdirSync(join(root, '.store', 'npm', 'node_modules', 'pkg-a'), { recursive: true });
+    symlinkSync(join(root, '.store', 'npm'), join(src, 'npm'), 'dir');
+    symlinkSync(join(src, 'nothing-here'), join(src, 'broken-link'), 'file');
+    const res = cloneEnvironment(root, src, 'dst', ['src'], 'ru');
+    assert.equal(res.ok, true, res.ok ? '' : res.error);
+    const dst = join(root, 'dst');
+    assert.ok(lstatSync(join(dst, 'npm')).isSymbolicLink(), 'общий корень клона — тот же симлинк');
+    assert.equal(readlinkSync(join(dst, 'npm')), join(root, '.store', 'npm'));
+    assert.ok(lstatSync(join(dst, 'broken-link')).isSymbolicLink(), 'битый симлинк перенесён, а не обрывает клон');
+    assert.equal(existsSync(join(dst, 'npm', 'node_modules', 'pkg-a')), true);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test('cloneEnvironment: занятое имя — ошибка, существующее окружение не тронуто', () => {
   const root = tmpDir();
   try {
@@ -521,19 +542,15 @@ test('cloneEnvironment: источника нет — err.not-found', () => {
 
 test('cloneEnvironment: сбой копирования не оставляет неполной копии', () => {
   const root = tmpDir();
-  // Под root (контейнер, root-пользователь) права доступа не работают: chmod 0o000
-  // каталог не закрывает, поэтому сбой вызывает битый симлинк — statSync даёт ENOENT.
-  const asRoot = typeof process.getuid === 'function' && process.getuid() === 0;
   try {
     const src = makeSource(root, 'src');
-    if (asRoot) symlinkSync(join(src, 'gone'), join(src, 'dangling'));
-    else chmodSync(join(src, 'own'), 0o000); // каталог источника невозможно прочитать
-    const res = cloneEnvironment(root, join(root, 'src'), 'dst', ['src'], 'ru');
+    // Сбой вводится инжекцией копии: права доступа под root не работают, а симлинки теперь
+    // сохраняются и копирование не прерывают.
+    const res = cloneEnvironment(root, join(root, 'src'), 'dst', ['src'], 'ru', () => { throw new Error('EIO'); });
     assert.equal(res.ok, false);
     assert.equal(res.ok ? '' : res.error, t('ru', 'err.clone', { name: 'dst' }));
     assert.equal(existsSync(join(root, 'dst')), false);
   } finally {
-    if (!asRoot) chmodSync(join(root, 'src', 'own'), 0o755); // чтобы удаление tmp-каталога прошло
     rmSync(root, { recursive: true, force: true });
   }
 });

@@ -241,6 +241,15 @@ test('pkgNameOfSource: имя пакета из объявления', () => {
   assert.equal(pkgNameOfSource('./tools/pi-local'), 'pi-local');
 });
 
+test('storePackageUsage: имя из package.json (со scope) — тот же ключ сравнения', () => {
+  const root = mkEnvRoot([['dev-supo', ['npm:@sfroment/pi-obsidian']]]);
+  try {
+    assert.deepEqual(storePackageUsage(scan(root)!, '@sfroment/pi-obsidian'), ['dev-supo']);
+  } finally {
+    rmSync(root, { recursive: true });
+  }
+});
+
 test('packageConflicts: одно имя — разные объявления видны', () => {
   const root = mkEnvRoot([
     ['dev-supo', ['npm:pi-open-tui']],

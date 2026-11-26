@@ -3,7 +3,7 @@
  * связывание/разрыв симлинка и снимки общего файла. Вся работа с файлами — здесь,
  * слой эффектов (`run-side.ts`) только вызывает и убирает копии в корзину.
  */
-import { copyFileSync, existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, readlinkSync, rmSync, symlinkSync, unlinkSync, writeFileSync } from 'node:fs';
+import { copyFileSync, existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, readlinkSync, renameSync, rmSync, symlinkSync, unlinkSync, writeFileSync } from 'node:fs';
 import { basename, dirname, isAbsolute, join, resolve } from 'node:path';
 import { t } from './i18n.js';
 import { copyRecursive } from './fscopy.js';
@@ -127,6 +127,22 @@ export function pkgNameOfSource(source: string): string {
   const bare = at > 0 ? spec.slice(0, at) : spec;
   const last = bare.split('/').filter(Boolean).pop() ?? bare;
   return last.replace(/^@/, '');
+}
+
+/**
+ * Есть ли у общего корневого каталога содержимое. Пустая папка — это ещё НЕ «хранилище занято»:
+ * пустые корни создаёт новое окружение (`createEnvironment`), и первое включение должно
+ * переносить в них своё содержимое, а не снимать его копией.
+ */
+export function storeRootHasContent(storeDir: string, root: StoreRoot): boolean {
+  const dir = storePackagesRoot(storeDir, root);
+  let names: string[];
+  try { names = readdirSync(dir); } catch { return false; }
+  if (names.length === 0) return false;
+  if (root === 'npm') {
+    try { return readdirSync(join(dir, 'node_modules')).length > 0; } catch { return false; }
+  }
+  return true;
 }
 
 /** Имя снимка лишней своей копии пакетного корня: `<корень>.from-<окружение>-<мс>` внутри хранилища. */
@@ -423,24 +439,39 @@ export function enableStoreRoots(
   return { ok: true };
 }
 
-/** Выключение: вместо симлинка — обычная копия содержимого хранилища. Своя копия не трогается. */
+/**
+ * Выключение: вместо симлинка — обычная копия содержимого хранилища. Своя копия не трогается.
+ * Копирование (сотни МБ) идёт во временный каталог и только потом становится корнем: провал
+ * (ENOSPC, права) не оставляет окружение с полу-копией, которая по состоянию неотличима от
+ * настоящей. `copy` инжектируется тестами.
+ */
 export function disableStoreRoots(
   envDir: string,
   storeDir: string,
   roots: readonly StoreRoot[],
   lang: string,
+  copy: (src: string, dest: string) => void = copyRecursive,
 ): StoreResult {
   for (const root of roots) {
     const target = storePackagesRoot(storeDir, root);
     const link = envRootDir(envDir, root);
+    const tmp = join(envDir, `.${root}.tmp-${Date.now()}`);
     try {
       const st = lstatSync(link, { throwIfNoEntry: false });
       // Ни симлинка, ни своей копии нет — выключать нечего; обычная копия тоже остаётся как есть.
       if (st === undefined || st === null || !st.isSymbolicLink()) continue;
-      if (!existsSync(target)) return { ok: false, error: t(lang, 'err.store-no-source') };
-      if (st !== undefined && st !== null) unlinkSync(link);
-      copyRecursive(target, link);
+      if (!existsSync(target)) return { ok: false, error: t(lang, 'err.store-root-missing') };
+      try {
+        copy(target, tmp);
+      } catch {
+        // Копия не дошла — окружение остаётся связанным, недобитый временный каталог убирается.
+        rmSync(tmp, { recursive: true, force: true });
+        return { ok: false, error: t(lang, 'err.store-copy') };
+      }
+      unlinkSync(link);
+      renameSync(tmp, link);
     } catch {
+      rmSync(tmp, { recursive: true, force: true });
       return { ok: false, error: t(lang, 'err.link-root') };
     }
   }
@@ -458,6 +489,9 @@ export function repairStoreRootLinks(
     if (rootLinkState(envDir, storeDir, root) !== 'broken') continue;
     try {
       unlinkSync(envRootDir(envDir, root));
+      // Общий корень мог быть удалён (чистка, переезд PI_ENV_STORE): без него «починка» лишь
+      // вернула бы битый симлинк, а клавиша рапортовала бы об успехе.
+      mkdirSync(storePackagesRoot(storeDir, root), { recursive: true });
     } catch {
       return { ok: false, error: t(lang, 'err.link-root') };
     }

@@ -1,4 +1,4 @@
-import { existsSync, lstatSync, mkdirSync, renameSync } from 'node:fs';
+import { existsSync, lstatSync, mkdirSync, renameSync, rmSync } from 'node:fs';
 import { join, relative } from 'node:path';
 import { cloneEnvironment, createEnvironment, readSettings, updateEnvironmentAt } from './create.js';
 import { copyMcpEntry, removeMcpEntry, readMcpServers } from './mcp.js';
@@ -9,10 +9,10 @@ import {
 import {
   archiveEnvModelsIntoStore, enableModelsStorage, restoreFromStoreSnapshot, unlinkModels,
   disableStoreRoots, enableStoreRoots, envRootDir, snapshotStoreManifest, STORE_ROOTS,
-  mergeStoreRegistry, storePackagesRoot, storeRegistrySources, storeRootSnapshotName, type StoreResult, type StoreRoot,
+  mergeStoreRegistry, rootLinkState, storePackagesRoot, storeRegistrySources, storeRootHasContent, storeRootSnapshotName, type StoreResult, type StoreRoot,
 } from './store.js';
 import { t } from './i18n.js';
-import { reducer, makeCtx, storeSummaryOf } from './state.js';
+import { reducer, makeCtx, storeEnableIntent, storeSummaryOf } from './state.js';
 import { buildCreateRequest } from './pi-actions.js';
 import { launchPi } from './pirun.js';
 import type { Catalog } from './catalog.js';
@@ -98,9 +98,14 @@ export async function runSideEffects(loop: Loop, envs: Environment[], prev: Prev
   hooksTrash(loop);
   hooksClone(loop);
   hooksCopy(loop);
-  if (prev.tab !== 'extensions' && loop.state().tab === 'extensions' && loop.state().ext === null &&
-      (loop.state().pkgCheck === 'idle' || loop.state().recheckUpdates)) {
-    loop.checkUpdates(loop.storeDir, 'main');
+  if (prev.tab !== 'extensions' && loop.state().tab === 'extensions' && loop.state().ext === null) {
+    // Список вкладки — реестр хранилища, а его меняет не только pi-env: pi доустанавливает
+    // отсутствующие объявления при старте любого окружённого агента. Поэтому при входе список
+    // перечитывается с диска, а не берётся из снимка запуска.
+    loop.reloadCatalog();
+    if (loop.state().pkgCheck === 'idle' || loop.state().recheckUpdates) {
+      loop.checkUpdates(loop.storeDir, 'main');
+    }
   }
   doSubmit(loop, names);
   doDelete(loop, names);
@@ -161,6 +166,26 @@ function formTargetDir(loop: Loop): string {
   return join(loop.root, cr.origName ?? cr.name);
 }
 
+/**
+ * Каталог удаления пакета из формы. У включённого окружения `npm/` — симлинк на хранилище,
+ * поэтому `pi remove <окружение>` стёр бы общие файлы у всех, оставив реестр и объявления
+ * других окружений нетронутыми (никто не получил бы и `⚠`). Такое удаление — вкладочное:
+ * оно идёт в реестр хранилища, где его видно всем.
+ */
+function formRemoveDir(loop: Loop): string {
+  const dir = formTargetDir(loop);
+  if (cr_is_create_form_main(loop)) return loop.agentDir;
+  try {
+    if (rootLinkState(dir, loop.storeDir, 'npm') === 'linked') return loop.storeDir;
+  } catch { /* каталога нет — решение по прежнему пути */ }
+  return dir;
+}
+
+function cr_is_create_form_main(loop: Loop): boolean {
+  const cr = loop.state().create!;
+  return cr.mode !== 'edit' || cr.main;
+}
+
 /** Каталог, в который форма устанавливает пакеты и добавляет MCP: при создании это уже
  *  созданный каталог нового окружения, при правке основного — каталог main-агента. */
 function formInstallDir(loop: Loop): string {
@@ -176,7 +201,7 @@ function hooksCreate(loop: Loop, prevView: CreateView | null, names: string[]): 
     storeOperation(loop, names);
   } else if (v === 'removing' && prevView === 'confirm-remove') {
     const pkg = cr.removing !== null ? loop.catalog().packages.find((p) => p.name === cr.removing) : undefined;
-    if (pkg) loop.doRemove(formTargetDir(loop), pkg.source);
+    if (pkg) loop.doRemove(formRemoveDir(loop), pkg.source);
   } else if (v === 'updating' && prevView === 'packages') {
     loop.doUpdateAll(formTargetDir(loop), 'create');
   } else if (v === 'packages' && prevView === 'form' && cr.check !== 'checking') {
@@ -290,7 +315,7 @@ function startMcpCheck(loop: Loop, dir: string, scope: 'main' | 'create'): void 
 function storeOperation(loop: Loop, names: string[]): void {
   const cr = loop.state().create!;
   const lang = loop.state().language;
-  const wanted = storeSummaryOf(cr) === 'off';
+  const wanted = storeEnableIntent(storeSummaryOf(cr));
   // При создании окружения файловых операций нет: каталога ещё нет, флаги уйдут в createEnvironment.
   if (cr.mode !== 'edit') {
     loop.setState(reducer(loop.state(), { type: 'store-result', ok: true, message: '', store: wanted, storeRoots: wanted }, rctx(loop, names)));
@@ -312,7 +337,7 @@ function storeOperation(loop: Loop, names: string[]): void {
   let mainNote: string | null = null;
   // Первое включение: общий пакетный корень ещё не создан. Основной агент подключается тем же
   // диалогом — иначе он молча останется на своей копии и версии пакеты разойдутся снова.
-  const fresh = !STORE_ROOTS.some((r) => existsSync(storePackagesRoot(store, r)));
+  const fresh = !STORE_ROOTS.some((r) => storeRootHasContent(store, r));
   const agent = loop.agentDir;
   const linkMain = (): StoreResult =>
     enableStoreRoots(agent, store, STORE_ROOTS, lang, rootsOwn(agent, 'main', store, now, lang));
@@ -323,7 +348,12 @@ function storeOperation(loop: Loop, names: string[]): void {
     // Порядок: сначала общий файл моделей, потом свои пакетные корни (переезд в хранилище
     // при первом включении, иначе снимок `<корень>.from-<окружение>-<мс>`), и лишь затем симлинки.
     // Если у основного агента есть своё содержимое, оно переезжает раньше содержимого окружения.
-    if (fresh && mainHasOwn) linkMain();
+    if (fresh && mainHasOwn) {
+      const m = linkMain();
+      // Провал заметен пользователю: иначе окружение включилось бы на пустое хранилище,
+      // а основной агент остался бы на своей копии версий.
+      if (!m.ok) mainNote = t(lang, 'status.store-main-partial', { v: m.error });
+    }
     res = enableModelsStorage(dir, storeFile, loop.agentDir, lang, now,
         relative(loop.root, dir).startsWith('..')
           ? snapshotOwn(dir, storeFile, now, lang)
@@ -332,7 +362,7 @@ function storeOperation(loop: Loop, names: string[]): void {
       snapshotStoreManifest(store, now);
       res = enableStoreRoots(dir, store, STORE_ROOTS, lang, rootsOwn(dir, envName, store, now, lang));
     }
-    if (res.ok && fresh) {
+    if (res.ok && fresh && mainNote === null) {
       // Реестр хранилища заполняется объявлениями тех, чьё содержимое только что переехало:
       // pi читает `settings.packages` своего каталога, и без реестра каждый пакет выглядел бы
       // «отсутствующим в хранилище».
@@ -389,9 +419,11 @@ function rootsOwn(
       if (st === undefined || st === null) return { ok: true }; // своего содержимого нет — нечего переносить
       if (st.isSymbolicLink() || !st.isDirectory()) return { ok: false, error: t(lang, 'err.link-root') };
       const target = storePackagesRoot(storeDir, root);
-      const dest = existsSync(target) ? join(storeDir, storeRootSnapshotName(root, envName, now)) : target;
+      const busy = storeRootHasContent(storeDir, root);
+      const dest = busy ? join(storeDir, storeRootSnapshotName(root, envName, now)) : target;
       try {
         mkdirSync(storeDir, { recursive: true });
+        if (!busy) rmSync(target, { recursive: true, force: true }); // пустая папка освобождает место под переезд
         renameSync(from, dest);
         snapshots.set(root, dest);
       } catch {

@@ -123,7 +123,7 @@ mentioned by name here rather than linked.
   “Extensions” tab runs with `PI_CODING_AGENT_DIR=<store>`. `scan()` reports the link state per
   root (`EnvDetails.rootLinks`), plus `packageConflicts` (same package name declared by different
   sources) and `missingPackages` (declared but absent from the registry). An environment's own
-  redundant package directory becomes a store snapshot `<store>/<root>.from-<env>@<ms>`, not a
+  redundant package directory becomes a store snapshot `<store>/<root>.from-<env>-<ms>`, not a
   file-trash entry: the file branch only accepts files. Enabling the store links the main agent
   to the shared roots as well.
 - Environment cloning — `docs/superpowers/specs/2026-11-19-env-clone-design.md`:

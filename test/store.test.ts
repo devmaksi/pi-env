@@ -382,6 +382,36 @@ test('repairStoreRootLinks: чинит только broken, linked не трог
   assert.equal(rootLinkState(env, store, 'git'), 'linked');
 });
 
+test('repairStoreRootLinks: удалённый общий корень создаётся, а не остаётся битым симлинком', () => {
+  const { store, env } = mkStoreEnv();
+  rmSync(join(env, 'npm'), { recursive: true });
+  rmSync(join(env, 'git'), { recursive: true });
+  rmSync(join(store, 'npm'), { recursive: true, force: true });  // чистка или переезд PI_ENV_STORE
+  rmSync(join(store, 'git'), { recursive: true, force: true });
+  symlinkSync(join(store, 'npm'), join(env, 'npm'), 'dir');
+  symlinkSync(join(store, 'git'), join(env, 'git'), 'dir');
+  assert.equal(rootLinkState(env, store, 'npm'), 'broken');
+  const r = repairStoreRootLinks(env, store, STORE_ROOTS, 'ru');
+  assert.equal(r.ok, true, r.ok ? '' : r.error);
+  assert.equal(rootLinkState(env, store, 'npm'), 'linked');
+  assert.equal(rootLinkState(env, store, 'git'), 'linked');
+});
+
+test('disableStoreRoots: провал копирования оставляет окружение связанным, без полу-копии', () => {
+  const { store, env } = mkStoreEnv();
+  rmSync(join(env, 'npm'), { recursive: true });
+  rmSync(join(env, 'git'), { recursive: true });
+  mkdirSync(join(store, 'npm', 'node_modules'), { recursive: true });
+  mkdirSync(join(store, 'git'), { recursive: true });
+  symlinkSync(join(store, 'npm'), join(env, 'npm'), 'dir');
+  symlinkSync(join(store, 'git'), join(env, 'git'), 'dir');
+  const r = disableStoreRoots(env, store, STORE_ROOTS, 'ru', () => { throw new Error('ENOSPC'); });
+  assert.equal(r.ok, false);
+  assert.notEqual(r.error, t('ru', 'err.link-root'), 'ошибка копирования отличается от ошибки связывания');
+  assert.equal(rootLinkState(env, store, 'npm'), 'linked', 'окружение остаётся связанным');
+  assert.deepEqual(readdirSync(env).filter((n) => n.includes('tmp')), []);
+});
+
 test('disableStoreRoots: вместо симлинка — обычная копия содержимого хранилища', () => {
   const { store, env } = mkStoreEnv();
   rmSync(join(env, 'npm'), { recursive: true });

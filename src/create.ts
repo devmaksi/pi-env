@@ -294,6 +294,7 @@ export function cloneEnvironment(
   newName: string,
   existing: string[],
   lang: string = 'ru',
+  copy: (src: string, dest: string) => void = copyRecursive,
 ): CreateResult {
   const invalid = validateName(newName, existing, lang);
   if (invalid !== null) return { ok: false, error: invalid };
@@ -303,7 +304,7 @@ export function cloneEnvironment(
   if (existsSync(dst)) return { ok: false, error: t(lang, 'err.name-exists') };
   try {
     mkdirSync(dst);
-    copyRecursive(src, dst);
+    copy(src, dst);
   } catch {
     rmSync(dst, { recursive: true, force: true });
     return { ok: false, error: t(lang, 'err.clone', { name: newName }) };

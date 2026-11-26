@@ -21,7 +21,8 @@ import {
   storeSummaryOf,
 } from './state.js';
 import type { Environment } from './environments.js';
-import { packageConflicts, storePackageUsage } from './environments.js';
+import type { PkgItem } from './catalog.js';
+import { packageConflicts, pkgNameOfSource, storePackageUsage } from './environments.js';
 import { filterPackages } from './catalog.js';
 import { liveMarker, mergeLive } from './mcp.js';
 import { formatTs, trashLabel, type TrashEntry } from './trash.js';
@@ -625,12 +626,13 @@ function extList(ctx: Ctx): Section {
   const right: string[] = [];
   const pkgs = ctx.state.storePackages;
   const conflicts = new Map(packageConflicts(ctx.envs).map((k) => [k.name, k]));
+  const pkey = (p: PkgItem): string => pkgNameOfSource(p.name); // имя из package.json со scope — тот же ключ, что у объявления
   left.push(c(ANSI.bold, ctx.useColor) + t(ctx.lang, 'ext.title.store') + c(ANSI.reset, ctx.useColor));
   if (pkgs.length === 0) left.push(c(ANSI.dim, ctx.useColor) + t(ctx.lang, 'ext.store.empty') + c(ANSI.reset, ctx.useColor));
   pkgs.forEach((p, i) => {
     const users = storePackageUsage(ctx.envs, p.name);
     const text = truncateName(p.name, PKG_NAME_MAX) + '  '
-      + t(ctx.lang, 'ext.store.usage', { n: users.length }) + (conflicts.has(p.name) ? ' ⚠' : '') + '  '
+      + t(ctx.lang, 'ext.store.usage', { n: users.length }) + (conflicts.has(pkey(p)) ? ' ⚠' : '') + '  '
       + pkgMarker(p, ctx.state.pkgCheck, ctx.state.pkgLatest, ctx.lang);
     left.push(listRow(i, ctx.state.selected, text, ctx.L.leftWidth, ctx.useColor));
   });
@@ -653,7 +655,7 @@ function extList(ctx: Ctx): Section {
   }
   const selectedPkg = pkgs[ctx.state.selected];
   if (selectedPkg !== undefined) {
-    const conf = conflicts.get(selectedPkg.name);
+    const conf = conflicts.get(pkey(selectedPkg));
     if (conf !== undefined) {
       right.push(c(ANSI.bold, ctx.useColor) + '⚠ ' + t(ctx.lang, 'ext.store.conflict', { name: conf.name }) + c(ANSI.reset, ctx.useColor));
       for (const d of conf.declarations) right.push('  ' + d.env + ': ' + d.source);

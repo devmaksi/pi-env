@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert';
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, lstatSync, mkdirSync, mkdtempSync, readlinkSync, rmSync, symlinkSync, unlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { run, type RunDeps } from '../src/run.js';
@@ -72,16 +72,95 @@ async function drive(keys: string[], agent: string, deps: RunDeps = {}): Promise
   return { painted, launches, rt };
 }
 
+/** Тот же цикл `run()`, но корень создаётся заранее (нужно для «включить, потом сломать»). */
+async function driveAt(rt: string, keys: string[], agent: string): Promise<{ painted: string[]; launches: Launch[]; rt: string }> {
+  const launches: Launch[] = [];
+  const painted: string[] = [];
+  let cursor = 0;
+  const term: Term = {
+    noColor: true, start() {}, stop() {}, width: () => 100, height: () => 24,
+    key: async () => keys[(cursor = cursor + 1) - 1] ?? 'ctrlc',
+    onResize() {},
+    paint(patch) { if (patch.kind === 'full') painted.push(patch.lines.join('\n')); else painted.push(patch.rows.map((r) => r.text).join('\n')); return true; },
+    screenKnown: () => true, copy() {},
+  };
+  const saved = process.env.PI_CODING_AGENT_DIR;
+  process.env.PI_CODING_AGENT_DIR = agent;
+  try { await run(rt, term, { cmd: okCmd(launches), agentDir: agent }); }
+  finally { if (saved === undefined) delete process.env.PI_CODING_AGENT_DIR; else process.env.PI_CODING_AGENT_DIR = saved; }
+  return { painted, launches, rt };
+}
+
+function driveWithRoot(rt: string, keys: string[], agent: string): Promise<{ painted: string[]; launches: Launch[]; rt: string }> {
+  writeFileSync(join(rt, '.pi-env.json'), JSON.stringify({ ...DEFAULT_APP_SETTINGS, language: 'ru' }));
+  mkdirSync(join(rt, 'e0'), { recursive: true });
+  writeFileSync(join(rt, 'e0', 'settings.json'), JSON.stringify({ packages: ['npm:pi-zentui'] }));
+  mkdirSync(join(rt, 'e0', 'npm', 'node_modules', 'pi-zentui'), { recursive: true });
+  return driveAt(rt, keys, agent);
+}
+
 /** main-агент с пакетом в настройках — список вкладки «Расширения» непустой. */
 function agentWithPackage(): string {
   const agent = tmpDir();
   writeFileSync(join(agent, 'settings.json'), JSON.stringify({ packages: ['npm:pi-zentui'] }));
+  writeFileSync(join(agent, 'models.json'), JSON.stringify({ providers: { p: { models: { m: {} } } } }));
   mkdirSync(join(agent, 'npm', 'node_modules', 'pi-zentui'), { recursive: true });
   writeFileSync(join(agent, 'npm', 'package.json'), JSON.stringify({ dependencies: { 'pi-zentui': '1.0.0' } }));
   return agent;
 }
 
 const piLaunch = (l: Launch): boolean => l.cmd === 'pi';
+
+// Требуемые планом e2e пакетного среза: включение из UI, починка по `R`, выключение.
+test('сквозной: включение хранилища в форме — корни окружения становятся симлинками на хранилище', async () => {
+  const agent = agentWithPackage();
+  const rt0 = tmpDir();
+  const { rt, painted } = await driveWithRoot(rt0, ['down', 'e', 'down', 'down', 'down', 'enter', 'enter', 'ctrlc'], agent);
+  const env = join(rt, 'e0');
+  assert.ok(lstatSync(join(env, 'npm')).isSymbolicLink(), painted.join('\n').slice(-1200));
+  assert.ok(lstatSync(join(env, 'git')).isSymbolicLink());
+  assert.equal(readlinkSync(join(env, 'npm')), join(rt, '.store', 'npm'));
+  assert.ok(existsSync(join(rt, '.store', 'npm', 'node_modules', 'pi-zentui')), 'своё содержимое переехало в хранилище');
+});
+
+test('сквозной: «R» чинит битый симлинк пакетного корня и снимает ⚠ в списке', async () => {
+  const agent = agentWithPackage();
+  const rt0 = tmpDir();
+  // включаем хранилище, затем ломаем симлинк вручную (pi-env видит «broken»)
+  const { rt } = await driveWithRoot(rt0, ['down', 'e', 'down', 'down', 'down', 'enter', 'enter', 'ctrlc'], agent);
+  const env = join(rt, 'e0');
+  unlinkSync(join(env, 'npm'));
+  symlinkSync(join(rt, '.store', 'gone'), join(env, 'npm'), 'dir');
+  const { painted } = await driveAt(rt, ['down', 'r', 'ctrlc'], agent);
+  assert.equal(lstatSync(join(env, 'npm')).isSymbolicLink(), true, painted.join('\n').slice(-1200));
+  assert.equal(readlinkSync(join(env, 'npm')), join(rt, '.store', 'npm'));
+  assert.ok(painted.some((f) => f.includes(t('ru', 'status.store-repaired'))), painted.join('\n').slice(-1200));
+});
+
+test('сквозной: выключение хранилища возвращает окружению обычные копии корней', async () => {
+  const agent = agentWithPackage();
+  const rt0 = tmpDir();
+  await driveWithRoot(rt0, ['down', 'e', 'down', 'down', 'down', 'enter', 'enter', 'ctrlc'], agent);
+  const { rt } = await driveAt(rt0, ['down', 'e', 'down', 'down', 'down', 'enter', 'enter', 'ctrlc'], agent);
+  const env = join(rt, 'e0');
+  assert.equal(lstatSync(join(env, 'npm')).isSymbolicLink(), false);
+  assert.ok(existsSync(join(env, 'npm')), 'копия содержимого на месте');
+});
+
+// Пакет удалён из хранилища, а объявление окружения осталось: окружение обязано быть помечено,
+// а не тихо потерять расширения.
+test('сквозной: объявленного в хранилище пакета нет — окружение помечено ⚠', async () => {
+  const agent = agentWithPackage();
+  const rt = tmpDir();
+  writeFileSync(join(rt, '.pi-env.json'), JSON.stringify({ ...DEFAULT_APP_SETTINGS, language: 'ru' }));
+  mkdirSync(join(rt, 'e0'), { recursive: true });
+  writeFileSync(join(rt, 'e0', 'settings.json'), JSON.stringify({ packages: ['npm:pkg-gone'] }));
+  mkdirSync(join(rt, '.store', 'npm'), { recursive: true });
+  symlinkSync(join(rt, '.store', 'npm'), join(rt, 'e0', 'npm'), 'dir');
+  writeFileSync(join(rt, '.store', 'settings.json'), JSON.stringify({ packages: [] }));
+  const { painted } = await driveAt(rt, ['down', 'ctrlc'], agent);
+  assert.ok(painted.some((f) => f.includes(t('ru', 'envs.problem.missing', { v: 'pkg-gone' }))), painted.join('\n').slice(-2500));
+});
 
 test('сквозной прогон: обновление пакета с вкладки идёт в каталог хранилища', async () => {
   const agent = agentWithPackage();
