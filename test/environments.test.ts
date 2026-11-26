@@ -3,7 +3,7 @@ import assert from 'node:assert';
 import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { basename, join } from 'node:path';
-import { scan, withMain, realEnvNames, packageConflicts, pkgNameOfSource } from '../src/environments.js';
+import { scan, withMain, realEnvNames, packageConflicts, pkgNameOfSource, storePackageUsage } from '../src/environments.js';
 import { symlinkSync } from 'node:fs';
 
 test('scan: отсутствующий корень → null', () => {
@@ -297,3 +297,17 @@ function mkEnvRoot(pkgs: Array<[string, string[]]>): string {
   }
   return root;
 }
+
+test('storePackageUsage: имена окружений, объявивших пакет по имени node_modules', () => {
+  const root = mkEnvRoot([
+    ['dev-supo', ['npm:pi-zentui', 'npm:@sfroment/pi-obsidian']],
+    ['admin', ['npm:pi-zentui@2.0.3']],
+    ['test-ai', []],
+  ]);
+  try {
+    assert.deepEqual(storePackageUsage(scan(root)!, 'pi-zentui'), ['admin', 'dev-supo']);
+    assert.deepEqual(storePackageUsage(scan(root)!, 'pi-ssh-remote'), []);
+  } finally {
+    rmSync(root, { recursive: true });
+  }
+});

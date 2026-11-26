@@ -215,7 +215,7 @@ export function render(a: RenderArgs): string {
   const twoCol = L.twoColumns && state.tab !== 'about' && state.tab !== 'update';
   const inner = width - 2;
   const contentRows = height - CHROME_ROWS; // таб-бар(1) + разделитель(1) + футер(2)
-  const ctx: Ctx = { state, L, useColor, inner, contentRows, twoCol, root, lang: state.language };
+  const ctx: Ctx = { state, envs, L, useColor, inner, contentRows, twoCol, root, lang: state.language };
   const lines: string[] = [];
 
   // Таб-бар

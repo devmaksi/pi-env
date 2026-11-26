@@ -301,7 +301,7 @@ test('форма создания в цвете: ANSI не обрывается'
 test('вкладка «Расширения» без пакетов: пусто и только кнопки', () => {
   const st = { ...initialState(), tab: 'extensions' as const };
   const s = render({ state: st, envs, width: 62, height: 10, ...base });
-  assert.ok(s.includes('— пусто —'));
+  assert.ok(s.includes(t('ru', 'ext.store.empty')), s);
   assert.ok(s.includes('Установить'));
   assert.ok(!s.includes('Источник:'));
 });

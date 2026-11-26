@@ -150,6 +150,14 @@ export function pkgNameOfSource(source: string): string {
   return last.replace(/^@/, '');
 }
 
+/** Имена окружений, объявивших пакет с таким именем в `node_modules` (по всем окружениям). */
+export function storePackageUsage(envs: Environment[], pkgName: string): string[] {
+  return envs
+    .filter((e) => e.details.packages.some((src) => pkgNameOfSource(src) === pkgName))
+    .map((e) => e.name)
+    .sort();
+}
+
 /** Конфликты источников: одно имя пакета объявлено по-разному в разных окружениях. */
 export function packageConflicts(envs: Environment[]): Array<{ name: string; declarations: Array<{ env: string; source: string }> }> {
   const byName = new Map<string, Array<{ env: string; source: string }>>();

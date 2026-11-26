@@ -20,6 +20,7 @@ import {
   UPDATE_ROW_COMMANDS,
 } from './state.js';
 import type { Environment } from './environments.js';
+import { packageConflicts, storePackageUsage } from './environments.js';
 import { filterPackages } from './catalog.js';
 import { liveMarker, mergeLive } from './mcp.js';
 import { formatTs, trashLabel, type TrashEntry } from './trash.js';
@@ -43,6 +44,8 @@ import { t, type StrKey } from './i18n.js';
 /** Контекст рендера: раскладка и параметры кадра, общие для всех секций. */
 export interface Ctx {
   state: AppState;
+  /** Снимок окружений — из него вкладка «Расширения» считает, кто использует пакет. */
+  envs: Environment[];
   L: Layout;
   useColor: boolean;
   inner: number;
@@ -613,10 +616,14 @@ function extList(ctx: Ctx): Section {
   const left: string[] = [];
   const right: string[] = [];
   const pkgs = ctx.state.catalog.packages;
-  left.push(c(ANSI.bold, ctx.useColor) + t(ctx.lang, 'ext.title') + c(ANSI.reset, ctx.useColor));
-  if (pkgs.length === 0) left.push(c(ANSI.dim, ctx.useColor) + t(ctx.lang, 'empty') + c(ANSI.reset, ctx.useColor));
+  const conflicts = new Map(packageConflicts(ctx.envs).map((k) => [k.name, k]));
+  left.push(c(ANSI.bold, ctx.useColor) + t(ctx.lang, 'ext.title.store') + c(ANSI.reset, ctx.useColor));
+  if (pkgs.length === 0) left.push(c(ANSI.dim, ctx.useColor) + t(ctx.lang, 'ext.store.empty') + c(ANSI.reset, ctx.useColor));
   pkgs.forEach((p, i) => {
-    const text = truncateName(p.name, PKG_NAME_MAX) + '  ' + pkgMarker(p, ctx.state.pkgCheck, ctx.state.pkgLatest, ctx.lang);
+    const users = storePackageUsage(ctx.envs, p.name);
+    const text = truncateName(p.name, PKG_NAME_MAX) + '  '
+      + t(ctx.lang, 'ext.store.usage', { n: users.length }) + (conflicts.has(p.name) ? ' ⚠' : '') + '  '
+      + pkgMarker(p, ctx.state.pkgCheck, ctx.state.pkgLatest, ctx.lang);
     left.push(listRow(i, ctx.state.selected, text, ctx.L.leftWidth, ctx.useColor));
   });
   if (pkgs.length > 0) left.push(c(ANSI.dim, ctx.useColor) + '─'.repeat(ctx.L.leftWidth - 2) + c(ANSI.reset, ctx.useColor));
@@ -636,8 +643,21 @@ function extList(ctx: Ctx): Section {
     right.push(t(ctx.lang, 'install.catalog'));
     right.push(t(ctx.lang, 'install.hint.open'));
   }
-  right.push(c(ANSI.dim, ctx.useColor) + t(ctx.lang, 'ext.hint.enter') + c(ANSI.reset, ctx.useColor));
-  right.push(c(ANSI.dim, ctx.useColor) + t(ctx.lang, 'hint.delete') + c(ANSI.reset, ctx.useColor));
+  const selectedPkg = pkgs[ctx.state.selected];
+  if (selectedPkg !== undefined) {
+    const conf = conflicts.get(selectedPkg.name);
+    if (conf !== undefined) {
+      right.push(c(ANSI.bold, ctx.useColor) + '⚠ ' + t(ctx.lang, 'ext.store.conflict', { name: conf.name }) + c(ANSI.reset, ctx.useColor));
+      for (const d of conf.declarations) right.push('  ' + d.env + ': ' + d.source);
+    }
+    for (const u of storePackageUsage(ctx.envs, selectedPkg.name)) right.push('  ' + u);
+  }
+  if (pkgs.length === 0) {
+    right.push(c(ANSI.dim, ctx.useColor) + t(ctx.lang, 'ext.hint.store-off') + c(ANSI.reset, ctx.useColor));
+  } else {
+    right.push(c(ANSI.dim, ctx.useColor) + t(ctx.lang, 'ext.hint.enter') + c(ANSI.reset, ctx.useColor));
+    right.push(c(ANSI.dim, ctx.useColor) + t(ctx.lang, 'hint.delete') + c(ANSI.reset, ctx.useColor));
+  }
   const n = pkgs.length;
   const s = ctx.state.selected;
   const cursorRow =

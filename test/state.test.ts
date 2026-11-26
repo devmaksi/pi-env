@@ -468,3 +468,11 @@ test('create-open в суб-экране формы не срабатывает'
   assert.equal(s.create?.origName, null);
   assert.equal(s.clone, null);
 });
+
+test('вкладка extensions: пустой реестр хранилища — X ничего не удаляет, Enter только по кнопке', () => {
+  const empty = extTabState(0);
+  assert.equal(reducer(empty, 'x', rc(envs(0))).ext, null);
+  const s = reducer({ ...empty, selected: 0 }, 'enter', rc(envs(0)));
+  assert.equal(s.ext!.view, 'updating');
+  assert.equal(s.ext!.updating, null, 'пустой список — это строка «Обновить все», не пакет');
+});
