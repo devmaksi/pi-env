@@ -1,6 +1,6 @@
 import { existsSync, lstatSync, mkdirSync, renameSync } from 'node:fs';
 import { join, relative } from 'node:path';
-import { cloneEnvironment, createEnvironment, updateEnvironmentAt } from './create.js';
+import { cloneEnvironment, createEnvironment, readSettings, updateEnvironmentAt } from './create.js';
 import { copyMcpEntry, removeMcpEntry, readMcpServers } from './mcp.js';
 import {
   deleteTrashFileForever, deleteTrashForever, moveFileToTrash, moveToTrash,
@@ -9,7 +9,7 @@ import {
 import {
   archiveEnvModelsIntoStore, enableModelsStorage, restoreFromStoreSnapshot, unlinkModels,
   disableStoreRoots, enableStoreRoots, envRootDir, snapshotStoreManifest, STORE_ROOTS,
-  storePackagesRoot, storeRegistrySources, storeRootSnapshotName, type StoreResult, type StoreRoot,
+  mergeStoreRegistry, storePackagesRoot, storeRegistrySources, storeRootSnapshotName, type StoreResult, type StoreRoot,
 } from './store.js';
 import { t } from './i18n.js';
 import { reducer, makeCtx, storeSummaryOf } from './state.js';
@@ -309,13 +309,15 @@ function storeOperation(loop: Loop, names: string[]): void {
   const store = loop.storeDir;
   const now = Date.now();
   let res: StoreResult = { ok: true };
+  let mainNote: string | null = null;
   // Первое включение: общий пакетный корень ещё не создан. Основной агент подключается тем же
   // диалогом — иначе он молча останется на своей копии и версии пакеты разойдутся снова.
   const fresh = !STORE_ROOTS.some((r) => existsSync(storePackagesRoot(store, r)));
+  const agent = loop.agentDir;
   const linkMain = (): StoreResult =>
-    enableStoreRoots(agentDirOf(loop), store, STORE_ROOTS, lang, rootsOwn(agentDirOf(loop), 'main', store, now, lang));
+    enableStoreRoots(agent, store, STORE_ROOTS, lang, rootsOwn(agent, 'main', store, now, lang));
   const mainHasOwn = STORE_ROOTS.some((r) => {
-    try { return lstatSync(envRootDir(agentDirOf(loop), r), { throwIfNoEntry: false })?.isDirectory() === true; } catch { return false; }
+    try { return lstatSync(envRootDir(agent, r), { throwIfNoEntry: false })?.isDirectory() === true; } catch { return false; }
   });
   if (wanted) {
     // Порядок: сначала общий файл моделей, потом свои пакетные корни (переезд в хранилище
@@ -330,12 +332,19 @@ function storeOperation(loop: Loop, names: string[]): void {
       snapshotStoreManifest(store, now);
       res = enableStoreRoots(dir, store, STORE_ROOTS, lang, rootsOwn(dir, envName, store, now, lang));
     }
+    if (res.ok && fresh) {
+      // Реестр хранилища заполняется объявлениями тех, чьё содержимое только что переехало:
+      // pi читает `settings.packages` своего каталога, и без реестра каждый пакет выглядел бы
+      // «отсутствующим в хранилище».
+      const declared = [...cr.packages, ...(readSettings(agent)?.packages ?? [])];
+      const reg = mergeStoreRegistry(store, declared, lang);
+      if (!reg.ok) mainNote = reg.error;
+    }
   } else {
     res = disableStoreRoots(dir, store, STORE_ROOTS, lang);
     if (res.ok) res = unlinkModels(dir, storeFile, lang);
   }
-  let mainNote: string | null = null;
-  if (wanted && res.ok && fresh && !(fresh && mainHasOwn)) {
+  if (wanted && res.ok && fresh && !mainHasOwn) {
     const main = linkMain();
     if (!main.ok) mainNote = t(lang, 'status.store-main-partial', { v: main.error });
   }
@@ -364,11 +373,6 @@ function storeOperation(loop: Loop, names: string[]): void {
  * переезжает в хранилище и становится общим, иначе это лишняя копия — снимок внутри
  * хранилища. В файловую корзину каталог класть нельзя (он там не виден).
  */
-/** Каталог основного агента: его пакетные корни подключаются к хранилищу вместе с окружением. */
-function agentDirOf(loop: Loop): string {
-  return loop.agentDir;
-}
-
 function rootsOwn(
   envDir: string, envName: string, storeDir: string, now: number, lang: string,
 ): { move: (root: StoreRoot) => StoreResult; undo: (root: StoreRoot) => void } {

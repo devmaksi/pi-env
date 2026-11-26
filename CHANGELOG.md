@@ -23,8 +23,10 @@ Russian text: [CHANGELOG.ru.md](CHANGELOG.ru.md).
   catalog and the package roots on and off together, moving the environment's own content into
   the store on the first enable (a redundant copy becomes `<store>/<root>.from-<env>-<ms>`, since
   the file-trash branch only accepts files), then placing the symlinks; declarations missing from
-  the registry are installed into the store by a queue of `pi install` commands. On the first
-  enable the main agent joins the shared roots too. `R` on an environment repairs broken model and
+  the registry are installed into the store by a queue of `pi install` commands. The registry
+  itself is seeded on the first enable from the declarations whose content moved into the shared
+  roots (`mergeStoreRegistry`), so an environment does not flag packages it already shares. On the
+  first enable the main agent joins the shared roots too. `R` on an environment repairs broken model and
   package links.
 - Tests: `test/store.test.ts` (root link states, enable/disable/rollback, store snapshots),
   `test/environments.test.ts` (`rootLinks`, `missingPackages`, `packageConflicts`,

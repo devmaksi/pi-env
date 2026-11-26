@@ -9,7 +9,7 @@ import {
   enableModelsStorage, restoreFromStoreSnapshot,
   STORE_ROOTS, storeSettingsFile, storePackagesRoot, envRootDir, rootLinkState,
   storeLinkSummary, snapshotStoreManifest, storeRegistrySources,
-  enableStoreRoots, disableStoreRoots, repairStoreRootLinks,
+  enableStoreRoots, disableStoreRoots, repairStoreRootLinks, mergeStoreRegistry,
 } from '../src/store.js';
 import { t } from '../src/i18n.js';
 
@@ -417,4 +417,29 @@ test('disableStoreRoots: симлинк в несуществующий общи
   symlinkSync(join(store, 'npm'), join(env, 'npm'), 'dir');
   const r = disableStoreRoots(env, store, ['npm'], 'ru');
   assert.equal(r.ok, false);
+});
+
+test('mergeStoreRegistry: первый реестр собирается из объявлений подключённых каталогов', () => {
+  const store = tmpDir();
+  const r = mergeStoreRegistry(store, ['npm:pi-zentui', 'npm:@sfroment/pi-obsidian'], 'ru');
+  assert.equal(r.ok, true, r.error);
+  assert.deepEqual(storeRegistrySources(store), ['npm:pi-zentui', 'npm:@sfroment/pi-obsidian']);
+});
+
+test('mergeStoreRegistry: другие поля реестра сохраняются, дубликаты не плодятся', () => {
+  const store = tmpDir();
+  writeJson(storeSettingsFile(store), { theme: 'dark', packages: ['npm:pi-zentui'] });
+  mergeStoreRegistry(store, ['npm:pi-zentui', 'npm:pi-ssh-remote'], 'ru');
+  const value = JSON.parse(readFileSync(storeSettingsFile(store), 'utf8')) as { theme?: string; packages?: string[] };
+  assert.equal(value.theme, 'dark');
+  assert.deepEqual(value.packages, ['npm:pi-zentui', 'npm:pi-ssh-remote']);
+});
+
+test('mergeStoreRegistry: нечитаемый реестр — ошибка, файл не тронут', () => {
+  const store = tmpDir();
+  writeFileSync(storeSettingsFile(store), '{битый');
+  const before = readFileSync(storeSettingsFile(store), 'utf8');
+  const r = mergeStoreRegistry(store, ['npm:x'], 'ru');
+  assert.equal(r.ok, false);
+  assert.equal(readFileSync(storeSettingsFile(store), 'utf8'), before);
 });

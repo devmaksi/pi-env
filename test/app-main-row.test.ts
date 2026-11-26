@@ -5,6 +5,8 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { DEFAULT_APP_SETTINGS, saveAppSettings } from '../src/appsettings.js';
 import { run } from '../src/run.js';
+import { scan, withMain } from '../src/environments.js';
+import { storeRegistrySources } from '../src/store.js';
 import type { Term } from '../src/terminal.js';
 import type { FramePatch } from '../src/diff.js';
 import { t } from '../src/i18n.js';
@@ -118,9 +120,11 @@ test('app: E правит именно подсвеченную строку, а
 
 test('app: первое включение хранилища на окружении поднимает и основной агент', async () => {
   const root = tmpRoot();
+  writeFileSync(join(root, 'e0', 'settings.json'), JSON.stringify({ packages: ['npm:pi-zentui'] }));
   const agent = mkdtempSync(join(tmpdir(), 'pienv-agent-'));
   dirs.push(agent);
   writeFileSync(join(agent, 'models.json'), '{"providers":{}}');
+  writeFileSync(join(agent, 'settings.json'), JSON.stringify({ packages: ['npm:pi-zentui'] }));
   mkdirSync(join(agent, 'npm', 'node_modules', 'pi-zentui'), { recursive: true });
   mkdirSync(join(agent, 'git'), { recursive: true });
   const saved = process.env.PI_CODING_AGENT_DIR;
@@ -143,4 +147,12 @@ test('app: первое включение хранилища на окруже�
   assert.equal(lstatSync(join(agent, 'npm')).isSymbolicLink(), true, 'основной агент — тоже');
   assert.equal(lstatSync(join(agent, 'git')).isSymbolicLink(), true);
   assert.ok(existsSync(join(root, '.store', 'npm', 'node_modules', 'pi-zentui')), 'своё содержимое main переехало в хранилище');
+  // Реестр хранилища заполнен переехавшими объявлениями — иначе каждое окружение показывало бы
+  // «нет в реестре хранилища» на пакетах, которые уже лежат в общих корнях.
+  const snap = withMain(scan(root, join(root, '.store'))!, agent);
+  const e0 = snap.find((env) => env.name === 'e0')!;
+  assert.deepEqual(e0.details.missingPackages, [], JSON.stringify(e0.details));
+  const main = snap.find((env) => env.main === true)!;
+  assert.deepEqual(main.details.missingPackages, [], JSON.stringify(main.details));
+  assert.deepEqual(storeRegistrySources(join(root, '.store')), ['npm:pi-zentui']);
 });

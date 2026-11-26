@@ -3,7 +3,7 @@
  * связывание/разрыв симлинка и снимки общего файла. Вся работа с файлами — здесь,
  * слой эффектов (`run-side.ts`) только вызывает и убирает копии в корзину.
  */
-import { copyFileSync, existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, readlinkSync, rmSync, symlinkSync, unlinkSync } from 'node:fs';
+import { copyFileSync, existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, readlinkSync, rmSync, symlinkSync, unlinkSync, writeFileSync } from 'node:fs';
 import { basename, dirname, isAbsolute, join, resolve } from 'node:path';
 import { t } from './i18n.js';
 import { copyRecursive } from './fscopy.js';
@@ -83,6 +83,47 @@ export function snapshotStoreManifest(storeDir: string, now: number, keep = 5): 
   for (const file of ['package.json', 'package-lock.json']) {
     snapshotStoreModels(join(npm, file), now, keep);
   }
+}
+
+/**
+ * Реестр хранилища (`<store>/settings.json`): добавляет объявления, которых в нём ещё нет.
+ * При первом включении реестр собирается из объявлений того окружения и основного агента, чьё
+ * содержимое переехало в общие корни, — иначе каждое связанное окружение показывало бы
+ * «нет в реестре хранилища» на пакетах, которые в общие корни уже лежат.
+ * Другие поля файла сохраняются; нечитаемый реестр не перезаписывается.
+ */
+export function mergeStoreRegistry(storeDir: string, sources: readonly string[], lang: string): StoreResult {
+  const file = storeSettingsFile(storeDir);
+  let value: Record<string, unknown> = {};
+  if (existsSync(file)) {
+    try {
+      const parsed: unknown = JSON.parse(readFileSync(file, 'utf8'));
+      if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) return { ok: false, error: t(lang, 'err.store-registry') };
+      value = parsed as Record<string, unknown>;
+    } catch {
+      return { ok: false, error: t(lang, 'err.store-registry') };
+    }
+  }
+  const current = Array.isArray(value.packages) ? value.packages.filter((x): x is string => typeof x === 'string') : [];
+  const merged = [...current];
+  for (const src of sources) if (!merged.some((x) => pkgNameOfSourceShared(x) === pkgNameOfSourceShared(src))) merged.push(src);
+  value.packages = merged;
+  try {
+    mkdirSync(storeDir, { recursive: true });
+    writeFileSync(file, JSON.stringify(value, null, 2) + '\n');
+  } catch {
+    return { ok: false, error: t(lang, 'err.store-registry') };
+  }
+  return { ok: true };
+}
+
+/** Имя пакета в объявлении — для сравнения без префикса и версии (то же, что `pkgNameOfSource` в `environments.ts`). */
+function pkgNameOfSourceShared(source: string): string {
+  const spec = source.startsWith('npm:') ? source.slice(4) : source.startsWith('git:') ? source.slice(4) : source;
+  const at = spec.indexOf('@', spec.startsWith('@') ? 1 : 0);
+  const bare = at > 0 ? spec.slice(0, at) : spec;
+  const last = bare.split('/').filter(Boolean).pop() ?? bare;
+  return last.replace(/^@/, '');
 }
 
 /** Имя снимка лишней своей копии пакетного корня: `<корень>.from-<окружение>-<мс>` внутри хранилища. */
