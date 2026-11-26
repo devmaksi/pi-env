@@ -142,6 +142,28 @@ test('listPackages: npm- и локальные источники, поле pi',
   }
 });
 
+// pi кладёт пакет в npm/node_modules/<имя без версии>, и имя со scope — часть имени:
+// npm:pkg-a@1.2.3 ищет node_modules/pkg-a@1.2.3 — пакет с закреплённой версией
+// исчезал бы из вкладки «Расширения» (и из её счётчиков).
+test('listPackages: объявление npm с версией и scoped-имя находят тот же node_modules', () => {
+  const dir = makeAgentDir();
+  try {
+    makePkg(join(dir, 'npm', 'node_modules'), 'pkg-a', { name: 'pkg-a', version: '1.0.0' });
+    makePkg(join(dir, 'npm', 'node_modules', '@sfroment'), 'pkg-b', { name: '@sfroment/pkg-b', version: '2.0.0' });
+    writeFileSync(join(dir, 'settings.json'),
+      JSON.stringify({ packages: ['npm:pkg-a@1.0.0', 'npm:@sfroment/pkg-b@^2.0'] }));
+    const pkgs = listPackages(dir);
+    assert.equal(pkgs.length, 2);
+    const a = pkgs.find((p) => p.name === 'pkg-a')!;
+    assert.equal(a.source, 'npm:pkg-a@1.0.0');
+    assert.equal(a.path, join(dir, 'npm', 'node_modules', 'pkg-a'));
+    const b = pkgs.find((p) => p.name === '@sfroment/pkg-b')!;
+    assert.equal(b.path, join(dir, 'npm', 'node_modules', '@sfroment', 'pkg-b'));
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test('listSkills: свои + пакетные, имя = каталог скилла', () => {
   const dir = makeAgentDir();
   try {

@@ -159,7 +159,7 @@ test('сквозной: объявленного в хранилище паке�
   symlinkSync(join(rt, '.store', 'npm'), join(rt, 'e0', 'npm'), 'dir');
   writeFileSync(join(rt, '.store', 'settings.json'), JSON.stringify({ packages: [] }));
   const { painted } = await driveAt(rt, ['down', 'ctrlc'], agent);
-  assert.ok(painted.some((f) => f.includes(t('ru', 'envs.problem.missing', { v: 'pkg-gone' }))), painted.join('\n').slice(-2500));
+  assert.ok(painted.some((f) => f.includes(t('ru', 'envs.problem.missing', { v: 'npm:pkg-gone' }))), painted.join('\n').slice(-2500));
 });
 
 test('сквозной прогон: обновление пакета с вкладки идёт в каталог хранилища', async () => {
@@ -199,8 +199,8 @@ test('сквозной: осиротевший пакет помечен, X уб
 interface ResolveFixture { rt: string; store: string; agent: string }
 
 /**
- * Корень с включёнными пакетными корнями и конфликтом одного имени:
- * `npm:pi-open-tui` (dev-supo и основной агент) против `npm:@wangjq4214/pi-open-tui` (dev-vtb).
+ * Корень с включёнными пакетными корнями и конфликтом источников одного пакета:
+ * `npm:pi-open-tui` (dev-supo и основной агент) против `npm:pi-open-tui@0.4.6` (dev-vtb).
  * Реестр хранилища стоит на проигравшем источнике — ровно тот случай, когда
  * «просто переписать объявления» оставило бы пакет неустановленным.
  */
@@ -210,11 +210,11 @@ function conflictRoot(): ResolveFixture {
   const rt = tmpDir();
   writeFileSync(join(rt, '.pi-env.json'), JSON.stringify({ ...DEFAULT_APP_SETTINGS, language: 'ru' }));
   const store = join(rt, '.store');
-  const pkgDir = join(store, 'npm', 'node_modules', '@wangjq4214', 'pi-open-tui');
+  const pkgDir = join(store, 'npm', 'node_modules', 'pi-open-tui');
   mkdirSync(pkgDir, { recursive: true });
-  writeFileSync(join(pkgDir, 'package.json'), JSON.stringify({ name: '@wangjq4214/pi-open-tui', version: '1.0.0' }));
-  writeFileSync(join(store, 'settings.json'), JSON.stringify({ packages: ['npm:@wangjq4214/pi-open-tui'] }));
-  for (const [name, source] of [['dev-supo', 'npm:pi-open-tui'], ['dev-vtb', 'npm:@wangjq4214/pi-open-tui']]) {
+  writeFileSync(join(pkgDir, 'package.json'), JSON.stringify({ name: 'pi-open-tui', version: '0.4.6' }));
+  writeFileSync(join(store, 'settings.json'), JSON.stringify({ packages: ['npm:pi-open-tui@0.4.6'] }));
+  for (const [name, source] of [['dev-supo', 'npm:pi-open-tui'], ['dev-vtb', 'npm:pi-open-tui@0.4.6']]) {
     const dir = join(rt, name);
     mkdirSync(dir, { recursive: true });
     writeFileSync(join(dir, 'settings.json'),
@@ -227,13 +227,15 @@ function conflictRoot(): ResolveFixture {
 const settingsOf = (dir: string): { theme?: string; packages?: string[] } =>
   JSON.parse(readFileSync(join(dir, 'settings.json'), 'utf8')) as { theme?: string; packages?: string[] };
 
-const KEYS_RESOLVE = ['tab', 'S', 'down', 'enter', 'ctrlc'];
+// ↑ по вариантам — уникальные источники, отсортированные по строке объявления:
+// курсор 0 — актуальный `npm:pi-open-tui`, курсор 1 — закреплённый `npm:pi-open-tui@0.4.6`.
+const KEYS_RESOLVE = ['tab', 'S', 'enter', 'ctrlc'];
 
 test('сквозной: S разрешает конфликт — объявления всех окружений группы и основной агент', async () => {
   const fx = conflictRoot();
   const { painted, launches } = await driveAt(fx.rt, KEYS_RESOLVE, fx.agent);
   const all = painted.join('\n');
-  assert.ok(all.includes(t('ru', 'ext.store.conflict', { name: 'pi-open-tui' })), all.slice(0, 1200));
+  assert.ok(all.includes(t('ru', 'ext.store.conflict', { name: 'npm:pi-open-tui' })), all.slice(0, 1200));
   assert.ok(all.includes(t('ru', 'ext.conflict.hint')), all.slice(0, 1200));
   assert.deepEqual(settingsOf(join(fx.rt, 'dev-vtb')).packages, ['npm:pi-open-tui', 'npm:pi-zentui']);
   assert.deepEqual(settingsOf(join(fx.rt, 'dev-supo')).packages, ['npm:pi-open-tui', 'npm:pi-zentui']);
@@ -246,7 +248,7 @@ test('сквозной: хранилище приводится к победи�
   const { launches, painted } = await driveAt(fx.rt, KEYS_RESOLVE, fx.agent);
   const ops = launches.filter((l) => l.cmd === 'pi' && (l.args[0] === 'remove' || l.args[0] === 'install'));
   assert.deepEqual(ops.map((l) => l.args), [
-    ['remove', 'npm:@wangjq4214/pi-open-tui'],
+    ['remove', 'npm:pi-open-tui@0.4.6'],
     ['install', 'npm:pi-open-tui'],
   ], JSON.stringify(launches));
   assert.ok(ops.every((l) => l.agentDir === fx.store), JSON.stringify(ops));
@@ -262,11 +264,11 @@ test('сквозной: после разрешения конфликт исч�
   assert.ok(before.painted.join('\n').includes(conflictRow), before.painted.join('\n').slice(0, 1500));
 
   const { painted } = await driveAt(fx.rt, KEYS_RESOLVE, fx.agent);
-  assert.ok(painted.join('\n').includes(t('ru', 'status.conflict-resolved', { name: 'pi-open-tui', winner: 'npm:pi-open-tui', envs: 3 })), painted.join('\n').slice(-1200));
+  assert.ok(painted.join('\n').includes(t('ru', 'status.conflict-resolved', { name: 'npm:pi-open-tui', winner: 'npm:pi-open-tui', envs: 3 })), painted.join('\n').slice(-1200));
 
   const after = await driveAt(fx.rt, ['tab', 'ctrlc'], fx.agent);
   const frames = after.painted.join('\n');
-  assert.ok(!frames.includes(t('ru', 'ext.store.conflict', { name: 'pi-open-tui' })), frames.slice(0, 1500));
+  assert.ok(!frames.includes(t('ru', 'ext.store.conflict', { name: 'npm:pi-open-tui' })), frames.slice(0, 1500));
   assert.ok(!frames.includes(conflictRow), 'маркер конфликта уходит из строки пакета');
 });
 
@@ -282,7 +284,7 @@ test('сквозной: Esc на экране разрешения снимае�
       resolve({ ok: false, stdout: '', stderr: '', cancelled: true, timedOut: false, timeoutMs });
     }, { once: true }));
   };
-  const { painted } = await driveAt(fx.rt, ['tab', 'S', 'down', 'enter', 'esc', 'ctrlc'], fx.agent, hang);
+  const { painted } = await driveAt(fx.rt, ['tab', 'S', 'enter', 'esc', 'ctrlc'], fx.agent, hang);
   const rem = launched.filter((l) => l.cmd === 'pi' && l.args[0] === 'remove');
   assert.equal(rem.length, 1, JSON.stringify(launched.map((l) => l.args)));
   assert.equal(rem[0].agentDir, fx.store);
@@ -290,6 +292,40 @@ test('сквозной: Esc на экране разрешения снимае�
   assert.equal(launched.filter((l) => l.args[0] === 'install').length, 0, 'отменённая операция не ставит победителя');
   const all = painted.join('\n');
   assert.ok(all.includes(t('ru', 'busy.elapsed', { sec: 0 })), all.slice(-1500));
-  const cancelled = t('ru', 'status.cancelled', { name: 'npm:@wangjq4214/pi-open-tui' });
-  assert.ok(all.includes(t('ru', 'status.conflict-error', { name: 'pi-open-tui', v: cancelled })), all.slice(-1500));
+  const cancelled = t('ru', 'status.cancelled', { name: 'npm:pi-open-tui@0.4.6' });
+  assert.ok(all.includes(t('ru', 'status.conflict-error', { name: 'npm:pi-open-tui', v: cancelled })), all.slice(-1500));
+});
+
+// Победитель уже стоит в реестре хранилища — операций в хранилище не должно быть ни одной
+// (иначе «повтор идемпотентен» означало бы переустановку того же пакета).
+test('сквозной: победитель уже в реестре хранилища — разрешению не нужны операции в хранилище', async () => {
+  const fx = conflictRoot();
+  const { painted, launches } = await driveAt(fx.rt, ['tab', 'S', 'down', 'enter', 'ctrlc'], fx.agent);
+  const ops = launches.filter((l) => l.cmd === 'pi' && (l.args[0] === 'remove' || l.args[0] === 'install'));
+  assert.deepEqual(ops.map((l) => l.args), [], JSON.stringify(launches));
+  assert.deepEqual(settingsOf(join(fx.rt, 'dev-supo')).packages, ['npm:pi-open-tui@0.4.6', 'npm:pi-zentui']);
+  assert.ok(painted.join('\n').includes(t('ru', 'status.conflict-resolved', { name: 'npm:pi-open-tui', winner: 'npm:pi-open-tui@0.4.6', envs: 3 })), painted.join('\n').slice(-1200));
+});
+
+// Пакеты разных издателей — не конфликт: действие обязано молчать, иначе `S` переписал бы
+// окружению объявления пакета, который оно никогда не просило.
+test('сквозной: scoped- и unscoped-объявление одного имени — S ничего не делает', async () => {
+  const agent = tmpDir();
+  writeFileSync(join(agent, 'settings.json'), JSON.stringify({ packages: [] }));
+  const rt = tmpDir();
+  writeFileSync(join(rt, '.pi-env.json'), JSON.stringify({ ...DEFAULT_APP_SETTINGS, language: 'ru' }));
+  const store = join(rt, '.store');
+  mkdirSync(join(store, 'npm', 'node_modules', 'pi-open-tui'), { recursive: true });
+  writeFileSync(join(store, 'settings.json'), JSON.stringify({ packages: ['npm:pi-open-tui'] }));
+  const dir = join(rt, 'dev-vtb');
+  mkdirSync(dir, { recursive: true });
+  writeFileSync(join(dir, 'settings.json'), JSON.stringify({ packages: ['npm:@wangjq4214/pi-open-tui'] }));
+  symlinkSync(join(store, 'npm'), join(dir, 'npm'), 'dir');
+
+  const { painted, launches } = await driveAt(rt, ['tab', 'S', 'ctrlc'], agent);
+  const all = painted.join('\n');
+  assert.ok(all.includes(t('ru', 'ext.title.store')), 'вкладка хранилища открыта, пакет в списке');
+  assert.ok(!all.includes(t('ru', 'ext.conflict.title')), 'суб-экран выбора победителя не открыт');
+  assert.equal(launches.filter((l) => l.cmd === 'pi').length, 0, JSON.stringify(launches));
+  assert.deepEqual(settingsOf(dir).packages, ['npm:@wangjq4214/pi-open-tui'], 'объявление другого пакета не тронуто');
 });

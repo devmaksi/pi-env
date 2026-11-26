@@ -48,21 +48,32 @@ test('вкладка «Расширения»: заголовок хранили
 });
 
 test('вкладка «Расширения»: конфликт источников помечен в списке и в инфо-панели', () => {
+  const envs = [env('dev-supo', ['npm:pi-open-tui']), env('dev-vtb', ['npm:pi-open-tui@0.4.6'])];
+  const state = { ...st, storePackages: [pkg('pi-open-tui')] };
+  const s = render({ state, envs, width: 90, height: 20, ...base });
+  assert.ok(s.includes(t('ru', 'ext.store.conflict', { name: 'npm:pi-open-tui' })), s);
+  assert.ok(s.includes('npm:pi-open-tui@0.4.6'), s);
+});
+
+// Имя из package.json всегда со scope — сравнение идёт по источнику объявления, поэтому
+// счётчик, конфликт и предупреждение при удалении работают и на scoped-пакетах.
+test('вкладка «Расширения»: scoped-пакет считает окружения и конфликт по своему источнику', () => {
+  const envs = [env('dev-supo', ['npm:@wangjq4214/pi-open-tui']), env('dev-vtb', ['npm:@wangjq4214/pi-open-tui@0.4.6'])];
+  const state = { ...st, storePackages: [pkg('@wangjq4214/pi-open-tui')] };
+  const s = render({ state, envs, width: 110, height: 20, ...base });
+  assert.ok(s.includes(t('ru', 'ext.store.usage', { n: 2 })), s);
+  assert.ok(s.includes(t('ru', 'ext.store.conflict', { name: 'npm:@wangjq4214/pi-open-tui' })), s);
+});
+
+// То же последнее имя у другого издателя — другой пакет pi (разные node_modules):
+// ни общего счётчика, ни конфликта источников.
+test('вкладка «Расширения»: scoped- и unscoped-объявление — разные пакеты', () => {
   const envs = [env('dev-supo', ['npm:pi-open-tui']), env('dev-vtb', ['npm:@wangjq4214/pi-open-tui'])];
   const state = { ...st, storePackages: [pkg('pi-open-tui')] };
   const s = render({ state, envs, width: 90, height: 20, ...base });
-  assert.ok(s.includes(t('ru', 'ext.store.conflict', { name: 'pi-open-tui' })), s);
-  assert.ok(s.includes('npm:@wangjq4214/pi-open-tui'), s);
-});
-
-// package.json всегда отдаёт имя со scope — сравнение должен давать один и тот же ключ,
-// иначе счётчик, конфликт и предупреждение при удалении молчат на scoped-пакетах.
-test('вкладка «Расширения»: scoped-имя пакета из package.json считает окружения и конфликт', () => {
-  const envs = [env('dev-supo', ['npm:pi-open-tui']), env('dev-vtb', ['npm:@wangjq4214/pi-open-tui'])];
-  const state = { ...st, storePackages: [pkg('@wangjq4214/pi-open-tui')] };
-  const s = render({ state, envs, width: 90, height: 20, ...base });
-  assert.ok(s.includes(t('ru', 'ext.store.usage', { n: 2 })), s);
-  assert.ok(s.includes(t('ru', 'ext.store.conflict', { name: 'pi-open-tui' })), s);
+  assert.ok(s.includes(t('ru', 'ext.store.usage', { n: 1 })), s);
+  assert.ok(!s.includes(t('ru', 'ext.store.conflict', { name: 'npm:pi-open-tui' })), s);
+  assert.ok(!s.includes(t('ru', 'ext.store.conflict', { name: 'pi-open-tui' })), s);
 });
 
 test('пустое хранилище: пустой список с подсказкой, операции недоступны', () => {
@@ -164,7 +175,7 @@ test('подтверждение удаления осиротевшего па�
 // Действие «разрешить конфликт одним действием»: без подсказки в инфо-панели о нём
 // нельзя догадаться, а на пакете без конфликта она была бы обманкой.
 test('конфликт источников: подсказка «S — выбрать источник-победитель» только у конфликта', () => {
-  const conf = [env('dev-supo', ['npm:pi-open-tui']), env('dev-vtb', ['npm:@wangjq4214/pi-open-tui'])];
+  const conf = [env('dev-supo', ['npm:pi-open-tui']), env('dev-vtb', ['npm:pi-open-tui@0.4.6'])];
   const withConflict = render({
     state: { ...st, storePackages: [pkg('pi-open-tui')] }, envs: conf, width: 90, height: 20, ...base,
   });
@@ -175,35 +186,46 @@ test('конфликт источников: подсказка «S — выбр
     width: 90, height: 20, ...base,
   });
   assert.ok(!clean.includes(t('ru', 'ext.conflict.hint')), clean);
+  // пакет другого издателя с тем же последним именем — другой пакет: подсказки нет
+  const other = render({
+    state: { ...st, storePackages: [pkg('pi-open-tui')] },
+    envs: [env('dev-supo', ['npm:pi-open-tui']), env('dev-vtb', ['npm:@wangjq4214/pi-open-tui'])],
+    width: 90, height: 20, ...base,
+  });
+  assert.ok(!other.includes(t('ru', 'ext.conflict.hint')), other);
 });
 
 // 4 объявления — 2 источника: суб-экран выбирает источник, а не строку на окружение.
 test('суб-экран выбора победителя: уникальные источники и окружения в инфо-панели', () => {
   const envs = [
     env('dev-java', ['npm:pi-open-tui']), env('dev-supo', ['npm:pi-open-tui']),
-    env('search', ['npm:pi-open-tui']), env('dev-vtb', ['npm:@wangjq4214/pi-open-tui']),
+    env('search', ['npm:pi-open-tui']), env('dev-vtb', ['npm:pi-open-tui@0.4.6']),
   ];
-  const state = { ...st, ext: freshExt({ view: 'resolve', conflictName: 'pi-open-tui' }) };
-  const s = render({ state, envs, width: 90, height: 20, ...base });
-  assert.ok(s.includes(t('ru', 'ext.conflict.title', { name: 'pi-open-tui' })), s);
-  assert.equal((s.match(/npm:pi-open-tui/g) ?? []).length, 1, s);
-  assert.ok(s.includes('npm:@wangjq4214/pi-open-tui'), s);
-  assert.ok(s.includes(t('ru', 'ext.conflict.envs', { v: 'dev-vtb' })), s);
+  const state = { ...st, ext: freshExt({ view: 'resolve', conflictName: 'npm:pi-open-tui' }) };
+  // ширина 110: список источников длинный, и «Этот источник объявили: …» не должен обрезаться
+  const s = render({ state, envs, width: 110, height: 20, ...base });
+  // заголовок суб-экрана обрезается шириной колонки — проверяем идентичность в кавычках
+  assert.ok(s.includes('«npm:pi-open-tui»'), s);
+  // варианта два — уникальных источника, а не четыре объявления: закреплённый в кадре один раз
+  assert.equal((s.match(/npm:pi-open-tui@0\.4\.6/g) ?? []).length, 1, s);
+  assert.ok(s.includes(t('ru', 'ext.conflict.envs', { v: 'dev-java, dev-supo, search' })), s);
+  // окружения другого варианта видны только когда курсор на нём (тест ниже)
+  assert.ok(!s.includes(t('ru', 'ext.conflict.envs', { v: 'dev-vtb' })), s);
   assert.ok(s.includes(t('ru', 'ext.conflict.apply')), s);
   assert.ok(s.includes(t('ru', 'hint.confirm')), s);
 });
 
 test('суб-экран выбора победителя: курсор переводится по вариантам', () => {
-  const envs = [env('dev-supo', ['npm:pi-open-tui']), env('dev-vtb', ['npm:@wangjq4214/pi-open-tui'])];
+  const envs = [env('dev-supo', ['npm:pi-open-tui']), env('dev-vtb', ['npm:pi-open-tui@0.4.6'])];
   for (const cursor of [0, 1]) {
-    const state = { ...st, ext: freshExt({ view: 'resolve', conflictName: 'pi-open-tui', cursor }) };
+    const state = { ...st, ext: freshExt({ view: 'resolve', conflictName: 'npm:pi-open-tui', cursor }) };
     const s = render({ state, envs, width: 90, height: 20, ...base });
-    assert.ok(s.includes('> ' + ['npm:@wangjq4214/pi-open-tui', 'npm:pi-open-tui'][cursor]), `cursor=${cursor}: ${s}`);
+    assert.ok(s.includes('> ' + ['npm:pi-open-tui', 'npm:pi-open-tui@0.4.6'][cursor]), `cursor=${cursor}: ${s}`);
   }
 });
 
 test('экран приведения хранилища: текст операции и подсказка отмены', () => {
-  const state = { ...st, ext: freshExt({ view: 'resolving', conflictName: 'pi-open-tui', resolving: 'npm:pi-open-tui' }) };
+  const state = { ...st, ext: freshExt({ view: 'resolving', conflictName: 'npm:pi-open-tui', resolving: 'npm:pi-open-tui' }) };
   const s = render({ state, envs: [env('dev-supo', ['npm:pi-open-tui'])], width: 90, height: 20, ...base });
   assert.ok(s.includes(t('ru', 'busy.resolving', { name: 'npm:pi-open-tui' })), s);
   assert.ok(s.includes(t('ru', 'hint.kill')), s);
@@ -212,13 +234,13 @@ test('экран приведения хранилища: текст опера�
 test('кадр суб-экрана выбора источника: ровно height строк фиксированной ширины', () => {
   const envs = [
     env('dev-java', ['npm:pi-open-tui']), env('dev-supo', ['npm:pi-open-tui']),
-    env('search', ['npm:pi-open-tui']), env('dev-vtb', ['npm:@wangjq4214/pi-open-tui']),
+    env('search', ['npm:pi-open-tui']), env('dev-vtb', ['npm:pi-open-tui@0.4.6']),
   ];
   for (const view of ['resolve', 'resolving'] as const) {
     for (const width of [40, 62, 90]) {
       const state = {
         ...st,
-        ext: freshExt({ view, conflictName: 'pi-open-tui', resolving: 'npm:@wangjq4214/pi-open-tui', cursor: 1 }),
+        ext: freshExt({ view, conflictName: 'npm:pi-open-tui', resolving: 'npm:pi-open-tui@0.4.6', cursor: 1 }),
       };
       const s = render({ state, envs, width, height: 20, ...base });
       const lines = s.split('\n');

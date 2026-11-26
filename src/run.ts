@@ -2,7 +2,7 @@ import { existsSync, writeSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { withShutdown } from './shutdown.js';
-import { packageConflicts, pkgNameOfSource, realEnvNames, type Environment, type PackageConflict } from './environments.js';
+import { packageConflicts, pkgIdentity, realEnvNames, type Environment, type PackageConflict } from './environments.js';
 import { createScanCache } from './env-cache.js';
 import { repairModelsLink, repairStoreRootLinks, rewritePackages, storeModelsFile, storeRegistrySources, storeRoot, STORE_ROOTS, type StoreResult } from './store.js';
 import { loadAppSettings, saveAppSettings } from './appsettings.js';
@@ -369,7 +369,7 @@ export async function run(root: string, term: Term = createTerm(), deps: RunDeps
       return;
     }
     const envs = load().envs;
-    const group = envs.filter((e) => e.details.packages.some((s) => pkgNameOfSource(s) === name));
+    const group = envs.filter((e) => e.details.packages.some((s) => pkgIdentity(s) === name));
     try {
       for (const e of group) patchSettings(e.path, { packages: rewritePackages(e.details.packages, name, winner) });
     } catch (err) {
@@ -380,7 +380,7 @@ export async function run(root: string, term: Term = createTerm(), deps: RunDeps
     cache.invalidate(); // settings.json окружений группы переписаны
 
     const registry = storeRegistrySources(storeDir);
-    const losers = registry.filter((s) => pkgNameOfSource(s) === name && s !== winner);
+    const losers = registry.filter((s) => pkgIdentity(s) === name && s !== winner);
     const needInstall = !registry.includes(winner);
     const got = await storeLock.attempt(storeDir, async (): Promise<string | null> => {
       for (const loser of losers) {

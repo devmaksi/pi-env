@@ -7,9 +7,9 @@ import {
 import { conflictSourcesOf } from '../src/state-ext.js';
 
 /**
- * Вкладка «Расширения» как реестр хранилища: имя пакета из package.json может отличаться
- * от объявления (`@wangjq4214/pi-open-tui` vs `npm:pi-open-tui`) — суб-экран обязан открыться
- * и по scoped-имени, и по обычному.
+ * Вкладка «Расширения» как реестр хранилища: группа конфликта ищется по идентичности пакета
+ * как у pi (`npm:pi-open-tui` и `npm:pi-open-tui@0.4.6` — один пакет, а `npm:@wangjq4214/pi-open-tui` —
+ * уже другой), поэтому суб-экран открывается по объявлению из реестра хранилища.
  */
 const pkg = (name: string): PkgItem => ({
   source: 'npm:' + name, name, path: '/store/npm/node_modules/' + name,
@@ -17,12 +17,12 @@ const pkg = (name: string): PkgItem => ({
 });
 
 const conflict: PackageConflict = {
-  name: 'pi-open-tui',
+  name: 'npm:pi-open-tui',
   declarations: [
     { env: 'dev-java', source: 'npm:pi-open-tui' },
     { env: 'dev-supo', source: 'npm:pi-open-tui' },
     { env: 'search', source: 'npm:pi-open-tui' },
-    { env: 'dev-vtb', source: 'npm:@wangjq4214/pi-open-tui' },
+    { env: 'dev-vtb', source: 'npm:pi-open-tui@0.4.6' },
   ],
 };
 
@@ -34,17 +34,24 @@ const rc = (conflicts: PackageConflict[] = [conflict]): ReducerCtx =>
 test('S на пакете с конфликтом — суб-экран выбора источника', () => {
   const s = reducer(tab(), 'S', rc());
   assert.equal(s.ext!.view, 'resolve');
-  assert.equal(s.ext!.conflictName, 'pi-open-tui');
+  assert.equal(s.ext!.conflictName, 'npm:pi-open-tui');
   assert.equal(s.ext!.cursor, 0);
 });
 
-// Имя из package.json всегда со scope — ключ сравнения обязан быть тем же, иначе
-// суб-экран не откроется на scoped-пакетах (тот же класс дефектов, что со счётчиком «N окр.»).
-test('S на scoped-имени пакета — тот же конфликт открывается', () => {
-  const state = { ...initialState(undefined, [pkg('@wangjq4214/pi-open-tui')]), tab: 'extensions' as const };
-  const s = reducer(state, 'S', rc());
+// Объявление реестра с версией — та же идентичность: суб-экран обязан открыться и на нём.
+test('S на объявлении с версией — тот же конфликт открывается', () => {
+  const at = { ...initialState(undefined, [{ ...pkg('pi-open-tui'), source: 'npm:pi-open-tui@0.4.6' }]), tab: 'extensions' as const };
+  const s = reducer(at, 'S', rc());
   assert.equal(s.ext!.view, 'resolve');
-  assert.equal(s.ext!.conflictName, 'pi-open-tui');
+  assert.equal(s.ext!.conflictName, 'npm:pi-open-tui');
+});
+
+// Пакет другого издателя — не группа конфликта одного имени (см. environments.test.ts),
+// поэтому `S` не имеет права открывать разрешение и переписывать его объявления.
+test('S на пакете другого издателя (группы конфликта нет) — ничего', () => {
+  const state = { ...initialState(undefined, [pkg('@wangjq4214/pi-open-tui')]), tab: 'extensions' as const };
+  const s = reducer(state, 'S', rc([]));
+  assert.equal(s.ext, null);
 });
 
 test('S на пакете без конфликта — ничего', () => {
@@ -81,7 +88,7 @@ test('суб-экран: Enter — resolving с выбранным источн�
   const open = reducer(tab(), 'S', rc());
   const s = reducer({ ...open, ext: { ...open.ext!, cursor: 1 } }, 'enter', rc());
   assert.equal(s.ext!.view, 'resolving');
-  assert.equal(s.ext!.resolving, 'npm:pi-open-tui');
+  assert.equal(s.ext!.resolving, 'npm:pi-open-tui@0.4.6');
 });
 
 test('суб-экран: Esc до выбора — закрытие (экрана процесса это не касается)', () => {
@@ -115,10 +122,11 @@ test('busyProcessView: resolving — процесс (Esc и «⏳ N с» раб�
 });
 
 test('conflictSourcesOf: конфликта в снимке нет — пустой список вариантов', () => {
-  assert.deepEqual(conflictSourcesOf(rc(), 'pi-open-tui'), [
-    { source: 'npm:@wangjq4214/pi-open-tui', envs: ['dev-vtb'] },
+  assert.deepEqual(conflictSourcesOf(rc(), 'npm:pi-open-tui'), [
     { source: 'npm:pi-open-tui', envs: ['dev-java', 'dev-supo', 'search'] },
+    { source: 'npm:pi-open-tui@0.4.6', envs: ['dev-vtb'] },
   ]);
-  assert.deepEqual(conflictSourcesOf(rc(), 'pi-zentui'), []);
+  assert.deepEqual(conflictSourcesOf(rc(), 'npm:pi-zentui'), []);
+  assert.deepEqual(conflictSourcesOf(rc(), 'pi-open-tui'), []);
   assert.deepEqual(conflictSourcesOf(rc(), null), []);
 });

@@ -106,7 +106,7 @@ export function mergeStoreRegistry(storeDir: string, sources: readonly string[],
   }
   const current = Array.isArray(value.packages) ? value.packages.filter((x): x is string => typeof x === 'string') : [];
   const merged = [...current];
-  for (const src of sources) if (!merged.some((x) => pkgNameOfSource(x) === pkgNameOfSource(src))) merged.push(src);
+  for (const src of sources) if (!merged.some((x) => pkgIdentity(x) === pkgIdentity(src))) merged.push(src);
   value.packages = merged;
   try {
     mkdirSync(storeDir, { recursive: true });
@@ -118,28 +118,75 @@ export function mergeStoreRegistry(storeDir: string, sources: readonly string[],
 }
 
 /**
- * Имя пакета из объявления (`npm:name@1.2`, `@scope/name`, `git:host/org/name@ref` → `name`):
- * им же сравниваются объявления в реестре, в `settings.packages` и в `node_modules`.
+ * Имя npm-пакета из объявления (`npm:@scope/name@1.2.3` → `@scope/name`) — так же его
+ * разбирает pi (`parseNpmSpec`) и этим именем пакет лежит в `npm/node_modules/<имя>`:
+ * scope является частью имени пакета.
  */
-export function pkgNameOfSource(source: string): string {
-  const spec = source.startsWith('npm:') ? source.slice(4) : source.startsWith('git:') ? source.slice(4) : source;
+export function npmNameOfSource(source: string): string {
+  const spec = source.startsWith('npm:') ? source.slice(4) : source;
   const at = spec.indexOf('@', spec.startsWith('@') ? 1 : 0);
-  const bare = at > 0 ? spec.slice(0, at) : spec;
-  const last = bare.split('/').filter(Boolean).pop() ?? bare;
-  return last.replace(/^@/, '');
+  return at > 0 ? spec.slice(0, at) : spec;
+}
+
+/**
+ * Путь git-репозитория из объявления без ref и без `.git` (`git:github.com/a/b@v1` →
+ * `github.com/a/b`): pi считает один репозиторий одним пакетом независимо от ref и
+ * от протокола (`getPackageIdentity` → `git:${host}/${path}`). Формы с протоколом и
+ * scp-подобную разбираем так же; полный парсер pi не копируем.
+ */
+export function gitPathOfSource(source: string): string {
+  const spec = source.startsWith('git:') ? source.slice(4).trim() : source.trim();
+  const scp = spec.match(/^git@([^:]+):(.+)$/);
+  if (scp !== null) return gitPath(scp[1] ?? '', scp[2] ?? '');
+  const proto = spec.match(/^(?:https?|ssh|git):\/\/(?:[^/@]*@)?([^/]+)\/(.*)$/);
+  if (proto !== null) return gitPath(proto[1] ?? '', proto[2] ?? '');
+  const slash = spec.indexOf('/');
+  if (slash < 0) return stripGitRef(spec);
+  return gitPath(spec.slice(0, slash), spec.slice(slash + 1));
+}
+
+function gitPath(host: string, path: string): string {
+  const h = stripGitRef(host);
+  const p = stripGitRef(path).replace(/^\/+/, '').replace(/\.git$/, '');
+  return p === '' ? h : `${h}/${p}`;
+}
+
+/** ref у git — всё после первого `@` в пути (так же режет `splitRef` в pi). */
+function stripGitRef(value: string): string {
+  const at = value.indexOf('@');
+  return at > 0 ? value.slice(0, at) : value;
+}
+
+/**
+ * Идентичность пакета — та же, по которой pi различает установленные пакеты
+ * (`getPackageIdentity`): `npm:<имя со scope>` (версия отброшена),
+ * `git:<host>/<путь>` (ref отброшен), иначе `path:<строка объявления>`.
+ * Ими сравниваются объявления `settings.packages`, реестр `<store>/settings.json`
+ * и строки вкладки «Расширения».
+ *
+ * Scope — часть имени: `npm:pi-open-tui` и `npm:@wangjq4214/pi-open-tui` у pi лежат
+ * в разных `npm/node_modules/<имя>`, это РАЗНЫЕ пакеты, а не конфликт источников.
+ * Относительные локальные пути сравниваются по записи объявления: базу (каталог агента)
+ * чистый слой не знает, поэтому разная запись — разные пакеты (консервативно).
+ */
+export function pkgIdentity(source: string): string {
+  const spec = source.trim();
+  if (spec.startsWith('npm:')) return `npm:${npmNameOfSource(spec)}`;
+  if (spec.startsWith('git:')) return `git:${gitPathOfSource(spec)}`;
+  return `path:${spec}`;
 }
 
 /**
  * Новый `settings.packages` окружения после разрешения конфликта источников:
- * все объявления с именем `key` свёрнуты в одно — `winner` (на месте первого из них),
- * прочие объявления сохранены в исходном порядке. Так «победитель» становится
- * единственным объявлением этого пакета во всех окружениях группы.
+ * все объявления с идентичностью `identity` свёрнуты в одно — `winner` (на месте
+ * первого из них), прочие объявления сохранены в исходном порядке. Объявления других
+ * пакетов (другая идентичность) не меняются никогда — см. `pkgIdentity`.
  */
-export function rewritePackages(packages: readonly string[], key: string, winner: string): string[] {
+export function rewritePackages(packages: readonly string[], identity: string, winner: string): string[] {
   const out: string[] = [];
   let placed = false;
   for (const src of packages) {
-    if (pkgNameOfSource(src) !== key) {
+    if (pkgIdentity(src) !== identity) {
       out.push(src);
       continue;
     }

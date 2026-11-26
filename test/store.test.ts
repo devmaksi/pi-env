@@ -476,37 +476,42 @@ test('mergeStoreRegistry: нечитаемый реестр — ошибка, ф
 
 // ─── разрешение конфликта источников пакета одним действием ──────────
 
-test('rewritePackages: все объявления имени свёрнуты в победителя, прочие — в порядке', () => {
+test('rewritePackages: все объявления идентичности свёрнуты в победителя, прочие — в порядке', () => {
   const got = rewritePackages(
-    ['npm:pi-zentui', 'npm:pi-open-tui', 'npm:@sfroment/pi-obsidian', 'npm:pi-ssh-remote'],
-    'pi-open-tui', 'npm:@wangjq4214/pi-open-tui',
+    ['npm:pi-zentui', 'npm:pi-open-tui', 'npm:pi-open-tui@0.4.6', 'npm:@sfroment/pi-obsidian'],
+    'npm:pi-open-tui', 'npm:pi-open-tui@0.4.6',
   );
-  assert.deepEqual(got, [
-    'npm:pi-zentui', 'npm:@wangjq4214/pi-open-tui', 'npm:@sfroment/pi-obsidian', 'npm:pi-ssh-remote',
-  ]);
+  assert.deepEqual(got, ['npm:pi-zentui', 'npm:pi-open-tui@0.4.6', 'npm:@sfroment/pi-obsidian']);
 });
 
-// Ключ имени не различает scope: «пишем по ключу» обязано убирать и scoped-, и unscoped-объявление,
-// иначе в settings.packages останутся оба источника и конфликт вернётся на следующем скане.
-test('rewritePackages: scoped- и unscoped-объявление одного имени заменяются одним победителем', () => {
+// Пакет другого издателя — другая идентичность pi. Разрешение конфликта одного имени не
+// имеет права трогать его объявление: иначе `S` ставит окружениям чужой пакет.
+test('rewritePackages: объявление другого пакета (другой scope) не трогается', () => {
   assert.deepEqual(
-    rewritePackages(['npm:@wangjq4214/pi-open-tui', 'npm:pi-open-tui'], 'pi-open-tui', 'npm:pi-open-tui'),
-    ['npm:pi-open-tui'],
+    rewritePackages(['npm:@wangjq4214/pi-open-tui', 'npm:pi-open-tui'], 'npm:pi-open-tui', 'npm:pi-open-tui@0.4.6'),
+    ['npm:@wangjq4214/pi-open-tui', 'npm:pi-open-tui@0.4.6'],
   );
   assert.deepEqual(
-    rewritePackages(['npm:pi-open-tui', 'npm:@wangjq4214/pi-open-tui'], 'pi-open-tui', 'npm:@wangjq4214/pi-open-tui'),
-    ['npm:@wangjq4214/pi-open-tui'],
+    rewritePackages(['npm:pi-open-tui', 'npm:@wangjq4214/pi-open-tui'], 'npm:@wangjq4214/pi-open-tui', 'npm:@wangjq4214/pi-open-tui@0.4.6'),
+    ['npm:pi-open-tui', 'npm:@wangjq4214/pi-open-tui@0.4.6'],
   );
 });
 
-test('rewritePackages: объявленного имени нет — массив не меняется', () => {
-  assert.deepEqual(rewritePackages(['npm:pi-zentui'], 'pi-open-tui', 'npm:pi-open-tui'), ['npm:pi-zentui']);
+test('rewritePackages: объявленной идентичности нет — массив не меняется', () => {
+  assert.deepEqual(rewritePackages(['npm:pi-zentui'], 'npm:pi-open-tui', 'npm:pi-open-tui'), ['npm:pi-zentui']);
 });
 
-test('rewritePackages: дубликаты объявления и git-объявление того же имени сворачиваются', () => {
+// npm и git с одним последним сегментом имени — разные пакеты pi; сворачиваются только
+// дубликаты одной идентичности (pin против актуальной версии, ref против HEAD).
+test('rewritePackages: дубликаты одной идентичности сворачиваются, git-объявление — нет', () => {
   assert.deepEqual(
     rewritePackages(['git:github.com/x/pi-open-tui@v1', 'npm:pi-open-tui@1.2.3', 'npm:pi-open-tui'],
-      'pi-open-tui', 'npm:pi-open-tui'),
-    ['npm:pi-open-tui'],
+      'npm:pi-open-tui', 'npm:pi-open-tui'),
+    ['git:github.com/x/pi-open-tui@v1', 'npm:pi-open-tui'],
+  );
+  assert.deepEqual(
+    rewritePackages(['git:github.com/x/pi-open-tui@v1', 'git:github.com/x/pi-open-tui'],
+      'git:github.com/x/pi-open-tui', 'git:github.com/x/pi-open-tui@v1'),
+    ['git:github.com/x/pi-open-tui@v1'],
   );
 });

@@ -3,7 +3,7 @@ import assert from 'node:assert';
 import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { basename, join } from 'node:path';
-import { conflictSources, scan, withMain, realEnvNames, packageConflicts, pkgNameOfSource, storeOrphanNames, storePackageUsage } from '../src/environments.js';
+import { conflictSources, scan, withMain, realEnvNames, packageConflicts, pkgIdentity, storeOrphanNames, storePackageUsage } from '../src/environments.js';
 import { rewritePackages } from '../src/store.js';
 import { patchSettings } from '../src/create.js';
 import { symlinkSync } from 'node:fs';
@@ -234,39 +234,79 @@ test("withMain: основная запись получает modelsLink из �
 
 // --- Подрез 2a: связь пакетных корней, конфликты источников, отсутствующие пакеты ---
 
-test('pkgNameOfSource: имя пакета из объявления', () => {
-  assert.equal(pkgNameOfSource('npm:pi-open-tui'), 'pi-open-tui');
-  assert.equal(pkgNameOfSource('npm:@wangjq4214/pi-open-tui'), 'pi-open-tui');
-  assert.equal(pkgNameOfSource('npm:@sfroment/pi-obsidian@1.2.3'), 'pi-obsidian');
-  assert.equal(pkgNameOfSource('git:github.com/obra/superpowers'), 'superpowers');
-  assert.equal(pkgNameOfSource('git:github.com/obra/superpowers@v1'), 'superpowers');
-  assert.equal(pkgNameOfSource('./tools/pi-local'), 'pi-local');
+// Идентичность повторяет pi (getPackageIdentity): scope — часть имени, версия и ref
+// отброшены. Иначе pi-env видел бы один пакет там, где у pi два разных пакета.
+test('pkgIdentity: идентичность пакета как у pi', () => {
+  assert.equal(pkgIdentity('npm:pi-open-tui'), 'npm:pi-open-tui');
+  assert.equal(pkgIdentity('npm:@wangjq4214/pi-open-tui'), 'npm:@wangjq4214/pi-open-tui');
+  assert.equal(pkgIdentity('npm:@sfroment/pi-obsidian@1.2.3'), 'npm:@sfroment/pi-obsidian');
+  assert.equal(pkgIdentity('npm:pi-zentui@^2.0'), 'npm:pi-zentui');
+  assert.equal(pkgIdentity('git:github.com/obra/superpowers'), 'git:github.com/obra/superpowers');
+  assert.equal(pkgIdentity('git:github.com/obra/superpowers@v1'), 'git:github.com/obra/superpowers');
+  assert.equal(pkgIdentity('git:https://github.com/obra/superpowers.git'), 'git:github.com/obra/superpowers');
+  assert.equal(pkgIdentity('git:ssh://git@github.com/obra/superpowers'), 'git:github.com/obra/superpowers');
+  assert.equal(pkgIdentity('git:git@github.com:obra/superpowers.git'), 'git:github.com/obra/superpowers');
+  assert.equal(pkgIdentity('./tools/pi-local'), 'path:./tools/pi-local');
+  assert.notEqual(pkgIdentity('git:github.com/a/pi-x'), pkgIdentity('git:gitlab.com/a/pi-x'));
 });
 
-test('storePackageUsage: имя из package.json (со scope) — тот же ключ сравнения', () => {
-  const root = mkEnvRoot([['dev-supo', ['npm:@sfroment/pi-obsidian']]]);
+test('storePackageUsage: запись реестра без версии и объявление с версией — один пакет', () => {
+  const root = mkEnvRoot([['dev-supo', ['npm:@sfroment/pi-obsidian@1.2.3']]]);
   try {
-    assert.deepEqual(storePackageUsage(scan(root)!, '@sfroment/pi-obsidian'), ['dev-supo']);
+    assert.deepEqual(storePackageUsage(scan(root)!, 'npm:@sfroment/pi-obsidian'), ['dev-supo']);
   } finally {
     rmSync(root, { recursive: true });
   }
 });
 
-test('packageConflicts: одно имя — разные объявления видны', () => {
+test('packageConflicts: один пакет (идентичность pi) — разные объявления видны', () => {
   const root = mkEnvRoot([
     ['dev-supo', ['npm:pi-open-tui']],
-    ['dev-vtb', ['npm:@wangjq4214/pi-open-tui']],
+    ['dev-vtb', ['npm:pi-open-tui@0.4.6']],
     ['search', ['npm:pi-open-tui']],
   ]);
   try {
     assert.deepEqual(packageConflicts(scan(root)!), [{
-      name: 'pi-open-tui',
+      name: 'npm:pi-open-tui',
       declarations: [
         { env: 'dev-supo', source: 'npm:pi-open-tui' },
-        { env: 'dev-vtb', source: 'npm:@wangjq4214/pi-open-tui' },
+        { env: 'dev-vtb', source: 'npm:pi-open-tui@0.4.6' },
         { env: 'search', source: 'npm:pi-open-tui' },
       ],
     }]);
+  } finally {
+    rmSync(root, { recursive: true });
+  }
+});
+
+// Пакеты разных издателей у pi лежат в разных npm/node_modules (<имя> и @scope/<имя>):
+// это два установленных пакета, а не конфликт источников одного имени.
+test('packageConflicts: scoped- и unscoped-объявление одного имени — разные пакеты', () => {
+  const root = mkEnvRoot([
+    ['dev-supo', ['npm:pi-open-tui']],
+    ['dev-vtb', ['npm:@wangjq4214/pi-open-tui']],
+    ['dev-java', ['npm:pi-open-tui']],
+  ]);
+  try {
+    assert.deepEqual(packageConflicts(scan(root)!), []);
+  } finally {
+    rmSync(root, { recursive: true });
+  }
+});
+
+// Настоящий конфликт одного пакета: pin против актуальной версии, ref против HEAD.
+// Репозиторий на другом хосте — другой пакет pi (другой каталог в git/).
+test('packageConflicts: pin-версия и ref того же пакета — конфликт, другой хост — нет', () => {
+  const root = mkEnvRoot([
+    ['dev-supo', ['npm:pi-zentui']],
+    ['admin', ['npm:pi-zentui@2.0.3']],
+    ['a', ['git:github.com/obra/superpowers']],
+    ['b', ['git:github.com/obra/superpowers@v1']],
+    ['c', ['git:gitlab.com/obra/superpowers']],
+  ]);
+  try {
+    assert.deepEqual(packageConflicts(scan(root)!).map((c) => c.name),
+      ['git:github.com/obra/superpowers', 'npm:pi-zentui']);
   } finally {
     rmSync(root, { recursive: true });
   }
@@ -290,7 +330,7 @@ test('scan: rootLinks по каталогу хранилища и missingPackage
     symlinkSync(join(store, 'npm'), join(root, 'dev', 'npm'), 'dir');
     const env = scan(root, store)!.find((e) => e.name === 'dev')!;
     assert.deepEqual(env.details.rootLinks, { npm: 'linked', git: 'off' });
-    assert.deepEqual(env.details.missingPackages, ['absent-pkg']);
+    assert.deepEqual(env.details.missingPackages, ['npm:absent-pkg']);
     // без хранилища — rootLinks все off и missingPackages пустые
     const plain = scan(root)!.find((e) => e.name === 'dev')!;
     assert.deepEqual(plain.details.rootLinks, { npm: 'off', git: 'off' });
@@ -316,8 +356,11 @@ test('storePackageUsage: имена окружений, объявивших п�
     ['test-ai', []],
   ]);
   try {
-    assert.deepEqual(storePackageUsage(scan(root)!, 'pi-zentui'), ['admin', 'dev-supo']);
-    assert.deepEqual(storePackageUsage(scan(root)!, 'pi-ssh-remote'), []);
+    assert.deepEqual(storePackageUsage(scan(root)!, 'npm:pi-zentui'), ['admin', 'dev-supo']);
+    assert.deepEqual(storePackageUsage(scan(root)!, 'npm:pi-ssh-remote'), []);
+    assert.deepEqual(storePackageUsage(scan(root)!, 'npm:@sfroment/pi-obsidian'), ['dev-supo']);
+    // то же последнее имя у другого издателя — другой пакет, счётчик его считать не должен
+    assert.deepEqual(storePackageUsage(scan(root)!, 'npm:pi-obsidian'), []);
   } finally {
     rmSync(root, { recursive: true });
   }
@@ -330,18 +373,18 @@ test('storeOrphanNames: имена реестра без объявлений в
   try {
     const envs = scan(root)!;
     assert.deepEqual(
-      storeOrphanNames(envs, ['pi-zentui', 'pi-ssh-remote', 'pi-old-ext']),
-      ['pi-old-ext', 'pi-ssh-remote'],
+      storeOrphanNames(envs, ['npm:pi-zentui', 'npm:pi-ssh-remote', 'npm:pi-old-ext']),
+      ['npm:pi-old-ext', 'npm:pi-ssh-remote'],
     );
   } finally {
     rmSync(root, { recursive: true });
   }
 });
 
-test('storeOrphanNames: scoped-имя из package.json — не сирота при объявлении с версией', () => {
+test('storeOrphanNames: запись реестра с версией — не сирота при объявлении с версией', () => {
   const root = mkEnvRoot([['dev-supo', ['npm:@sfroment/pi-obsidian@1.2.3']]]);
   try {
-    assert.deepEqual(storeOrphanNames(scan(root)!, ['@sfroment/pi-obsidian', '@sfroment/pi-gone']), ['@sfroment/pi-gone']);
+    assert.deepEqual(storeOrphanNames(scan(root)!, ['npm:@sfroment/pi-obsidian', 'npm:@sfroment/pi-gone']), ['npm:@sfroment/pi-gone']);
   } finally {
     rmSync(root, { recursive: true });
   }
@@ -354,7 +397,7 @@ test('storeOrphanNames: основной агент тоже пользоват�
     mkdirSync(join(agent, 'x'), { recursive: true });
     writeFileSync(join(agent, 'x', 'settings.json'), JSON.stringify({ packages: ['npm:pi-zentui'] }));
     const envs = withMain(scan(root)!, join(agent, 'x'));
-    assert.deepEqual(storeOrphanNames(envs, ['pi-zentui', 'pi-ssh-remote']), ['pi-ssh-remote']);
+    assert.deepEqual(storeOrphanNames(envs, ['npm:pi-zentui', 'npm:pi-ssh-remote']), ['npm:pi-ssh-remote']);
   } finally {
     rmSync(root, { recursive: true });
     rmSync(agent, { recursive: true });
@@ -368,13 +411,13 @@ test('conflictSources: объявления группы сжаты до уни�
     ['dev-java', ['npm:pi-open-tui']],
     ['dev-supo', ['npm:pi-open-tui']],
     ['search', ['npm:pi-open-tui']],
-    ['dev-vtb', ['npm:@wangjq4214/pi-open-tui']],
+    ['dev-vtb', ['npm:pi-open-tui@0.4.6']],
   ]);
   try {
     const [conf] = packageConflicts(scan(root)!);
     assert.deepEqual(conflictSources(conf), [
-      { source: 'npm:@wangjq4214/pi-open-tui', envs: ['dev-vtb'] },
       { source: 'npm:pi-open-tui', envs: ['dev-java', 'dev-supo', 'search'] },
+      { source: 'npm:pi-open-tui@0.4.6', envs: ['dev-vtb'] },
     ]);
   } finally {
     rmSync(root, { recursive: true });
@@ -385,16 +428,17 @@ test('conflictSources: объявления группы сжаты до уни�
 test('разрешение конфликта: переписка объявлений убирает конфликт из перечитанного снимка', () => {
   const root = mkEnvRoot([
     ['dev-java', ['npm:pi-open-tui', 'npm:pi-zentui']],
-    ['dev-vtb', ['npm:@wangjq4214/pi-open-tui']],
+    ['dev-vtb', ['npm:pi-open-tui@0.4.6', 'npm:@wangjq4214/pi-open-tui']],
   ]);
   try {
     assert.equal(packageConflicts(scan(root)!).length, 1);
     const winner = 'npm:pi-open-tui';
-    for (const e of scan(root)!) patchSettings(e.path, { packages: rewritePackages(e.details.packages, 'pi-open-tui', winner) });
+    for (const e of scan(root)!) patchSettings(e.path, { packages: rewritePackages(e.details.packages, 'npm:pi-open-tui', winner) });
     const after = scan(root)!;
     assert.deepEqual(packageConflicts(after), []);
     assert.deepEqual(after.find((e) => e.name === 'dev-java')!.details.packages, ['npm:pi-open-tui', 'npm:pi-zentui']);
-    assert.deepEqual(after.find((e) => e.name === 'dev-vtb')!.details.packages, ['npm:pi-open-tui']);
+    // пакет другого издателя к группе не относится и остаётся как был
+    assert.deepEqual(after.find((e) => e.name === 'dev-vtb')!.details.packages, ['npm:pi-open-tui', 'npm:@wangjq4214/pi-open-tui']);
   } finally {
     rmSync(root, { recursive: true });
   }

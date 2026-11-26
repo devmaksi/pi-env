@@ -2,7 +2,7 @@ import { existsSync, readdirSync, type Dirent } from 'node:fs';
 import { basename, join, resolve } from 'node:path';
 import { readJsonFileDetailed, readMcpServersDetailed } from './mcp.js';
 import {
-  modelsLinkState, pkgNameOfSource, rootLinkState, storeModelsFile, storeRegistrySources,
+  modelsLinkState, pkgIdentity, rootLinkState, storeModelsFile, storeRegistrySources,
   STORE_ROOTS, type ModelsLink, type StoreRoot,
 } from './store.js';
 
@@ -132,28 +132,29 @@ function readRootLinks(dir: string, storeDir: string | null): Record<StoreRoot, 
   return out;
 }
 
-/** Объявления окружения, которых нет в реестре хранилища — по имени пакета, а не по строке объявления. */
+/** Объявления окружения, которых нет в реестре хранилища — по идентичности пакета, а не по строке объявления. */
 function readMissingPackages(dir: string, storeDir: string | null, packages: string[]): string[] {
   if (storeDir === null || packages.length === 0) return [];
   if (rootLinkState(dir, storeDir, 'npm') !== 'linked') return [];
-  const registered = new Set(storeRegistrySources(storeDir).map(pkgNameOfSource));
-  return packages.map(pkgNameOfSource).filter((name) => !registered.has(name));
+  const registered = new Set(storeRegistrySources(storeDir).map(pkgIdentity));
+  return packages.map(pkgIdentity).filter((identity) => !registered.has(identity));
 }
 
 /**
- * Имя пакета из объявления (`npm:@scope/name@1.2.3`, `git:host/org/name@ref`, `./путь/name`).
- * Именно по нему pi размещает пакет в `node_modules`, поэтому два разных объявления
- * с одним именем — это один и тот же установленный пакет.
+ * Идентичность пакета из объявления (`npm:@scope/name@1.2.3` → `npm:@scope/name`,
+ * `git:host/org/name@ref` → `git:host/org/name`, путь → `path:<запись>`). pi
+ * различает установленные пакеты по ней же (`getPackageIdentity`), поэтому scope —
+ * часть имени: `npm:pi-open-tui` и `npm:@wangjq4214/pi-open-tui` — разные пакеты.
  */
-export { pkgNameOfSource };
+export { pkgIdentity };
 
-/** Имена окружений, объявивших пакет с таким именем в `node_modules` (по всем окружениям). */
-export function storePackageUsage(envs: Environment[], pkgName: string): string[] {
-  // Ключ один для обеих форм имени: UI знает и `name` из `package.json` (со scope), и строку
-  // объявления `npm:@scope/name@1.2` — иначе scoped-пакеты не находятся никогда.
-  const key = pkgNameOfSource(pkgName);
+/** Имена окружений, объявивших этот пакет (по всем окружениям). */
+export function storePackageUsage(envs: Environment[], pkgSource: string): string[] {
+  // Аргумент — строка объявления (запись реестра `PkgItem.source` или запись
+  // `settings.packages`): сравнение по идентичности, а не по имени из package.json.
+  const identity = pkgIdentity(pkgSource);
   return envs
-    .filter((e) => e.details.packages.some((src) => pkgNameOfSource(src) === key))
+    .filter((e) => e.details.packages.some((src) => pkgIdentity(src) === identity))
     .map((e) => e.name)
     .sort();
 }
@@ -161,14 +162,17 @@ export function storePackageUsage(envs: Environment[], pkgName: string): string[
 /**
  * Пакеты реестра хранилища, которые не объявил ни один агент (`<store>/settings.json`
  * помнит их, а `settings.packages` — нет): такие пакеты остаются в `<store>/npm`
- * и зря обновляются «Обновить все». Ключ сравнения — имя из объявления, поэтому
- * scoped-имя из `package.json` считается тем же пакетом.
+ * и зря обновляются «Обновить все». Ключ сравнения — идентичность объявления, поэтому
+ * запись реестра `npm:@scope/name@1.2` и объявление `npm:@scope/name` — один пакет.
  */
-export function storeOrphanNames(envs: Environment[], pkgNames: string[]): string[] {
-  return pkgNames.filter((n) => storePackageUsage(envs, n).length === 0).sort((a, b) => a.localeCompare(b));
+export function storeOrphanNames(envs: Environment[], pkgSources: string[]): string[] {
+  return pkgSources.filter((s) => storePackageUsage(envs, s).length === 0).sort((a, b) => a.localeCompare(b));
 }
 
-/** Одно имя пакета, объявленное разными источниками. */
+/**
+ * Один пакет (по идентичности pi), объявленный разными источниками. `name` — сама
+ * идентичность (`npm:@scope/name`), она же ключ `ExtState.conflictName`.
+ */
 export interface PackageConflict {
   name: string;
   declarations: Array<{ env: string; source: string }>;
@@ -184,14 +188,15 @@ export interface ConflictSource {
   envs: string[];
 }
 
-/** Конфликты источников: одно имя пакета объявлено по-разному в разных окружениях. */
+/** Конфликты источников: один пакет (идентичность pi) объявлен по-разному в разных окружениях. */
 export function packageConflicts(envs: Environment[]): PackageConflict[] {
   const byName = new Map<string, Array<{ env: string; source: string }>>();
   for (const env of envs) {
     for (const source of env.details.packages) {
-      const list = byName.get(pkgNameOfSource(source)) ?? [];
+      const identity = pkgIdentity(source);
+      const list = byName.get(identity) ?? [];
       list.push({ env: env.name, source });
-      byName.set(pkgNameOfSource(source), list);
+      byName.set(identity, list);
     }
   }
   const out: PackageConflict[] = [];

@@ -1,6 +1,7 @@
 import { existsSync, readdirSync, statSync } from 'node:fs';
 import { homedir as osHomedir } from 'node:os';
 import { readMcpServers, readJsonFile, type McpServer } from './mcp.js';
+import { npmNameOfSource } from './store.js';
 import { basename, isAbsolute, join } from 'node:path';
 
 export interface ModelInfo {
@@ -373,7 +374,8 @@ export function uniqueName(base: string, used: Set<string>): string {
 
 function resolvePkgPath(agentDir: string, source: string): string | null {
   if (source.startsWith('npm:')) {
-    const name = source.slice(4);
+    // имя без версии: pi кладёт пакет в npm/node_modules/<имя>, версия объявления — не часть пути
+    const name = npmNameOfSource(source);
     if (name === '') return null;
     const path = join(agentDir, 'npm', 'node_modules', name);
     return existsSync(path) ? path : null;

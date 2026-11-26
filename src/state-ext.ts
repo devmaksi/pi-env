@@ -16,7 +16,7 @@ export interface ExtState {
   updating: string | null;
   installing: string | null;
   removing: string | null;
-  /** Имя пакета (`pkgNameOfSource`) конфликта, который разрешает суб-экран. */
+  /** Идентичность пакета (`pkgIdentity`) конфликта, который разрешает суб-экран. */
   conflictName: string | null;
   /** Выбранный источник-победитель (view `resolving`). */
   resolving: string | null;

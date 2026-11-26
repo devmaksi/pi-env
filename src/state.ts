@@ -1,6 +1,6 @@
 import { type EnvSettings } from './create.js';
 import type { Catalog, PkgItem, Provider } from './catalog.js';
-import { pkgNameOfSource, type PackageConflict } from './environments.js';
+import { pkgIdentity, type PackageConflict } from './environments.js';
 import { localeCodes } from './i18n.js';
 import type { McpLiveReport, McpServer } from './mcp.js';
 import { mcpMachine, freshMcpForm, freshMcpTab, applyMcpLiveMain, onRefreshMcp } from './state-mcp.js';
@@ -413,12 +413,13 @@ function onSpace(state: AppState): AppState {
 
 /**
  * `S` на строке пакета с конфликтом источников — суб-экран выбора победителя.
- * Пакета без конфликта в снимке действие не касается (список выбира — `⚠` уже ушёл).
+ * Ключ — идентичность источника строки (`pkgIdentity`), поэтому пакет с другим scope
+ * (другой пакет по меркам pi) конфликта не имеет и действие на нём игнорируется.
  */
 function onS(state: AppState, ctx: ReducerCtx): AppState {
   const p = packagesOf(state, 'extensions')[state.selected];
   if (p === undefined) return state;
-  const key = pkgNameOfSource(p.name);
+  const key = pkgIdentity(p.source);
   if (!ctx.conflicts?.some((c) => c.name === key)) return state;
   return { ...state, ext: freshExt({ view: 'resolve', conflictName: key, cursor: 0 }) };
 }

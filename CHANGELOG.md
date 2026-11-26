@@ -54,8 +54,24 @@ Russian text: [CHANGELOG.ru.md](CHANGELOG.ru.md).
   of the winner in `<store>`, sequentially under the store lock, with the «⏳ N s» counter and `Esc`
   cancelling the process. If the winner is already in the registry there are no store operations at all;
   the registry itself is edited by pi, not by us.
+- **The conflict group and every package counter are keyed by package identity, not by a short
+  name.** pi distinguishes installed packages by `getPackageIdentity`: for npm the scope is part of
+  the name, for git it is `host/path` without a ref. So `npm:pi-open-tui` and
+  `npm:@wangjq4214/pi-open-tui` are two different packages (they live in different
+  `npm/node_modules/` directories), not two sources of one name. The old key (last segment of the
+  declaration, `@` stripped) treated them as one package, so `S` would have removed one
+  publisher's package from the shared root and installed the other publisher's package into every
+  environment of the group. Now `settings.packages` declarations, the `<store>/settings.json`
+  registry, the «N envs» counter, the orphan marker and the conflict are all compared through
+  `pkgIdentity` (`npm:<scoped name>`, `git:<host>/<path>`, `path:<declaration>`), and
+  `rewritePackages` takes an identity and never touches another package's declaration. Only
+  different declarations of the same package are a conflict: a pinned version against the floating
+  one, a ref against HEAD. Fixed along the way: `npm:pkg@1.2.3` looked for
+  `npm/node_modules/pkg@1.2.3`, so a pinned package disappeared from the tab altogether.
 - Tests: `test/store.test.ts` (root link states, enable/disable/rollback, store snapshots,
-  `rewritePackages` with scoped names),
+  `rewritePackages` by identity — another package's declaration is left alone),
+  `test/catalog.test.ts` (a pinned version and a scoped name resolve to their
+  `node_modules`),
   `test/environments.test.ts` (`rootLinks`, `missingPackages`, `packageConflicts`, `conflictSources`,
   `storePackageUsage`, `storeOrphanNames`), `test/env-cache.test.ts` (registry and shared manifest in the signature),
   `test/state-ext.test.ts` (the `S` sub-screen: conflict-only opening, the cursor over unique sources,
