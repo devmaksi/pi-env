@@ -480,7 +480,7 @@ test('строки формы: «Модели» и «Хранилище» иду
 
 const editModels = () => ({
   ...initialState(catalog), sub: 'create' as const,
-  create: freshEdit('e1', { defaultProvider: 'cpp', defaultModel: 'Bonsai-2' }, catalog, [], false, true, ['cpp/Bonsai-2']),
+  create: freshEdit('e1', { defaultProvider: 'cpp', defaultModel: 'Bonsai-2' }, catalog, [], false, true, true, false, ['cpp/Bonsai-2']),
 });
 
 test('пикер моделей: Enter на «Модели» открывает список, Space отмечает ссылку', () => {
@@ -512,7 +512,7 @@ test('пикер моделей: модель по умолчанию не сн�
 test('пикер моделей: сохранённая ссылка вне каталога помечена и снимается', () => {
   const s0 = {
     ...initialState(catalog), sub: 'create' as const,
-    create: freshEdit('e1', { defaultProvider: 'cpp', defaultModel: 'Bonsai-2' }, catalog, [], false, true, ['cpp/Bonsai-2', 'gone/model-x']),
+    create: freshEdit('e1', { defaultProvider: 'cpp', defaultModel: 'Bonsai-2' }, catalog, [], false, true, true, false, ['cpp/Bonsai-2', 'gone/model-x']),
   };
   const rows = modelRows(s0.create!, catalog.providers);
   assert.deepEqual(rows.map((r) => [r.ref, r.missing]), [

@@ -1,4 +1,4 @@
-import { existsSync, lstatSync } from 'node:fs';
+import { existsSync, lstatSync, mkdirSync, renameSync } from 'node:fs';
 import { join, relative } from 'node:path';
 import { cloneEnvironment, createEnvironment, updateEnvironmentAt } from './create.js';
 import { copyMcpEntry, removeMcpEntry, readMcpServers } from './mcp.js';
@@ -7,10 +7,12 @@ import {
   restoreTrash, restoreTrashFile, trashEntryDisplayName, trashFileName, trashFilesRoot,
 } from './trash.js';
 import {
-  archiveEnvModelsIntoStore, enableModelsStorage, restoreFromStoreSnapshot, unlinkModels, type StoreResult,
+  archiveEnvModelsIntoStore, enableModelsStorage, restoreFromStoreSnapshot, unlinkModels,
+  disableStoreRoots, enableStoreRoots, envRootDir, snapshotStoreManifest, STORE_ROOTS,
+  storePackagesRoot, storeRegistrySources, storeRootSnapshotName, type StoreResult, type StoreRoot,
 } from './store.js';
 import { t } from './i18n.js';
-import { reducer, makeCtx } from './state.js';
+import { reducer, makeCtx, storeSummaryOf } from './state.js';
 import { buildCreateRequest } from './pi-actions.js';
 import { launchPi } from './pirun.js';
 import type { Catalog } from './catalog.js';
@@ -62,6 +64,8 @@ export interface Loop {
   invalidate(): void;
   /** Общий файл каталога моделей; null — хранилище выключено. */
   storeFile(): string | null;
+  /** `pi install` в хранилище по очереди (доноска реестра при включении хранилища). */
+  storeInstallSources(sources: string[]): void;
   runSelfUpdate(): void;
   loadChangelog(): void;
 }
@@ -278,43 +282,108 @@ function startMcpCheck(loop: Loop, dir: string, scope: 'main' | 'create'): void 
  * файлов (или в снимок хранилища для каталога main-агента) и ставится симлинк;
  * выключение — вместо симлинка обычная копия общего файла.
  */
+/**
+ * Строка «Хранилище»: один диалог включает и выключает оба среза — каталог моделей
+ * (`models.json`) и пакетные корни (`npm`, `git`). Отдельных переключателей на корень нет:
+ * частичная связь только показывается (`store.partial`), а лечится этим же диалогом или `R`.
+ */
 function storeOperation(loop: Loop, names: string[]): void {
   const cr = loop.state().create!;
   const lang = loop.state().language;
-  const wanted = !cr.store;
-  // При создании окружения файловых операций нет: каталога ещё нет, флаг уйдёт в createEnvironment.
+  const wanted = storeSummaryOf(cr) === 'off';
+  // При создании окружения файловых операций нет: каталога ещё нет, флаги уйдут в createEnvironment.
   if (cr.mode !== 'edit') {
-    loop.setState(reducer(loop.state(), { type: 'store-result', ok: true, message: '', store: wanted }, rctx(loop, names)));
+    loop.setState(reducer(loop.state(), { type: 'store-result', ok: true, message: '', store: wanted, storeRoots: wanted }, rctx(loop, names)));
     return;
   }
   const storeFile = loop.storeFile();
   if (storeFile === null) {
+    // Общий файл — якорь хранилища: без него не включается ни один срез.
     const message = t(lang, 'err.store-no-source');
     loop.status(message);
-    loop.setState(reducer(loop.state(), { type: 'store-result', ok: false, message, store: cr.store }, rctx(loop, names)));
+    loop.setState(reducer(loop.state(), { type: 'store-result', ok: false, message, store: cr.store, storeRoots: cr.storeRoots }, rctx(loop, names)));
     return;
   }
   const dir = formInstallDir(loop);
-  const now = Date.now();
   const envName = cr.origName ?? cr.name;
-  let res: StoreResult;
+  const store = loop.storeDir;
+  const now = Date.now();
+  let res: StoreResult = { ok: true };
   if (wanted) {
-    // Порядок задаёт `enableModelsStorage`: сначала общий файл, только потом своя копия
-    // уходит в корзину (или в снимок), и лишь затем ставится симлинк; провал симлинка
-    // возвращает копию обратно.
+    // Порядок: сначала общий файл моделей, потом свои пакетные корни (переезд в хранилище
+    // при первом включении, иначе снимок `<корень>.from-<окружение>-<мс>`), и лишь затем симлинки.
     res = enableModelsStorage(dir, storeFile, loop.agentDir, lang, now,
-      relative(loop.root, dir).startsWith('..')
-        ? snapshotOwn(dir, storeFile, now, lang)
-        : fileTrashOwn(loop.root, envName, now, lang));
+        relative(loop.root, dir).startsWith('..')
+          ? snapshotOwn(dir, storeFile, now, lang)
+          : fileTrashOwn(loop.root, envName, now, lang));
+    if (res.ok) {
+      snapshotStoreManifest(store, now);
+      res = enableStoreRoots(dir, store, STORE_ROOTS, lang, rootsOwn(dir, envName, store, now, lang));
+    }
   } else {
-    res = unlinkModels(dir, storeFile, lang);
+    res = disableStoreRoots(dir, store, STORE_ROOTS, lang);
+    if (res.ok) res = unlinkModels(dir, storeFile, lang);
   }
-  const message = res.ok ? t(lang, wanted ? 'status.store-linked' : 'status.store-unlinked') : res.error;
+  const message = res.ok ? t(lang, wanted ? 'status.store-enabled' : 'status.store-disabled') : res.error;
   loop.status(message);
-  loop.invalidate(); // менялся models.json окружения (или его не стало)
-  // Провал — флаг остаётся прежним: файловое состояние не изменилось, врать про него нельзя.
-  loop.setState(reducer(loop.state(), { type: 'store-result', ok: res.ok, message, store: res.ok ? wanted : cr.store }, rctx(loop, names)));
+  loop.invalidate(); // менялись models.json и пакетные корни окружения (или их не стало)
+  // Провал — флаги остаются прежними: файловое состояние не изменилось, врать про него нельзя.
+  loop.setState(reducer(loop.state(), {
+    type: 'store-result', ok: res.ok, message,
+    store: res.ok ? wanted : cr.store,
+    storeRoots: res.ok ? wanted : cr.storeRoots,
+  }, rctx(loop, names)));
+  if (res.ok && wanted) {
+    // Доноска: объявления окружения, которых нет в реестре хранилища, ставятся в хранилище.
+    const registry = new Set(storeRegistrySources(store));
+    const missing = cr.packages.filter((src) => !registry.has(src));
+    if (missing.length > 0) loop.storeInstallSources(missing);
+  }
   loop.repaint();
+}
+
+/**
+ * Куда деть своё содержимое пакетного корня при включении: при первом включении оно
+ * переезжает в хранилище и становится общим, иначе это лишняя копия — снимок внутри
+ * хранилища. В файловую корзину каталог класть нельзя (он там не виден).
+ */
+function rootsOwn(
+  envDir: string, envName: string, storeDir: string, now: number, lang: string,
+): { move: (root: StoreRoot) => StoreResult; undo: (root: StoreRoot) => void } {
+  const snapshots = new Map<StoreRoot, string>();
+  return {
+    move: (root) => {
+      const from = envRootDir(envDir, root);
+      let st: ReturnType<typeof lstatSync> | undefined;
+      try {
+        st = lstatSync(from, { throwIfNoEntry: false });
+      } catch {
+        return { ok: false, error: t(lang, 'err.link-root') };
+      }
+      if (st === undefined || st === null) return { ok: true }; // своего содержимого нет — нечего переносить
+      if (st.isSymbolicLink() || !st.isDirectory()) return { ok: false, error: t(lang, 'err.link-root') };
+      const target = storePackagesRoot(storeDir, root);
+      const dest = existsSync(target) ? join(storeDir, storeRootSnapshotName(root, envName, now)) : target;
+      try {
+        mkdirSync(storeDir, { recursive: true });
+        renameSync(from, dest);
+        snapshots.set(root, dest);
+      } catch {
+        return { ok: false, error: t(lang, 'err.link-root') };
+      }
+      return { ok: true };
+    },
+    undo: (root) => {
+      const snap = snapshots.get(root);
+      if (snap === undefined) return;
+      try {
+        renameSync(snap, envRootDir(envDir, root));
+        snapshots.delete(root);
+      } catch {
+        /* содержимое осталось в хранилище — симлинк снят, потеря невозможна */
+      }
+    },
+  };
 }
 
 /** Своя копия `models.json` окружения внутрь `<root>` — в корзину файлов, с откатом. */
@@ -357,7 +426,7 @@ function doSubmit(loop: Loop, names: string[]): void {
   const req = buildCreateRequest(cat, cr);
   if (cr.modelsTouched) req.enabledModels = cr.modelsSel;
   const lang = loop.state().language;
-  const store = { storeFile: loop.storeFile(), storeModels: cr.store };
+  const store = { storeFile: loop.storeFile(), storeModels: cr.store, storeDir: loop.storeDir, storeRoots: cr.storeRoots };
   const res = cr.mode === 'edit'
     // Основное окружение: имя каталога и ресурсы (extensions/, skills/) не трогаются,
     // settings.json правится точечно.

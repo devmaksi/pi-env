@@ -18,6 +18,7 @@ import {
   type SelfUpdate,
   type UpdateUi,
   UPDATE_ROW_COMMANDS,
+  storeSummaryOf,
 } from './state.js';
 import type { Environment } from './environments.js';
 import { packageConflicts, storePackageUsage } from './environments.js';
@@ -88,7 +89,7 @@ function createForm(cr: CreateState, ctx: Ctx): Section {
     t(ctx.lang, cr.main ? 'form.name-main' : 'form.name') + (cr.main ? cr.name : caret),
     t(ctx.lang, 'form.model') + model,
     t(ctx.lang, 'form.models') + modelsSummary(cr, ctx.lang),
-    t(ctx.lang, 'form.store') + t(ctx.lang, cr.store ? 'form.store-on' : 'form.store-off'),
+    t(ctx.lang, 'form.store') + t(ctx.lang, ('store.' + storeSummaryOf(cr)) as StrKey),
     t(ctx.lang, 'form.tools') + cr.tools.length,
     t(ctx.lang, 'form.packages') + cr.packages.length,
     t(ctx.lang, 'form.skills') + cr.skills.length,

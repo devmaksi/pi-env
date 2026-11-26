@@ -3,7 +3,7 @@ import { basename, dirname, join } from 'node:path';
 import { uniqueName, type SkillItem, type ToolItem } from './catalog.js';
 import { t } from './i18n.js';
 import { writeMcpFile, type McpServer } from './mcp.js';
-import { linkModels } from './store.js';
+import { enableStoreRoots, linkModels, STORE_ROOTS } from './store.js';
 import { copyRecursive } from './fscopy.js';
 
 export interface CreateRequest {
@@ -70,7 +70,7 @@ export function createEnvironment(
   req: CreateRequest,
   agentDir?: string,
   lang: string = 'ru',
-  opts: { storeFile?: string | null; storeModels?: boolean } = {},
+  opts: { storeFile?: string | null; storeModels?: boolean; storeDir?: string; storeRoots?: boolean } = {},
 ): CreateResult {
   const invalid = validateName(req.name, [], lang);
   if (invalid !== null) {
@@ -89,6 +89,11 @@ export function createEnvironment(
   if (opts.storeModels === true && opts.storeFile != null) {
     const link = linkModels(envDir, opts.storeFile, agentDir ?? envDir, lang);
     if (!link.ok) return { ok: false, error: link.error };
+  }
+  // Пакетные корни: у нового окружения своего содержимого нет — только симлинки на хранилище.
+  if (opts.storeRoots === true && opts.storeDir !== undefined) {
+    const roots = enableStoreRoots(envDir, opts.storeDir, STORE_ROOTS, lang, { move: () => ({ ok: true }), undo: () => {} });
+    if (!roots.ok) return { ok: false, error: roots.error };
   }
 
   const settings: Record<string, unknown> = {};

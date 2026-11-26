@@ -62,6 +62,8 @@ function createResultReducer(c: CreateState, action: Action, catalog: Catalog): 
       view: 'form',
       cursor: ROW_STORE,
       store: action.store,
+      storeRoots: action.storeRoots,
+      storeBroken: action.ok ? false : c.storeBroken,
       storeTouched: true,
       error: action.ok ? null : action.message,
     };

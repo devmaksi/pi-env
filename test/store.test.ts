@@ -397,3 +397,24 @@ test('disableStoreRoots: вместо симлинка — обычная коп
   assert.ok(existsSync(join(env, 'npm', 'package.json')));
   assert.ok(existsSync(join(env, 'npm', 'node_modules')));
 });
+
+test('enableStoreRoots: общего корня нет — он создаётся, симлинк не битый', () => {
+  const { store, env } = mkStoreEnv([]);
+  const r = enableStoreRoots(env, store, ['npm'], 'ru', { move: () => ({ ok: true }), undo: () => {} });
+  assert.equal(r.ok, true);
+  assert.equal(rootLinkState(env, store, 'npm'), 'linked');
+  assert.ok(existsSync(storePackagesRoot(store, 'npm')));
+});
+
+test('disableStoreRoots: у окружения нет симлинка — no-op без ошибки', () => {
+  const { env } = mkStoreEnv();
+  const r = disableStoreRoots(env, join(env, '..', '.store'), STORE_ROOTS, 'ru');
+  assert.equal(r.ok, true, r.error);
+});
+
+test('disableStoreRoots: симлинк в несуществующий общий корень — ошибка, а не тихая потеря', () => {
+  const { store, env } = mkStoreEnv([]);
+  symlinkSync(join(store, 'npm'), join(env, 'npm'), 'dir');
+  const r = disableStoreRoots(env, store, ['npm'], 'ru');
+  assert.equal(r.ok, false);
+});

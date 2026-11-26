@@ -47,6 +47,10 @@ export interface CreateState {
   modelsTouched: boolean;
   /** Каталог моделей окружения лежит в хранилище (models.json — симлинк). */
   store: boolean;
+  /** Флаг пакетного хранилища (`npm`/`git`): включается вместе с `store`, одним диалогом. */
+  storeRoots: boolean;
+  /** Хотя бы одна связь хранилища оборвана — лечится `R` на окружении. */
+  storeBroken: boolean;
   /** Хранилище в этой сессии формы переключали — каталог моделей при сохранении не перезаписываем. */
   storeTouched: boolean;
   mcpOp: { name: string; kind: 'copy' | 'remove' } | null;
@@ -81,12 +85,20 @@ export function freshCreate(over: Partial<CreateState> = {}): CreateState {
     name: '', caret: 0, cursor: 0, provider: null, model: null,
     mode: 'create', origName: null, main: false,
     tools: [], packages: [], skills: [], view: 'form', error: null, done: null,
-    modelsSel: [], modelCatalog: [], modelsTouched: false, store: true, storeTouched: false,
+    modelsSel: [], modelCatalog: [], modelsTouched: false, store: true, storeRoots: true, storeBroken: false, storeTouched: false,
     removing: null, installCatalog: [], installStatus: 'idle', installing: null, query: '',
     check: 'idle', latest: {},
     mcpAdd: null, envMcp: [], mcp: [], mcpOp: null, removingMcp: null, mcpCheck: 'idle', mcpLive: null,
     ...over,
   };
+}
+
+/** Агрегат связи окружения с общим хранилищем для строки формы. */
+export function storeSummaryOf(cr: Pick<CreateState, 'store' | 'storeRoots' | 'storeBroken'>): 'off' | 'linked' | 'partial' | 'broken' {
+  if (cr.storeBroken) return 'broken';
+  if (cr.store && cr.storeRoots) return 'linked';
+  if (!cr.store && !cr.storeRoots) return 'off';
+  return 'partial';
 }
 
 /** Чистая форма редактирования: предзаполнение из settings окружения. */
@@ -97,6 +109,8 @@ export function freshEdit(
   envMcp: McpServer[] = [],
   main = false,
   store = false,
+  storeRoots = false,
+  storeBroken = false,
   enabledModels: string[] = [],
   modelCatalog: Provider[] = catalog.providers,
 ): CreateState {
@@ -117,7 +131,7 @@ export function freshEdit(
     view: 'form',
     error: null,
     done: null,
-    modelsSel: [...enabledModels], modelCatalog, modelsTouched: false, store, storeTouched: false,
+    modelsSel: [...enabledModels], modelCatalog, modelsTouched: false, store, storeRoots, storeBroken, storeTouched: false,
     removing: null, installCatalog: [], installStatus: 'idle', installing: null, query: '',
     check: 'idle', latest: {},
     mcpAdd: null, envMcp, mcp: [], mcpOp: null, removingMcp: null, mcpCheck: 'idle', mcpLive: null,
@@ -182,7 +196,7 @@ export function formReducer(c: CreateState, action: Action, envNames: string[], 
     if (c.cursor === ROW_MODELS) return { ...c, view: 'model-list', cursor: 0 };
     // Хранилище: включение — разрушительная операция (копия уходит в корзину), нужно
     // подтверждение; выключение — обычная, делаем сразу.
-    if (c.cursor === ROW_STORE) return { ...c, view: c.store ? 'store-op' : 'store-confirm' };
+    if (c.cursor === ROW_STORE) return { ...c, view: storeSummaryOf(c) === 'off' ? 'store-confirm' : 'store-op' };
     if (c.cursor === ROW_TOOLS) return { ...c, view: 'tools', cursor: ROW_NAME };
     if (c.cursor === ROW_PACKAGES) return { ...c, view: 'packages', cursor: ROW_NAME };
     if (c.cursor === ROW_MCP) return { ...c, view: 'mcp', cursor: 0 };

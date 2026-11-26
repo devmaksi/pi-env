@@ -40,6 +40,7 @@ function makeLoop(initial: AppState, root = '/root', agentDir = '/agent', envs: 
     doUpdateAll: (d, s) => { log.push(`doUpdateAll:${d}:${s}`); },
     doUpdateOne: (d, src) => { log.push(`doUpdateOne:${d}:${src}`); },
     doInstall: (d, src, env) => { log.push(`doInstall:${d}:${src}:${env}`); },
+    storeInstallSources: (srcs) => { log.push('storeInstallSources:' + srcs.join(',')); },
     doMcpAdd: (d, f, s) => { log.push(`doMcpAdd:${d}:${f.name}:${s}`); },
     doMcpCheck: (d, s) => { log.push(`doMcpCheck:${d}:${s}`); },
     cancelBusy: () => { log.push('cancelBusy'); },
@@ -441,10 +442,11 @@ function storeLoop(setup: ReturnType<typeof storeSetup>, initial: AppState, agen
   return h;
 }
 
-const storeForm = (p: Partial<CreateState>): AppState => ({
-  ...cr({ view: 'store-op', mode: 'edit', origName: 'e0', ...p }),
-  language: 'ru',
-});
+// «Хранилище» — один переключатель на оба среза, поэтому тестовая форма держит флаги вместе.
+const storeForm = (p: Partial<CreateState>): AppState => {
+  const both = p.store === undefined ? {} : { storeRoots: p.store };
+  return { ...cr({ view: 'store-op', mode: 'edit', origName: 'e0', ...p, ...both }), language: 'ru' };
+};
 
 test('store: включение — своя копия в корзину файлов, models.json становится симлинком', async () => {
   const setup = storeSetup();
@@ -458,7 +460,7 @@ test('store: включение — своя копия в корзину фай
   assert.equal(entries[0].kind, 'file');
   assert.ok(entries[0].dirName.startsWith('e0--models.json@'));
   assert.ok(h.log.includes('invalidate'));
-  assert.ok(h.log.some((l) => l === 'status:' + t('ru', 'status.store-linked')), h.log.join('|'));
+  assert.ok(h.log.some((l) => l === 'status:' + t('ru', 'status.store-enabled')), h.log.join('|'));
   assert.equal(h.state.create!.store, true);
   assert.equal(h.state.create!.view, 'form');
 });
@@ -470,7 +472,7 @@ test('store: выключение — вместо симлинка обычна
   await runSideEffects(h.loop, [setup.env], prev({ view: 'form' }));
   assert.ok(!lstatSync(join(setup.envDir, 'models.json')).isSymbolicLink());
   assert.equal(readFileSync(join(setup.envDir, 'models.json'), 'utf8'), readFileSync(setup.storeFile, 'utf8'));
-  assert.ok(h.log.some((l) => l === 'status:' + t('ru', 'status.store-unlinked')), h.log.join('|'));
+  assert.ok(h.log.some((l) => l === 'status:' + t('ru', 'status.store-disabled')), h.log.join('|'));
   assert.equal(h.state.create!.store, false);
 });
 
@@ -490,7 +492,7 @@ test('store: каталог main-агента вне root — своя копи�
 
 test('store: при создании окружения файловых операций нет — только флаг', async () => {
   const setup = storeSetup();
-  const h = storeLoop(setup, { ...cr({ view: 'store-op', store: false }), language: 'ru' });
+  const h = storeLoop(setup, { ...cr({ view: 'store-op', store: false, storeRoots: false }), language: 'ru' });
   await runSideEffects(h.loop, [setup.env], prev({ view: 'form' }));
   assert.equal(h.state.create!.store, true);
   assert.equal(existsSync(join(setup.root, 'e0', 'models.json')), false);
@@ -543,7 +545,7 @@ test('store: включение для основного агента БЕЗ о
   assert.equal(snaps.length, 1, JSON.stringify(snaps));
   assert.equal(readFileSync(join(setup.root, '.store', 'models', snaps[0]), 'utf8'), '{"agent":true}');
   assert.ok(h.state.create!.store, 'флаг включён');
-  assert.ok(h.log.some((l) => l === 'status:' + t('ru', 'status.store-linked')), h.log.join('|'));
+  assert.ok(h.log.some((l) => l === 'status:' + t('ru', 'status.store-enabled')), h.log.join('|'));
 });
 
 test('store: корзина файлов недоступна — операция прервана, своя копия цела', async () => {
@@ -605,7 +607,101 @@ test('store: основной агент без своего models.json — с�
   const h = storeLoop(setup, storeForm({ store: false, main: true }), agentDir);
   await runSideEffects(h.loop, [setup.env], prev({ view: 'form' }));
   assert.ok(lstatSync(join(agentDir, 'models.json')).isSymbolicLink());
-  assert.ok(h.log.some((l) => l === 'status:' + t('ru', 'status.store-linked')), h.log.join('|'));
+  assert.ok(h.log.some((l) => l === 'status:' + t('ru', 'status.store-enabled')), h.log.join('|'));
   assert.ok(!h.log.includes('status:'), 'пустых статусов не бывает');
 });
 
+
+// --- Строка «Хранилище»: пакетные корни включаются вместе с каталогом моделей ---
+
+/** Корень с окружением `e`, у которого свои `npm/` и `git/`; хранилище ещё не создавалось. */
+function rootWithOwnRoots(own: Array<'npm' | 'git'> = ['npm', 'git']): { root: string; agent: string; env: string } {
+  const root = tmp();
+  const agent = tmp();
+  const env = join(root, 'e');
+  mkdirSync(env, { recursive: true });
+  writeFileSync(join(agent, 'models.json'), '{"providers":{}}'); // источник общего каталога моделей
+  for (const r of own) {
+    if (r === 'npm') mkdirSync(join(env, 'npm', 'node_modules', 'pi-zentui'), { recursive: true });
+    else mkdirSync(join(env, 'git'), { recursive: true });
+  }
+  writeFileSync(join(env, 'settings.json'), JSON.stringify({ packages: ['npm:pi-zentui'] }));
+  return { root, agent, env };
+}
+
+/** Прогон хранилищного диалога на реальном каталоге: общий файл моделей существует. */
+async function storeRun(initial: AppState, root: string, agentDir: string) {
+  const h = makeLoop(initial, root, agentDir);
+  h.loop.storeFile = () => join(root, '.store', 'models', 'models.json');
+  await runSideEffects(h.loop, [ENV0], prev({ view: 'store-confirm' }));
+  return h;
+}
+
+const storeCr = (over: Partial<CreateState>): AppState =>
+  ({ ...initialState(CATALOG), sub: 'create', create: { ...freshCreate(), mode: 'edit', origName: 'e', name: 'e', store: false, storeRoots: false, packages: ['npm:pi-zentui'], ...over } });
+
+test('включение хранилища: свои корни переезжают в хранилище, в окружении — симлинки', async () => {
+  const { root, agent, env } = rootWithOwnRoots();
+  const h = await storeRun(storeCr({ view: 'store-op' }), root, agent);
+  assert.equal(lstatSync(join(env, 'npm')).isSymbolicLink(), true);
+  assert.equal(lstatSync(join(env, 'git')).isSymbolicLink(), true);
+  assert.ok(existsSync(join(root, '.store', 'npm', 'node_modules', 'pi-zentui')), 'своё содержимое переехало в хранилище');
+  assert.equal(lstatSync(join(env, 'npm')).isSymbolicLink(), true);
+  assert.ok(h.log.includes('invalidate'));
+});
+
+test('включение хранилища: провал второго корня откатывает первый', async () => {
+  const { root, agent, env } = rootWithOwnRoots(['npm']);
+  writeFileSync(join(env, 'git'), 'не каталог'); // own.move для `git` обязан провалиться
+  const h = await storeRun(storeCr({ view: 'store-op' }), root, agent);
+  assert.equal(lstatSync(join(env, 'npm')).isDirectory(), true, 'npm вернулся как обычный каталог');
+  assert.equal(lstatSync(join(env, 'git')).isFile(), true);
+  assert.ok(!existsSync(join(root, '.store', 'npm')), 'откат не оставил перенесённого содержимого');
+  assert.equal(h.state.create!.storeRoots, false, 'при провале флаг не переключается');
+});
+
+test('включение хранилища: лишняя своя копия уходит в снимок хранилища', async () => {
+  const { root, agent, env } = rootWithOwnRoots();
+  const store = join(root, '.store');
+  mkdirSync(join(store, 'npm', 'node_modules', 'other'), { recursive: true });
+  await storeRun(storeCr({ view: 'store-op' }), root, agent);
+  assert.equal(lstatSync(join(env, 'npm')).isSymbolicLink(), true);
+  const snaps = readdirSync(store).filter((n) => n.startsWith('npm.from-'));
+  assert.equal(snaps.length, 1, JSON.stringify(readdirSync(store)));
+});
+
+test('хранилище уже включено: повторное нажатие выключает корни без установки пакетов', async () => {
+  const { root, agent, env } = rootWithOwnRoots();
+  const store = join(root, '.store');
+  mkdirSync(join(store, 'npm', 'node_modules', 'pi-zentui'), { recursive: true });
+  mkdirSync(join(store, 'git'), { recursive: true });
+  mkdirSync(join(store, 'models'), { recursive: true });
+  writeFileSync(join(store, 'models', 'models.json'), '{"providers":{}}');
+  rmSync(join(env, 'npm'), { recursive: true });
+  rmSync(join(env, 'git'), { recursive: true });
+  symlinkSync(join(store, 'npm'), join(env, 'npm'), 'dir');
+  symlinkSync(join(store, 'git'), join(env, 'git'), 'dir');
+  const h = await storeRun(storeCr({ view: 'store-op', store: true, storeRoots: true }), root, agent);
+  assert.equal(lstatSync(join(env, 'npm')).isDirectory(), true, 'вместо симлинка — обычная копия');
+  assert.ok(existsSync(join(env, 'npm', 'node_modules', 'pi-zentui')));
+  assert.deepEqual(h.log.filter((l) => l.startsWith('storeInstallSources')), []);
+});
+
+test('включение хранилища: объявления окружения, которых нет в реестре, доносятся в хранилище', async () => {
+  const { root, agent, env } = rootWithOwnRoots();
+  const store = join(root, '.store');
+  mkdirSync(join(store, 'npm', 'node_modules', 'pi-zentui'), { recursive: true });
+  writeFileSync(join(store, 'settings.json'), JSON.stringify({ packages: ['npm:pi-zentui'] }));
+  writeFileSync(join(env, 'settings.json'), JSON.stringify({ packages: ['npm:pi-zentui', 'npm:pi-ssh-remote'] }));
+  const h = await storeRun(storeCr({ view: 'store-op', packages: ['npm:pi-zentui', 'npm:pi-ssh-remote'] }), root, agent);
+  assert.deepEqual(h.log.filter((l) => l.startsWith('storeInstallSources')), ['storeInstallSources:npm:pi-ssh-remote']);
+});
+
+test('включение хранилища: всё уже в реестре — доноске нет', async () => {
+  const { root, agent } = rootWithOwnRoots();
+  const store = join(root, '.store');
+  mkdirSync(join(store, 'npm'), { recursive: true });
+  writeFileSync(join(store, 'settings.json'), JSON.stringify({ packages: ['npm:pi-zentui'] }));
+  const h = await storeRun(storeCr({ view: 'store-op' }), root, agent);
+  assert.deepEqual(h.log.filter((l) => l.startsWith('storeInstallSources')), []);
+});

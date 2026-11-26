@@ -21,7 +21,7 @@ import type { McpTab } from './state-mcp.js';
 export {
   freshCreate, freshEdit, packageListSources, formRows, modelRows, defaultModelRef,
   ROW_NAME, ROW_MODEL, ROW_MODELS, ROW_STORE, ROW_TOOLS, ROW_PACKAGES, ROW_SKILLS, ROW_MCP, ROW_ACTION, ROW_DELETE,
-  FORM_ROWS, MAX_NAME, UPDATE_ALL_ROW, INSTALL_ROW,
+  FORM_ROWS, MAX_NAME, UPDATE_ALL_ROW, INSTALL_ROW, storeSummaryOf,
 } from './state-form.js';
 export type { CreateView, CreateState } from './state-form.js';
 export { mcpFormRows, mcpFormStep, mcpListNames, freshMcpForm, freshMcpTab, MCP_TYPES, MCP_EXPOSURES, MCP_ENUM_ROWS, enumValues, TEXT_ROWS } from './state-mcp.js';
@@ -108,8 +108,8 @@ export type Action =
   | Key
   | { type: 'create-result'; ok: boolean; message: string }
   | { type: 'edit-start'; name: string; path: string; main: boolean; settings: EnvSettings; mcp?: McpServer[];
-      store?: boolean; enabledModels?: string[]; modelCatalog?: Provider[] }
-  | { type: 'store-result'; ok: boolean; message: string; store: boolean }
+      store?: boolean; storeRoots?: boolean; storeBroken?: boolean; enabledModels?: string[]; modelCatalog?: Provider[] }
+  | { type: 'store-result'; ok: boolean; message: string; store: boolean; storeRoots: boolean }
   | { type: 'run-result'; ok: boolean }
   | { type: 'delete-result'; ok: boolean; message: string }
   | { type: 'updates-result'; ok: boolean; latest: Record<string, string>; scope: 'main' | 'create' }
@@ -240,7 +240,8 @@ function applyResults(state: AppState, action: Action, ctx: ReducerCtx): AppStat
       sub: 'create',
       create: freshEdit(
         action.name, action.settings, state.catalog, action.mcp ?? [], action.main,
-        action.store ?? false, action.enabledModels ?? [], action.modelCatalog ?? state.catalog.providers,
+        action.store ?? false, action.storeRoots ?? false, action.storeBroken ?? false,
+        action.enabledModels ?? [], action.modelCatalog ?? state.catalog.providers,
       ),
     };
   }

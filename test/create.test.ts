@@ -696,3 +696,25 @@ test('updateEnvironmentAt при выключенном хранилище во�
   assert.ok(!lstatSync(join(root, 'e5', 'models.json')).isSymbolicLink());
   assert.equal(readFileSync(join(root, 'e5', 'models.json'), 'utf8'), '{"agent":true}');
 });
+
+test('createEnvironment с пакетным хранилищем: npm/ и git/ — симлинки на хранилище', () => {
+  const root = tmpDir();
+  const agent = tmpDir();
+  const store = join(root, '.store');
+  const storeFile = join(store, 'models', 'models.json');
+  writeFileSync(join(agent, 'models.json'), '{"providers":{}}');
+  const res = createEnvironment(root, { name: 'e4' }, agent, 'ru', { storeFile, storeModels: true, storeDir: store, storeRoots: true });
+  assert.equal(res.ok, true, res.error);
+  assert.equal(lstatSync(join(root, 'e4', 'npm')).isSymbolicLink(), true);
+  assert.equal(lstatSync(join(root, 'e4', 'git')).isSymbolicLink(), true);
+  assert.ok(existsSync(join(store, 'npm')), 'общие корни созданы');
+});
+
+test('createEnvironment без пакетного хранилища: своих npm/ и git/ нет', () => {
+  const root = tmpDir();
+  const agent = tmpDir();
+  const res = createEnvironment(root, { name: 'e5' }, agent, 'ru', {});
+  assert.equal(res.ok, true, res.error);
+  assert.equal(existsSync(join(root, 'e5', 'npm')), false);
+  assert.equal(existsSync(join(root, 'e5', 'git')), false);
+});

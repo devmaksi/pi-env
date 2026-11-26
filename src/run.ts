@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import { withShutdown } from './shutdown.js';
 import { realEnvNames, type Environment } from './environments.js';
 import { createScanCache } from './env-cache.js';
-import { repairModelsLink, storeModelsFile, storeRoot } from './store.js';
+import { repairModelsLink, repairStoreRootLinks, storeModelsFile, storeRoot, STORE_ROOTS, type StoreResult } from './store.js';
 import { loadAppSettings, saveAppSettings } from './appsettings.js';
 import { listProviders, loadCatalog, fetchPackageCatalog, normalizePkgSource, type CatalogPkg } from './catalog.js';
 import { computeLayout } from './layout.js';
@@ -290,6 +290,23 @@ export async function run(root: string, term: Term = createTerm(), deps: RunDeps
     afterPiCommand(r, { type: 'update-result', ok: r.ok, message: r.ok ? source : cmdFailureText(r, state.language, 'status.update-error', source) }, dir, 'main');
   }
 
+  /**
+   * Доноска реестра хранилища: `pi install` по очереди (параллельные установки спорили бы
+   * за `package.json` хранилища). Провал одной — остаток не ставится, в статусе команда.
+   */
+  async function doStoreInstallSources(sources: string[]): Promise<void> {
+    for (const source of sources) {
+      const r = await startOp((signal) => piInstall(storeDir, source, signal, runCmdFn), 'busy');
+      if (!r.ok) {
+        statusMsg = t(state.language, 'status.store-partial-install', { name: source });
+        break;
+      }
+    }
+    reloadCatalog();
+    void checkUpdates(storeDir, 'main');
+    repaint();
+  }
+
   async function doInstall(installDir: string, source: string, envName: string | null): Promise<void> {
     const r = await startOp((signal) => piInstall(installDir, source, signal, runCmdFn), 'busy');
     if (r.ok) statusMsg = t(state.language, 'status.installed', { name: source });
@@ -430,6 +447,7 @@ export async function run(root: string, term: Term = createTerm(), deps: RunDeps
     doUpdateAll: (dir, scope) => { void doUpdateAll(dir, scope); },
     doUpdateOne: (dir, source) => { void doUpdateOne(dir, source); },
     doInstall: (dir, source, envName) => { void doInstall(dir, source, envName); },
+    storeInstallSources: (sources) => { void doStoreInstallSources(sources); },
     doMcpAdd: (dir, form, scope) => { void doMcpAdd(dir, form, scope); },
     doMcpCheck: (dir, scope) => { void doMcpCheck(dir, scope); },
     cancelBusy: () => cancelBusy(),
@@ -464,14 +482,20 @@ export async function run(root: string, term: Term = createTerm(), deps: RunDeps
         type: 'edit-start', name: row.name, path: row.path, main: row.main === true, settings,
         mcp: readMcpServers(row.path),
         store: row.details.modelsLink === 'linked',
+        storeRoots: row.details.rootLinks.npm !== 'off' || row.details.rootLinks.git !== 'off',
+        storeBroken: row.details.modelsLink === 'broken'
+          || row.details.rootLinks.npm === 'broken' || row.details.rootLinks.git === 'broken',
         enabledModels: settings.enabledModels ?? [],
         modelCatalog: listProviders(row.path),
       }, rctx({ rows, tnames, names }));
     } else if ((key === 'r' || key === 'R') && state.tab === 'envs' && state.sub === null && state.trash === null && state.clone === null && row !== undefined) {
-      // `R` на вкладке окружений — починка связи с общим каталогом моделей (битый симлинк).
+      // `R` на вкладке окружений — починка битых симлинков общего хранилища (модели и пакеты).
       const file = storeFile;
-      if (file !== null && row.details.modelsLink === 'broken') {
-        const r = repairModelsLink(row.path, file, agentDir, state.language);
+      const rootsBroken = row.details.rootLinks.npm === 'broken' || row.details.rootLinks.git === 'broken';
+      if ((file !== null && row.details.modelsLink === 'broken') || rootsBroken) {
+        let r: StoreResult = { ok: true };
+        if (file !== null && row.details.modelsLink === 'broken') r = repairModelsLink(row.path, file, agentDir, state.language);
+        if (r.ok && rootsBroken) r = repairStoreRootLinks(row.path, storeDir, STORE_ROOTS, state.language);
         cache.invalidate();
         statusMsg = r.ok ? t(state.language, 'status.store-repaired') : r.error;
       }

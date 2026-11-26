@@ -85,6 +85,11 @@ export function snapshotStoreManifest(storeDir: string, now: number, keep = 5): 
   }
 }
 
+/** Имя снимка лишней своей копии пакетного корня: `<корень>.from-<окружение>-<мс>` внутри хранилища. */
+export function storeRootSnapshotName(root: StoreRoot, envName: string, now: number): string {
+  return `${root}.from-${envName.replace(/[/@\\s]/g, '-')}-${now}`;
+}
+
 /** Реестр хранилища: объявления пакетов из `settings.json` каталога хранилища. */
 export function storeRegistrySources(storeDir: string): string[] {
   try {
@@ -356,6 +361,13 @@ export function enableStoreRoots(
       rollback(done);
       return moved;
     }
+    try {
+      mkdirSync(storePackagesRoot(storeDir, root), { recursive: true });
+    } catch {
+      own.undo(root);
+      rollback(done);
+      return { ok: false, error: t(lang, 'err.link-root') };
+    }
     const link = placeRootLink(envDir, storeDir, root, lang);
     if (!link.ok) {
       own.undo(root);
@@ -376,11 +388,12 @@ export function disableStoreRoots(
 ): StoreResult {
   for (const root of roots) {
     const target = storePackagesRoot(storeDir, root);
-    if (!existsSync(target)) return { ok: false, error: t(lang, 'err.store-no-source') };
     const link = envRootDir(envDir, root);
     try {
       const st = lstatSync(link, { throwIfNoEntry: false });
-      if (st !== undefined && st !== null && !st.isSymbolicLink()) continue;
+      // Ни симлинка, ни своей копии нет — выключать нечего; обычная копия тоже остаётся как есть.
+      if (st === undefined || st === null || !st.isSymbolicLink()) continue;
+      if (!existsSync(target)) return { ok: false, error: t(lang, 'err.store-no-source') };
       if (st !== undefined && st !== null) unlinkSync(link);
       copyRecursive(target, link);
     } catch {

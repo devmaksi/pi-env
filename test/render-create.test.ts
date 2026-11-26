@@ -29,7 +29,7 @@ test('форма создания: все пункты + действие', () =
   assert.ok(s.includes('Имя:'));
   assert.ok(s.includes('Модель:'));
   assert.ok(s.includes('Модели: все из каталога'));
-  assert.ok(s.includes('Хранилище: общий каталог'));
+  assert.ok(s.includes(t('ru', 'form.store') + t('ru', 'store.linked')), s);
   assert.ok(s.includes('Свои инструменты: 1'));
   assert.ok(s.includes('Расширения: 0'));
   assert.ok(s.includes('Скиллы: 1'));
@@ -261,7 +261,7 @@ test('форма на английском', () => {
   assert.ok(s.includes('Name:'));
   assert.ok(s.includes('Model:'));
   assert.ok(s.includes('Models: all from the catalog'));
-  assert.ok(s.includes('Storage: shared catalog'));
+  assert.ok(s.includes(t('en', 'form.store') + t('en', 'store.linked')), s);
   assert.ok(s.includes('Custom tools: 0'));
   assert.ok(s.includes('Create'));
 });
@@ -303,9 +303,9 @@ test('пикер моделей: пустой выбор — подсказка 
 
 test('«Хранилище»: подтверждение подключения и экран операции', () => {
   const ask = render({ state: editState({ view: 'store-confirm' }), envs, width: 100, height: 14, root: '/root', useColor: false, status: null });
-  assert.ok(ask.includes('Подключить общий каталог моделей'), ask);
+  assert.ok(ask.includes(t('ru', 'busy.store-confirm')), ask);
   assert.ok(ask.includes('Enter — подтвердить'), ask);
   const op = render({ state: editState({ view: 'store-op' }), envs, width: 100, height: 14, root: '/root', useColor: false, status: null });
-  assert.ok(op.includes('Переподключаем каталог моделей'), op);
+  assert.ok(op.includes(t('ru', 'busy.store-op')), op);
   assert.ok(!op.includes('Esc — прервать'), 'операция синхронна — прерывать нечего, подсказки нет');
 });
