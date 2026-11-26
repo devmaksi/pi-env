@@ -38,7 +38,10 @@ function meter() {
 const envs: Environment[] = Array.from({ length: 8 }, (_, i) => ({
   name: 'env-' + i,
   path: '/root/env-' + i,
-  details: { hasSettings: true, model: 'anthropic:claude-sonnet-4-5', tools: ['read', 'bash'], skills: [], packages: [], mcp: [], settingsError: null, mcpError: null, mcpSkipped: [] },
+  details: { hasSettings: true, model: 'anthropic:claude-sonnet-4-5', tools: ['read', 'bash'], skills: [], packages: [], mcp: [],
+    // срезы хранилища: `scan` отдаёт их всегда, кадр их читает — фикстура обязана соответствовать
+    settingsError: null, mcpError: null, mcpSkipped: [],
+    modelsLink: 'off', rootLinks: { npm: 'off', git: 'off' }, missingPackages: [] },
 }));
 
 const frame = (state: AppState): string[] =>
