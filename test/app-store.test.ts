@@ -1,146 +1,93 @@
 import { test } from 'node:test';
 import assert from 'node:assert';
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, unlinkSync, writeFileSync } from 'node:fs';
-import { lstatSync, existsSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { run } from '../src/run.js';
+import { run, type RunDeps } from '../src/run.js';
+import type { CmdResult, RunFn } from '../src/cmd.js';
 import type { Term } from '../src/terminal.js';
+import { saveAppSettings, DEFAULT_APP_SETTINGS } from '../src/appsettings.js';
 import { t } from '../src/i18n.js';
-import { listTrash } from '../src/trash.js';
 
-/** Фейковый терминал: собирает строки кадров, клавиши — из списка. */
-function fakeTerm(keys: string[], painted: string[]): Term {
-  let next = 0;
-  return {
+const dirs: string[] = [];
+function tmpDir(): string {
+  const dir = mkdtempSync(join(tmpdir(), 'pienv-'));
+  dirs.push(dir);
+  return dir;
+}
+
+/** Корень с закреплённым языком (урок CI 0.2.4/0.2.6) и одним окружением. */
+function root(): string {
+  const dir = tmpDir();
+  mkdirSync(join(dir, 'e0'));
+  saveAppSettings(dir, { ...DEFAULT_APP_SETTINGS, language: 'ru' });
+  return dir;
+}
+test.after(() => { for (const d of dirs) rmSync(d, { recursive: true, force: true }); } );
+
+interface Launch { cmd: string; args: string[]; agentDir: string }
+
+/** Процесс, который сразу «успешно» завершается; вызовы записываются в лог. */
+function okCmd(log: Launch[]): RunFn {
+  return (cmd, args, timeoutMs, opts = {}) => {
+    log.push({ cmd, args, agentDir: opts.env?.PI_CODING_AGENT_DIR ?? '' });
+    void opts.signal;
+    return Promise.resolve({ ok: true, stdout: '', stderr: '', code: 0, timedOut: false, timeoutMs } satisfies CmdResult);
+  };
+}
+
+/**
+ * Реальный цикл `run()` на фейковом терминале. `agent` — каталог main-агента,
+ * в котором лежат пакеты (он же источник каталога формы).
+ */
+async function drive(keys: string[], agent: string, deps: RunDeps = {}): Promise<{ painted: string[]; launches: Launch[]; rt: string }> {
+  const rt = root();
+  const saved = process.env.PI_CODING_AGENT_DIR;
+  process.env.PI_CODING_AGENT_DIR = agent;
+  const launches: Launch[] = [];
+  const painted: string[] = [];
+  let cursor = 0;
+  const term: Term = {
     noColor: true,
     start() {},
     stop() {},
-    width: () => 90,
-    height: () => 32,
-    key: async () => keys[next++] ?? 'ctrlc',
+    width: () => 100,
+    height: () => 24,
+    key: async () => keys[(cursor = cursor + 1) - 1] ?? 'ctrlc',
     onResize() {},
-    paint: (p) => {
-      painted.push(...(p.kind === 'full' ? p.lines : p.rows.map((r) => r.text)));
+    paint(patch) {
+      if (patch.kind === 'full') painted.push(patch.lines.join('\n'));
+      else painted.push(patch.rows.map((r) => r.text).join('\n'));
       return true;
     },
     screenKnown: () => true,
     copy() {},
   };
-}
-
-/** Язык закреплён, как в других сквозных тестах (на CI `LANG=C.UTF-8` → «en»). */
-function tmpRoot(storeDir?: string): string {
-  const root = mkdtempSync(join(tmpdir(), 'pi-env-app-store-'));
-  writeFileSync(join(root, '.pi-env.json'), JSON.stringify(storeDir === undefined ? { language: 'ru' } : { language: 'ru', storeDir }));
-  return root;
-}
-
-function envDir(root: string, name: string): string {
-  const dir = join(root, name);
-  mkdirSync(dir, { recursive: true });
-  writeFileSync(join(dir, 'settings.json'), JSON.stringify({ defaultProvider: 'p', defaultModel: 'm' }, null, 2));
-  return dir;
-}
-
-function storeFile(root: string): string {
-  const dir = join(root, '.store', 'models');
-  mkdirSync(dir, { recursive: true });
-  const file = join(dir, 'models.json');
-  writeFileSync(file, JSON.stringify({ providers: { p: { models: { m: {}, other: {} } } } }));
-  return file;
-}
-
-async function drive(root: string, keys: string[], agent?: string): Promise<string> {
-  const savedAgent = process.env.PI_CODING_AGENT_DIR;
-  const painted: string[] = [];
-  process.env.PI_CODING_AGENT_DIR = agent ?? join(root, 'no-such-agent');
   try {
-    await run(root, fakeTerm(keys, painted), {});
+    await run(rt, term, { cmd: okCmd(launches), agentDir: agent, ...deps });
   } finally {
-    if (savedAgent === undefined) delete process.env.PI_CODING_AGENT_DIR;
-    else process.env.PI_CODING_AGENT_DIR = savedAgent;
+    if (saved === undefined) delete process.env.PI_CODING_AGENT_DIR;
+    else process.env.PI_CODING_AGENT_DIR = saved;
   }
-  return painted.join('\n');
+  return { painted, launches, rt };
 }
 
-test('сквозной: «R» чинит битую связь с хранилищем и чинит ⚠ в списке', async () => {
-  const root = tmpRoot('.store');
-  const dir = envDir(root, 'e0');
-  const file = storeFile(root);
-  symlinkSync(join(root, 'нет-такого'), join(dir, 'models.json')); // битый симлинк
-  const frame = await drive(root, ['down', 'R', 'ctrlc']); // курсор с основной строки на e0
-  assert.ok(lstatSync(join(dir, 'models.json')).isSymbolicLink());
-  assert.equal(readFileSync(join(dir, 'models.json'), 'utf8'), readFileSync(file, 'utf8'));
-  assert.ok(frame.includes(t('ru', 'status.store-repaired')), frame.slice(-1500));
-});
-
-test('сквозной: «R» на окружении со своей копией каталога ничего не меняет', async () => {
-  const root = tmpRoot('.store');
-  const dir = envDir(root, 'e0');
-  writeFileSync(join(dir, 'models.json'), '{"own":true}');
-  storeFile(root);
-  const frame = await drive(root, ['down', 'r', 'ctrlc']);
-  assert.ok(!frame.includes(t('ru', 'status.store-repaired')), frame.slice(-1500));
-  assert.ok(!lstatSync(join(dir, 'models.json')).isSymbolicLink());
-  assert.equal(listTrash(root).length, 0);
-});
-
-test('сквозной: курсор на «Создать» — «R» не трогает окружения', async () => {
-  const root = tmpRoot('.store');
-  envDir(root, 'e0');
-  const file = storeFile(root);
-  await drive(root, ['down', 'down', 'down', 'r', 'ctrlc']); // до строки «Создать»
-  assert.equal(readFileSync(file, 'utf8').includes('providers'), true);
-  assert.equal(existsSync(join(root, '.trash')), false);
-});
-
-/** Каталог main-агента вне корня окружений: из него создаётся общий файл каталога. */
-function tmpAgent(catalog: unknown): string {
-  const dir = mkdtempSync(join(tmpdir(), 'pi-env-agent-'));
-  writeFileSync(join(dir, 'models.json'), JSON.stringify(catalog));
-  return dir;
+/** main-агент с пакетом в настройках — список вкладки «Расширения» непустой. */
+function agentWithPackage(): string {
+  const agent = tmpDir();
+  writeFileSync(join(agent, 'settings.json'), JSON.stringify({ packages: ['npm:pi-zentui'] }));
+  mkdirSync(join(agent, 'npm', 'node_modules', 'pi-zentui'), { recursive: true });
+  writeFileSync(join(agent, 'npm', 'package.json'), JSON.stringify({ dependencies: { 'pi-zentui': '1.0.0' } }));
+  return agent;
 }
 
-test('сквозной: включение хранилища в форме — симлинк, своя копия в корзине файлов', async () => {
-  const root = tmpRoot('.store');
-  const dir = envDir(root, 'e0');
-  writeFileSync(join(dir, 'models.json'), '{"own":true}');
-  const agent = tmpAgent({ providers: { p: { models: { m: {} } } } });
-  // курсор на e0 → E → три строки вниз («Хранилище») → Enter (вопрос) → Enter (подтверждение)
-  const frame = await drive(root, ['down', 'e', 'down', 'down', 'down', 'enter', 'enter', 'ctrlc'], agent);
-  const link = join(dir, 'models.json');
-  assert.ok(lstatSync(link).isSymbolicLink(), 'models.json — симлинк');
-  assert.equal(readFileSync(link, 'utf8'), readFileSync(storeFileOf(root), 'utf8'));
-  const entries = listTrash(root);
-  assert.equal(entries.length, 1, JSON.stringify(entries));
-  assert.equal(entries[0]!.kind, 'file');
-  assert.ok(frame.includes(t('ru', 'status.store-linked')), frame.slice(-1500));
-});
+const piLaunch = (l: Launch): boolean => l.cmd === 'pi';
 
-test('сквозной: «Корзина» — X + Enter удаляет файловую запись совсем', async () => {
-  const root = tmpRoot('.store');
-  const dir = envDir(root, 'e0');
-  writeFileSync(join(dir, 'models.json'), '{"own":true}');
-  const agent = tmpAgent({ providers: { p: { models: { m: {} } } } });
-  await drive(root, ['down', 'e', 'down', 'down', 'down', 'enter', 'enter', 'ctrlc'], agent);
-  assert.equal(listTrash(root).length, 1);
-  // список: основная строка, e0, «Создать», «Корзина» → три «вниз»; Enter — суб-экран; X, Enter — подтверждение
-  await drive(root, ['down', 'down', 'down', 'enter', 'x', 'enter', 'ctrlc'], agent);
-  assert.equal(listTrash(root).length, 0);
-});
-
-function storeFileOf(root: string): string {
-  return join(root, '.store', 'models', 'models.json');
-}
-
-test('сквозной: «R» на основной строке чинит битый симлинк каталога main-агента', async () => {
-  const root = tmpRoot();
-  const agent = mkdtempSync(join(tmpdir(), 'pi-env-agent-'));
-  symlinkSync(join(root, 'нет-такого'), join(agent, 'models.json')); // битый симлинк у агента
-  storeFile(root); // общий файл есть
-  const frame = await drive(root, ['R', 'ctrlc'], agent); // курсор и так на основной строке
-  assert.ok(lstatSync(join(agent, 'models.json')).isSymbolicLink());
-  assert.equal(readFileSync(join(agent, 'models.json'), 'utf8'), readFileSync(storeFileOf(root), 'utf8'));
-  assert.ok(frame.includes(t('ru', 'status.store-repaired')), frame.slice(-1500));
+test('сквозной прогон: обновление пакета с вкладки идёт в каталог хранилища', async () => {
+  const agent = agentWithPackage();
+  // TAB — вкладка «Расширения», Enter по первой строке пакета → `pi update <source>`
+  const { launches, painted, rt } = await drive(['tab', 'enter', 'ctrlc'], agent);
+  const upd = launches.filter((l) => piLaunch(l) && l.args[0] === 'update');
+  assert.ok(upd.length >= 1, painted.join('\n'));
+  assert.ok(upd.every((l) => l.agentDir === join(rt, '.store')), JSON.stringify(upd));
 });

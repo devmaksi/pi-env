@@ -153,6 +153,7 @@
   "ext.store.usage": "{n} envs",
   "ext.store.conflict": "Conflicting sources for “{name}”",
   "ext.store.empty": "Store is not enabled",
+  "ext.store.used-by": "Environments that will lose it: {v}",
   "ext.hint.store-off": "Enable the store in an environment form",
   "ext.hint.enter": "Enter — update package / select",
   "err.name-empty": "Enter an environment name",

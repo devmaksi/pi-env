@@ -1,5 +1,5 @@
 import { type EnvSettings } from './create.js';
-import type { Catalog, Provider } from './catalog.js';
+import type { Catalog, PkgItem, Provider } from './catalog.js';
 import { localeCodes } from './i18n.js';
 import type { McpLiveReport, McpServer } from './mcp.js';
 import { mcpMachine, freshMcpForm, freshMcpTab, applyMcpLiveMain, onRefreshMcp } from './state-mcp.js';
@@ -63,6 +63,8 @@ export interface AppState {
   language: string;
   quit: boolean;
   catalog: Catalog;
+  /** Реестр общего хранилища пакетов — список вкладки «Расширения» (форма правки пользуется `catalog`). */
+  storePackages: PkgItem[];
   create: CreateState | null;
   ext: ExtState | null;
   mcp: McpTab | null;
@@ -90,10 +92,10 @@ export const TABS: readonly Tab[] = ['envs', 'extensions', 'mcp', 'settings', 'a
 export const SETTINGS_COUNT = 5;
 export const LANGUAGE_ROW = 4; // «Язык» — последняя строка, после переключателей
 
-export function initialState(catalog: Catalog = emptyCatalog()): AppState {
+export function initialState(catalog: Catalog = emptyCatalog(), storePackages: PkgItem[] = catalog.packages): AppState {
   return {
     tab: 'envs', focus: 'left', selected: 0, sub: null, colorToggle: true, recheckUpdates: false, recheckMcp: false, quit: false, language: 'ru',
-    catalog, create: null, ext: null, mcp: null, trash: null, clone: null, catalogProgress: null, opSeconds: null, pkgCheck: 'idle', pkgLatest: {}, mcpCheck: 'idle', mcpLive: null, selfUpdate: null, updateUi: null, selfCheck: 'idle',
+    catalog, storePackages, create: null, ext: null, mcp: null, trash: null, clone: null, catalogProgress: null, opSeconds: null, pkgCheck: 'idle', pkgLatest: {}, mcpCheck: 'idle', mcpLive: null, selfUpdate: null, updateUi: null, selfCheck: 'idle',
   };
 }
 
@@ -132,8 +134,13 @@ export function listLength(tab: Tab, envCount: number, pkgCount = 0, mcpCount = 
   return 0;
 }
 
+/** Пакеты, которые видит текущая вкладка: «Расширения» — реестр хранилища, форма — каталог агента. */
+export function packagesOf(state: AppState, tab: Tab): PkgItem[] {
+  return tab === 'extensions' ? state.storePackages : state.catalog.packages;
+}
+
 function clampSelected(state: AppState, ctx: ReducerCtx): number {
-  const len = listLength(state.tab, ctx.envNames.length, state.catalog.packages.length, state.catalog.mcp.length, state);
+  const len = listLength(state.tab, ctx.envNames.length, packagesOf(state, state.tab).length, state.catalog.mcp.length, state);
   return Math.max(0, Math.min(state.selected, len - 1));
 }
 
@@ -330,7 +337,7 @@ function onTab(state: AppState): AppState {
 
 function onUpDown(state: AppState, delta: number, ctx: ReducerCtx): AppState {
   if (state.sub !== null) return state;
-  const len = listLength(state.tab, ctx.envNames.length, state.catalog.packages.length, state.catalog.mcp.length);
+  const len = listLength(state.tab, ctx.envNames.length, packagesOf(state, state.tab).length, state.catalog.mcp.length);
   if (len === 0) return state;
   const selected = Math.min(len - 1, Math.max(0, state.selected + delta));
   return { ...state, selected };
@@ -367,9 +374,10 @@ function enterEnvs(state: AppState, envNames: string[]): AppState {
 }
 
 function enterExtensions(state: AppState): AppState {
-  const n = state.catalog.packages.length;
+  const pkgs = packagesOf(state, 'extensions');
+  const n = pkgs.length;
   if (state.selected < n) {
-    return { ...state, ext: freshExt({ view: 'updating', updating: state.catalog.packages[state.selected].name }) };
+    return { ...state, ext: freshExt({ view: 'updating', updating: pkgs[state.selected].name }) };
   }
   if (state.selected === n) return { ...state, ext: freshExt({ view: 'updating', updating: null }) };
   return { ...state, ext: freshExt({ view: 'catalog', catalogStatus: 'loading' }) };
@@ -391,9 +399,10 @@ function onSpace(state: AppState): AppState {
 
 function onX(state: AppState): AppState {
   if (state.tab === 'extensions') {
-    const n = state.catalog.packages.length;
+    const pkgs = packagesOf(state, 'extensions');
+    const n = pkgs.length;
     if (state.selected < n) {
-      return { ...state, ext: freshExt({ view: 'confirm-remove', removing: state.catalog.packages[state.selected].name }) };
+      return { ...state, ext: freshExt({ view: 'confirm-remove', removing: pkgs[state.selected].name }) };
     }
   }
   if (state.tab === 'mcp') {

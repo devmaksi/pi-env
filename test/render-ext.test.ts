@@ -41,7 +41,7 @@ const st = { ...initialState(), tab: 'extensions' as const, selected: 0 };
 
 test('вкладка «Расширения»: заголовок хранилища и счётчик «N окр.»', () => {
   const envs = [env('dev-supo', ['npm:pi-zentui']), env('admin', ['npm:pi-zentui']), env('test-ai', [])];
-  const state = { ...st, catalog: { ...initialState().catalog, packages: [pkg('pi-zentui')] } };
+  const state = { ...st, storePackages: [pkg('pi-zentui')] };
   const s = render({ state, envs, width: 90, height: 20, ...base });
   assert.ok(s.includes(t('ru', 'ext.title.store')), s);
   assert.ok(s.includes(t('ru', 'ext.store.usage', { n: 2 })), s);
@@ -49,7 +49,7 @@ test('вкладка «Расширения»: заголовок хранили
 
 test('вкладка «Расширения»: конфликт источников помечен в списке и в инфо-панели', () => {
   const envs = [env('dev-supo', ['npm:pi-open-tui']), env('dev-vtb', ['npm:@wangjq4214/pi-open-tui'])];
-  const state = { ...st, catalog: { ...initialState().catalog, packages: [pkg('pi-open-tui')] } };
+  const state = { ...st, storePackages: [pkg('pi-open-tui')] };
   const s = render({ state, envs, width: 90, height: 20, ...base });
   assert.ok(s.includes(t('ru', 'ext.store.conflict', { name: 'pi-open-tui' })), s);
   assert.ok(s.includes('npm:@wangjq4214/pi-open-tui'), s);
@@ -63,7 +63,7 @@ test('пустое хранилище: пустой список с подска
 
 test('кадр вкладки хранилища: ровно height строк фиксированной ширины', () => {
   const envs = [env('dev-supo', ['npm:pi-zentui']), env('dev-vtb', ['npm:@wangjq4214/pi-open-tui'])];
-  const state = { ...st, catalog: { ...initialState().catalog, packages: [pkg('pi-zentui'), pkg('pi-open-tui')] } };
+  const state = { ...st, storePackages: [pkg('pi-zentui'), pkg('pi-open-tui')] };
   for (const width of [40, 62, 90]) {
     const s = render({ state, envs, width, height: 20, ...base });
     const lines = s.split('\n');
@@ -74,4 +74,16 @@ test('кадр вкладки хранилища: ровно height строк �
       assert.equal(visibleWidth(line) <= width, true, `ширина w=${width}: ${JSON.stringify(line)}`);
     }
   }
+});
+
+test('подтверждение удаления из хранилища: список окружений, которые лишатся пакета', () => {
+  const envs = [env('dev-supo', ['npm:pi-zentui']), env('admin', ['npm:pi-zentui'])];
+  const state = {
+    ...st,
+    storePackages: [pkg('pi-zentui')],
+    ext: { view: 'confirm-remove' as const, cursor: 0, updating: null, installing: null, removing: 'pi-zentui', catalog: [], catalogStatus: 'ready' as const, query: '' },
+  };
+  const s = render({ state, envs, width: 90, height: 20, ...base });
+  assert.ok(s.includes(t('ru', 'busy.delete-ext', { name: 'pi-zentui' })), s);
+  assert.ok(s.includes(t('ru', 'ext.store.used-by', { v: 'admin, dev-supo' })), s);
 });

@@ -360,13 +360,14 @@ const CREATE_BUSY: Record<string, { text: (cr: CreateState, lang: string) => str
 };
 
 function busySection<S>(
-  busy: Record<string, { text: (s: S, lang: string) => string; bold?: boolean; hints: StrKey[] }>,
+  busy: Record<string, { text: (s: S, lang: string) => string; bold?: boolean; hints: StrKey[]; extra?: (s: S, ctx: Ctx) => string[] }>,
   view: string,
   s: S,
   ctx: Ctx,
 ): Section {
   const b = busy[view];
   const left = [c(b.bold ? ANSI.bold : ANSI.dim, ctx.useColor) + b.text(s, ctx.lang) + elapsedSuffix(ctx) + c(ANSI.reset, ctx.useColor)];
+  left.push(...(b.extra?.(s, ctx) ?? []));
   const right = b.hints.map((h) => c(ANSI.dim, ctx.useColor) + t(ctx.lang, h) + c(ANSI.reset, ctx.useColor));
   return { left, right, cursorRow: -1 };
 }
@@ -615,7 +616,7 @@ const MCP_TAB_BUSY: Record<string, { text: (mt: McpTab, lang: string) => string;
 function extList(ctx: Ctx): Section {
   const left: string[] = [];
   const right: string[] = [];
-  const pkgs = ctx.state.catalog.packages;
+  const pkgs = ctx.state.storePackages;
   const conflicts = new Map(packageConflicts(ctx.envs).map((k) => [k.name, k]));
   left.push(c(ANSI.bold, ctx.useColor) + t(ctx.lang, 'ext.title.store') + c(ANSI.reset, ctx.useColor));
   if (pkgs.length === 0) left.push(c(ANSI.dim, ctx.useColor) + t(ctx.lang, 'ext.store.empty') + c(ANSI.reset, ctx.useColor));
@@ -681,11 +682,19 @@ function extCatalogView(ext: ExtState, ctx: Ctx): Section {
 }
 
 // Вкладка «Расширения»: состояния установки/обновления/удаления
-const EXT_BUSY: Record<string, { text: (ext: ExtState, lang: string) => string; bold?: boolean; hints: StrKey[] }> = {
+const EXT_BUSY: Record<string, { text: (ext: ExtState, lang: string) => string; bold?: boolean; hints: StrKey[]; extra?: (ext: ExtState, ctx: Ctx) => string[] }> = {
   'installing': { text: (ext, lang) => t(lang, 'busy.installing', { name: ext.installing ?? '' }), hints: ['hint.kill'] },
   'updating': { text: (ext, lang) => ext.updating === null ? t(lang, 'busy.updating') : t(lang, 'busy.updating.named', { name: ext.updating }), hints: ['hint.kill'] },
   'removing': { text: (_ext, lang) => t(lang, 'busy.deleting'), hints: ['hint.kill'] },
-  'confirm-remove': { text: (ext, lang) => t(lang, 'busy.delete-ext', { name: ext.removing ?? '' }), bold: true, hints: ['hint.confirm', 'hint.cancel'] },
+  'confirm-remove': {
+    text: (ext, lang) => t(lang, 'busy.delete-ext', { name: ext.removing ?? '' }),
+    bold: true,
+    hints: ['hint.confirm', 'hint.cancel'],
+    extra: (ext, ctx) => {
+      const users = storePackageUsage(ctx.envs, ext.removing ?? '');
+      return users.length === 0 ? [] : [c(ANSI.dim, ctx.useColor) + t(ctx.lang, 'ext.store.used-by', { v: users.join(', ') }) + c(ANSI.reset, ctx.useColor)];
+    },
+  },
 };
 
 /**

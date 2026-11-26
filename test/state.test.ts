@@ -13,7 +13,7 @@ const envs = (n: number) => Array.from({ length: n }, (_, i) => `env${i}`);
 test('initialState', () => {
   assert.deepEqual(initialState(), {
     tab: 'envs', focus: 'left', selected: 0, sub: null, colorToggle: true, recheckUpdates: false, recheckMcp: false, quit: false, language: 'ru',
-    catalog: emptyCatalog(), create: null, ext: null, mcp: null, trash: null, clone: null, catalogProgress: null, opSeconds: null, pkgCheck: 'idle', pkgLatest: {}, mcpCheck: 'idle', mcpLive: null, selfUpdate: null, updateUi: null, selfCheck: 'idle',
+    catalog: emptyCatalog(), storePackages: [], create: null, ext: null, mcp: null, trash: null, clone: null, catalogProgress: null, opSeconds: null, pkgCheck: 'idle', pkgLatest: {}, mcpCheck: 'idle', mcpLive: null, selfUpdate: null, updateUi: null, selfCheck: 'idle',
   });
 });
 
@@ -475,4 +475,21 @@ test('вкладка extensions: пустой реестр хранилища �
   const s = reducer({ ...empty, selected: 0 }, 'enter', rc(envs(0)));
   assert.equal(s.ext!.view, 'updating');
   assert.equal(s.ext!.updating, null, 'пустой список — это строка «Обновить все», не пакет');
+});
+
+test('extensions: X → confirm-remove → Enter → removing; после remove-result курсор внутри списка', () => {
+  const pkgs = [
+    { source: 'npm:a', name: 'a', path: '/s/npm/node_modules/a', version: '1', description: null, extensions: [], skills: [] },
+    { source: 'npm:b', name: 'b', path: '/s/npm/node_modules/b', version: '1', description: null, extensions: [], skills: [] },
+  ];
+  let s: AppState = { ...initialState(emptyCatalog(), pkgs), tab: 'extensions', selected: 1 };
+  s = reducer(s, 'x', rc(envs(0)));
+  assert.equal(s.ext!.view, 'confirm-remove');
+  assert.equal(s.ext!.removing, 'b');
+  s = reducer(s, 'enter', rc(envs(0)));
+  assert.equal(s.ext!.view, 'removing');
+  // пакет удалён из реестра — курсор не должен выйти за список
+  s = { ...s, storePackages: [pkgs[0]] };
+  s = reducer(s, { type: 'remove-result', ok: true, message: 'b' }, rc(envs(0)));
+  assert.ok(s.selected < listLength('extensions', 0, 1), `selected=${s.selected}`);
 });

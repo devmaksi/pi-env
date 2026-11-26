@@ -39,6 +39,8 @@ export interface Loop {
   state(): AppState;
   setState(next: AppState): void;
   catalog(): Catalog;
+  /** Каталог общего хранилища: сюда идут `pi install/update/remove` вкладки «Расширения». */
+  storeDir: string;
   status(msg: string | null): void;
   twoColumns(): boolean;
   envs(): Environment[];
@@ -46,9 +48,9 @@ export interface Loop {
   reloadCatalog(): void;
   checkUpdates(targetDir: string, scope: 'main' | 'create'): void;
   loadPackageCatalog(): void;
-  doRemove(source: string): void;
+  doRemove(dir: string, source: string): void;
   doUpdateAll(targetDir: string, scope: 'main' | 'create'): void;
-  doUpdateOne(source: string): void;
+  doUpdateOne(dir: string, source: string): void;
   doInstall(installDir: string, source: string, envName: string | null): void;
   doMcpAdd(dir: string, form: McpFormAdd, scope: 'main' | 'create'): void;
   doMcpCheck(dir: string, scope: 'main' | 'create'): void;
@@ -94,7 +96,7 @@ export async function runSideEffects(loop: Loop, envs: Environment[], prev: Prev
   hooksCopy(loop);
   if (prev.tab !== 'extensions' && loop.state().tab === 'extensions' && loop.state().ext === null &&
       (loop.state().pkgCheck === 'idle' || loop.state().recheckUpdates)) {
-    loop.checkUpdates(loop.agentDir, 'main');
+    loop.checkUpdates(loop.storeDir, 'main');
   }
   doSubmit(loop, names);
   doDelete(loop, names);
@@ -170,7 +172,7 @@ function hooksCreate(loop: Loop, prevView: CreateView | null, names: string[]): 
     storeOperation(loop, names);
   } else if (v === 'removing' && prevView === 'confirm-remove') {
     const pkg = cr.removing !== null ? loop.catalog().packages.find((p) => p.name === cr.removing) : undefined;
-    if (pkg) loop.doRemove(pkg.source);
+    if (pkg) loop.doRemove(formTargetDir(loop), pkg.source);
   } else if (v === 'updating' && prevView === 'packages') {
     loop.doUpdateAll(formTargetDir(loop), 'create');
   } else if (v === 'packages' && prevView === 'form' && cr.check !== 'checking') {
@@ -208,17 +210,17 @@ function hooksExt(loop: Loop, prevExt: ExtState | null): void {
   if (e.view === 'catalog' && prevExt === null && e.catalogStatus === 'loading') {
     loop.loadPackageCatalog();
   } else if (e.view === 'installing' && prevExt !== null && prevExt.view === 'catalog') {
-    loop.doInstall(loop.agentDir, 'npm:' + (e.installing ?? ''), null);
+    loop.doInstall(loop.storeDir, 'npm:' + (e.installing ?? ''), null);
   } else if (e.view === 'removing' && prevExt !== null && prevExt.view === 'confirm-remove') {
-    const pkg = loop.catalog().packages.find((p) => p.name === e.removing);
-    if (pkg) loop.doRemove(pkg.source);
+    const pkg = loop.state().storePackages.find((p) => p.name === e.removing);
+    if (pkg) loop.doRemove(loop.storeDir, pkg.source);
   } else if (e.view === 'updating' && prevExt === null) {
     if (e.updating === null) {
-      loop.doUpdateAll(loop.agentDir, 'main');
+      loop.doUpdateAll(loop.storeDir, 'main');
       return;
     }
-    const pkg = loop.catalog().packages.find((p) => p.name === e.updating);
-    if (pkg) loop.doUpdateOne(pkg.source);
+    const pkg = loop.state().storePackages.find((p) => p.name === e.updating);
+    if (pkg) loop.doUpdateOne(loop.storeDir, pkg.source);
   }
 }
 

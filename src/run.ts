@@ -85,13 +85,14 @@ export async function run(root: string, term: Term = createTerm(), deps: RunDeps
   let catalog = loadCatalog(agentDir);
   const app = loadAppSettings(root);
   const lang0 = app.language ?? defaultLang(localeCodes());
-  let state: AppState = { ...initialState(catalog), colorToggle: app.color, recheckUpdates: app.recheckUpdates, recheckMcp: app.recheckMcp, language: lang0 };
-  let statusMsg: string | null = null;
-  /** Снимок окружений и корзины: перечитывается при смене подписи дерева или после инвалидации. */
   // Хранилище доступно всегда: по умолчанию `<root>/.store`, переезжает настройкой `storeDir`
   // или `PI_ENV_STORE`. Окружение подключается к нему сам — без переключателя «вообще».
   const storeDir = storeRoot(root, app.storeDir, process.env.PI_ENV_STORE);
   const storeFile = storeModelsFile(storeDir);
+  let storePackages = loadCatalog(storeDir).packages;
+  let state: AppState = { ...initialState(catalog, storePackages), colorToggle: app.color, recheckUpdates: app.recheckUpdates, recheckMcp: app.recheckMcp, language: lang0 };
+  let statusMsg: string | null = null;
+  /** Снимок окружений и корзины: перечитывается при смене подписи дерева или после инвалидации. */
   const cache = createScanCache(root, agentDir, {}, storeDir);
 
   /**
@@ -215,15 +216,23 @@ export async function run(root: string, term: Term = createTerm(), deps: RunDeps
     return makeCtx(over.rows ?? envRows(), twoColumns(), over.tnames ?? trashNames(), over.names ?? realNames());
   }
 
-  /** Перечитывает каталог main-агента; ошибка — остаётся старый. */
+  /**
+   * Перечитывает каталог main-агента (формы, MCP) и реестр общего хранилища
+   * (вкладка «Расширения»); при ошибке соответствующий список остаётся старый.
+   */
   function reloadCatalog(): void {
     try {
       catalog = loadCatalog(agentDir);
-      state = { ...state, catalog };
     } catch (err) {
       log('catalog', `${agentDir}: ${errText(err)}`);
       /* каталог не перечитан — остаётся старый */
     }
+    try {
+      storePackages = loadCatalog(storeDir).packages;
+    } catch (err) {
+      log('catalog', `${storeDir}: ${errText(err)}`);
+    }
+    state = { ...state, catalog, storePackages };
   }
 
   /** Общий финал pi-команды: результат в reducer, перечитка каталога, отрисовка. */
@@ -269,16 +278,16 @@ export async function run(root: string, term: Term = createTerm(), deps: RunDeps
     afterPiCommand(r, { type: 'update-result', ok: r.ok, message: r.ok ? t(state.language, 'status.ext-updated') : cmdFailureText(r, state.language, 'status.update-error', null) }, targetDir, scope);
   }
 
-  async function doRemove(source: string): Promise<void> {
-    const r = await startOp((signal) => piRemove(agentDir, source, signal, runCmdFn), 'busy');
+  async function doRemove(dir: string, source: string): Promise<void> {
+    const r = await startOp((signal) => piRemove(dir, source, signal, runCmdFn), 'busy');
     if (r.ok) statusMsg = t(state.language, 'status.ext-removed', { name: source });
-    afterPiCommand(r, { type: 'remove-result', ok: r.ok, message: r.ok ? source : cmdFailureText(r, state.language, 'status.remove-error', source) }, agentDir, 'main');
+    afterPiCommand(r, { type: 'remove-result', ok: r.ok, message: r.ok ? source : cmdFailureText(r, state.language, 'status.remove-error', source) }, dir, 'main');
   }
 
-  async function doUpdateOne(source: string): Promise<void> {
-    const r = await startOp((signal) => piUpdateOne(agentDir, source, signal, runCmdFn), 'busy');
+  async function doUpdateOne(dir: string, source: string): Promise<void> {
+    const r = await startOp((signal) => piUpdateOne(dir, source, signal, runCmdFn), 'busy');
     if (r.ok) statusMsg = t(state.language, 'status.updated', { name: source });
-    afterPiCommand(r, { type: 'update-result', ok: r.ok, message: r.ok ? source : cmdFailureText(r, state.language, 'status.update-error', source) }, agentDir, 'main');
+    afterPiCommand(r, { type: 'update-result', ok: r.ok, message: r.ok ? source : cmdFailureText(r, state.language, 'status.update-error', source) }, dir, 'main');
   }
 
   async function doInstall(installDir: string, source: string, envName: string | null): Promise<void> {
@@ -291,7 +300,7 @@ export async function run(root: string, term: Term = createTerm(), deps: RunDeps
         sources = (settings.packages ?? []).map((s) => normalizePkgSource(s, catalog.packages));
       } else {
         reloadCatalog();
-        void checkUpdates(agentDir, 'main');
+        void checkUpdates(storeDir, 'main');
       }
     }
     state = reducer(state, { type: 'install-result', ok: r.ok, message: r.ok ? source : cmdFailureText(r, state.language, 'status.install-error', source), sources }, rctx());
@@ -406,7 +415,7 @@ export async function run(root: string, term: Term = createTerm(), deps: RunDeps
   }
 
   const loop: Loop = {
-    root, agentDir, term,
+    root, agentDir, storeDir, term,
     state: () => state,
     setState: (next) => { state = next; },
     catalog: () => catalog,
@@ -417,9 +426,9 @@ export async function run(root: string, term: Term = createTerm(), deps: RunDeps
     reloadCatalog: () => reloadCatalog(),
     checkUpdates: (dir, scope) => { void checkUpdates(dir, scope); },
     loadPackageCatalog: () => { void loadPackageCatalog(); },
-    doRemove: (source) => { void doRemove(source); },
+    doRemove: (dir, source) => { void doRemove(dir, source); },
     doUpdateAll: (dir, scope) => { void doUpdateAll(dir, scope); },
-    doUpdateOne: (source) => { void doUpdateOne(source); },
+    doUpdateOne: (dir, source) => { void doUpdateOne(dir, source); },
     doInstall: (dir, source, envName) => { void doInstall(dir, source, envName); },
     doMcpAdd: (dir, form, scope) => { void doMcpAdd(dir, form, scope); },
     doMcpCheck: (dir, scope) => { void doMcpCheck(dir, scope); },

@@ -24,7 +24,7 @@ function makeLoop(initial: AppState, root = '/root', agentDir = '/agent', envs: 
   let state = initial;
   const log: string[] = [];
   const loop: Loop = {
-    root, agentDir,
+    root, agentDir, storeDir: root + '/.store',
     term: {} as Loop['term'],
     state: () => state,
     setState: (n) => { state = n; },
@@ -36,9 +36,9 @@ function makeLoop(initial: AppState, root = '/root', agentDir = '/agent', envs: 
     reloadCatalog: () => { log.push('reloadCatalog'); },
     checkUpdates: (d, s) => { log.push(`checkUpdates:${d}:${s}`); },
     loadPackageCatalog: () => { log.push('loadPackageCatalog'); },
-    doRemove: (src) => { log.push('doRemove:' + src); },
+    doRemove: (d, src) => { log.push(`doRemove:${d}:${src}`); },
     doUpdateAll: (d, s) => { log.push(`doUpdateAll:${d}:${s}`); },
-    doUpdateOne: (src) => { log.push('doUpdateOne:' + src); },
+    doUpdateOne: (d, src) => { log.push(`doUpdateOne:${d}:${src}`); },
     doInstall: (d, src, env) => { log.push(`doInstall:${d}:${src}:${env}`); },
     doMcpAdd: (d, f, s) => { log.push(`doMcpAdd:${d}:${f.name}:${s}`); },
     doMcpCheck: (d, s) => { log.push(`doMcpCheck:${d}:${s}`); },
@@ -67,9 +67,14 @@ function tmp() {
 const tmpDirs: string[] = [];
 test.after(() => { for (const d of tmpDirs) rmSync(d, { recursive: true, force: true }); });
 
-test('create: confirm-remove → removing — doRemove по источнику пакета', async () => {
+test('create: confirm-remove → removing — doRemove по каталогу формы', async () => {
   const h = await run(cr({ view: 'removing', removing: 'pkg-a' }), { view: 'confirm-remove'});
-  assert.deepEqual(h.log, ['doRemove:npm:pkg-a']);
+  assert.deepEqual(h.log, ['doRemove:/agent:npm:pkg-a']);
+});
+
+test('create (edit): confirm-remove → removing — doRemove по каталогу окружения', async () => {
+  const h = await run(cr({ view: 'removing', removing: 'pkg-a', mode: 'edit', origName: 'e1', name: 'e1' }), { view: 'confirm-remove' });
+  assert.deepEqual(h.log, ['doRemove:/root/e1:npm:pkg-a']);
 });
 
 test('create: packages → updating — doUpdateAll по каталогу окружения', async () => {
@@ -123,22 +128,22 @@ test('ext: вход во вкладку (catalog, loading) — загрузка 
 
 test('ext: installing — pi install глобально (envName null)', async () => {
   const h = await run({ ...initialState(CATALOG), tab: 'extensions', ext: freshExt({ view: 'installing', installing: 'y' }) }, { tab: 'extensions', ext: freshExt({ view: 'catalog' }) });
-  assert.deepEqual(h.log, ['doInstall:/agent:npm:y:null']);
+  assert.deepEqual(h.log, ['doInstall:/root/.store:npm:y:null']);
 });
 
-test('ext: confirm-remove → removing — doRemove', async () => {
+test('ext: confirm-remove → removing — doRemove в хранилище', async () => {
   const h = await run({ ...initialState(CATALOG), tab: 'extensions', ext: freshExt({ view: 'removing', removing: 'pkg-a' }) }, { tab: 'extensions', ext: freshExt({ view: 'confirm-remove' }) });
-  assert.deepEqual(h.log, ['doRemove:npm:pkg-a']);
+  assert.deepEqual(h.log, ['doRemove:/root/.store:npm:pkg-a']);
 });
 
 test('ext: updating «Обновить все» — doUpdateAll main', async () => {
   const h = await run({ ...initialState(CATALOG), tab: 'extensions', ext: freshExt({ view: 'updating', updating: null }) }, { tab: 'extensions' });
-  assert.deepEqual(h.log, ['doUpdateAll:/agent:main']);
+  assert.deepEqual(h.log, ['doUpdateAll:/root/.store:main']);
 });
 
 test('ext: updating пакета — doUpdateOne', async () => {
   const h = await run({ ...initialState(CATALOG), tab: 'extensions', ext: freshExt({ view: 'updating', updating: 'pkg-a' }) }, { tab: 'extensions' });
-  assert.deepEqual(h.log, ['doUpdateOne:npm:pkg-a']);
+  assert.deepEqual(h.log, ['doUpdateOne:/root/.store:npm:pkg-a']);
 });
 
 test('mcp-вкладка: submitting после add — doMcpAdd main', async () => {
@@ -155,14 +160,14 @@ test('mcp-вкладка: confirm-remove → removing — удаление из 
   assert.equal(h.state.mcp, null);
 });
 
-test('вход во вкладку «Расширения» — проверка обновлений main-агента', async () => {
+test('вход во вкладку «Расширения» — проверка обновлений хранилища', async () => {
   const h = await run({ ...initialState(CATALOG), tab: 'extensions', pkgCheck: 'idle' }, { tab: 'envs' });
-  assert.deepEqual(h.log, ['checkUpdates:/agent:main']);
+  assert.deepEqual(h.log, ['checkUpdates:/root/.store:main']);
 });
 
 test('recheckUpdates: повторная проверка при pkgCheck done', async () => {
   const h = await run({ ...initialState(CATALOG), tab: 'extensions', pkgCheck: 'done', recheckUpdates: true }, { tab: 'envs' });
-  assert.deepEqual(h.log, ['checkUpdates:/agent:main']);
+  assert.deepEqual(h.log, ['checkUpdates:/root/.store:main']);
 });
 
 test('pkgCheck done без recheck — повторной проверки нет', async () => {

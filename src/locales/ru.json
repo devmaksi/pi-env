@@ -153,6 +153,7 @@
   "ext.store.usage": "{n} окр.",
   "ext.store.conflict": "Конфликт источников «{name}»",
   "ext.store.empty": "Хранилище не подключено",
+  "ext.store.used-by": "Перестанут использовать: {v}",
   "ext.hint.store-off": "Включите хранилище в форме окружения",
   "ext.hint.enter": "Enter — обновить пакет / выбрать",
   "err.name-empty": "Введите имя окружения",
