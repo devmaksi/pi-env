@@ -22,7 +22,7 @@ import {
 } from './state.js';
 import type { Environment } from './environments.js';
 import type { PkgItem } from './catalog.js';
-import { packageConflicts, pkgNameOfSource, storePackageUsage } from './environments.js';
+import { packageConflicts, pkgNameOfSource, storeOrphanNames, storePackageUsage } from './environments.js';
 import { filterPackages } from './catalog.js';
 import { liveMarker, mergeLive } from './mcp.js';
 import { formatTs, trashLabel, type TrashEntry } from './trash.js';
@@ -627,11 +627,13 @@ function extList(ctx: Ctx): Section {
   const pkgs = ctx.state.storePackages;
   const conflicts = new Map(packageConflicts(ctx.envs).map((k) => [k.name, k]));
   const pkey = (p: PkgItem): string => pkgNameOfSource(p.name); // имя из package.json со scope — тот же ключ, что у объявления
+  // Осиротевшие: объявлены реестром хранилища, но не объявлены ни одним агентом.
+  const orphans = new Set(storeOrphanNames(ctx.envs, ctx.state.storePackages.map((p) => p.name)).map(pkgNameOfSource));
   left.push(c(ANSI.bold, ctx.useColor) + t(ctx.lang, 'ext.title.store') + c(ANSI.reset, ctx.useColor));
   if (pkgs.length === 0) left.push(c(ANSI.dim, ctx.useColor) + t(ctx.lang, 'ext.store.empty') + c(ANSI.reset, ctx.useColor));
   pkgs.forEach((p, i) => {
     const users = storePackageUsage(ctx.envs, p.name);
-    const text = truncateName(p.name, PKG_NAME_MAX) + '  '
+    const text = truncateName(p.name, PKG_NAME_MAX) + '  ' + (orphans.has(pkey(p)) ? '⚠ ' : '')
       + t(ctx.lang, 'ext.store.usage', { n: users.length }) + (conflicts.has(pkey(p)) ? ' ⚠' : '') + '  '
       + pkgMarker(p, ctx.state.pkgCheck, ctx.state.pkgLatest, ctx.lang);
     left.push(listRow(i, ctx.state.selected, text, ctx.L.leftWidth, ctx.useColor));
@@ -661,12 +663,20 @@ function extList(ctx: Ctx): Section {
       for (const d of conf.declarations) right.push('  ' + d.env + ': ' + d.source);
     }
     for (const u of storePackageUsage(ctx.envs, selectedPkg.name)) right.push('  ' + u);
+    if (orphans.has(pkey(selectedPkg))) {
+      right.push(c(ANSI.bold, ctx.useColor) + '⚠ ' + t(ctx.lang, 'ext.store.orphan') + c(ANSI.reset, ctx.useColor));
+    }
   }
   if (pkgs.length === 0) {
     right.push(c(ANSI.dim, ctx.useColor) + t(ctx.lang, 'ext.hint.store-off') + c(ANSI.reset, ctx.useColor));
   } else {
     right.push(c(ANSI.dim, ctx.useColor) + t(ctx.lang, 'ext.hint.enter') + c(ANSI.reset, ctx.useColor));
-    right.push(c(ANSI.dim, ctx.useColor) + t(ctx.lang, 'hint.delete') + c(ANSI.reset, ctx.useColor));
+    const removeKey = selectedPkg !== undefined && orphans.has(pkey(selectedPkg)) ? 'ext.store.hint.remove' : 'hint.delete';
+    right.push(c(ANSI.dim, ctx.useColor) + t(ctx.lang, removeKey) + c(ANSI.reset, ctx.useColor));
+  }
+  // Общая сводка: чистить хранилище нужно не только у выбранного пакета.
+  if (orphans.size > 0) {
+    right.push(c(ANSI.dim, ctx.useColor) + '⚠ ' + t(ctx.lang, 'ext.store.orphans', { n: orphans.size }) + c(ANSI.reset, ctx.useColor));
   }
   const n = pkgs.length;
   const s = ctx.state.selected;
@@ -701,7 +711,8 @@ const EXT_BUSY: Record<string, { text: (ext: ExtState, lang: string) => string; 
     hints: ['hint.confirm', 'hint.cancel'],
     extra: (ext, ctx) => {
       const users = storePackageUsage(ctx.envs, ext.removing ?? '');
-      return users.length === 0 ? [] : [c(ANSI.dim, ctx.useColor) + t(ctx.lang, 'ext.store.used-by', { v: users.join(', ') }) + c(ANSI.reset, ctx.useColor)];
+      if (users.length > 0) return [c(ANSI.dim, ctx.useColor) + t(ctx.lang, 'ext.store.used-by', { v: users.join(', ') }) + c(ANSI.reset, ctx.useColor)];
+      return [c(ANSI.dim, ctx.useColor) + t(ctx.lang, 'ext.store.orphan-unused') + c(ANSI.reset, ctx.useColor)];
     },
   },
 };

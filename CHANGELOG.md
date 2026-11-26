@@ -33,9 +33,19 @@ Russian text: [CHANGELOG.ru.md](CHANGELOG.ru.md).
   roots (`mergeStoreRegistry`), so an environment does not flag packages it already shares. On the
   first enable the main agent joins the shared roots too. `R` on an environment repairs broken model and
   package links.
+- **Orphans in the registry are visible.** The shared root accumulates the union of every
+  environment's declarations, so a package outlives the last environment that declared it (the
+  environment was trashed, or its checkbox was cleared): it still sits in `<store>/npm`, still
+  shows as «0 envs», and «Update all» spends time on it for nobody. Such a row carries `⚠` next
+  to the counter, the info panel says “No environment uses this package” and offers
+  “X — remove from the store registry”, the removal confirmation no longer prints an empty list
+  of environments but states that nobody uses it, and a dim summary counts all of them
+  (“Orphaned packages: {n}”), including while «Update all» is selected. `storeOrphanNames` is
+  the pure helper behind the marker, keyed by the same declaration name as the counters, so a
+  scoped `package.json` name is not a false orphan.
 - Tests: `test/store.test.ts` (root link states, enable/disable/rollback, store snapshots),
   `test/environments.test.ts` (`rootLinks`, `missingPackages`, `packageConflicts`,
-  `storePackageUsage`), `test/env-cache.test.ts` (registry and shared manifest in the signature),
+  `storePackageUsage`, `storeOrphanNames`), `test/env-cache.test.ts` (registry and shared manifest in the signature),
   `test/render-ext.test.ts` and `test/render-store.test.ts` (the tab as the store registry, the
   form row aggregate), `test/run-side.test.ts` (operations in the store directory, the combined
   storage dialog, the install queue), `test/app-store.test.ts` and `test/app-main-row.test.ts`

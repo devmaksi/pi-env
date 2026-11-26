@@ -97,3 +97,66 @@ test('подтверждение удаления из хранилища: сп�
   assert.ok(s.includes(t('ru', 'busy.delete-ext', { name: 'pi-zentui' })), s);
   assert.ok(s.includes(t('ru', 'ext.store.used-by', { v: 'admin, dev-supo' })), s);
 });
+
+// Пакет остался в реестре хранилища, когда объявления всех окружений удалены
+// (окружение в корзине или снята отметка) — вкладка обязана это показать.
+test('осиротевший пакет: ⚠ у счётчика «0 окр.», текст и подсказка в инфо-панели', () => {
+  const envs = [env('dev-supo', ['npm:pi-zentui'])];
+  const state = { ...st, storePackages: [pkg('pi-zentui'), pkg('pi-orphan-ext')], selected: 1 };
+  const s = render({ state, envs, width: 90, height: 20, ...base });
+  assert.ok(s.includes('⚠ ' + t('ru', 'ext.store.usage', { n: 0 })), s);
+  assert.ok(s.includes(t('ru', 'ext.store.usage', { n: 1 })), s);
+  assert.ok(s.includes(t('ru', 'ext.store.orphan')), s);
+  assert.ok(s.includes(t('ru', 'ext.store.hint.remove')), s);
+  assert.ok(s.includes(t('ru', 'ext.store.orphans', { n: 1 })), s);
+});
+
+test('не осиротевший пакет: обычная подсказка удаления, пометки «0 окр.» нет', () => {
+  const envs = [env('dev-supo', ['npm:pi-zentui'])];
+  const state = { ...st, storePackages: [pkg('pi-zentui')] };
+  const s = render({ state, envs, width: 90, height: 20, ...base });
+  assert.ok(s.includes(t('ru', 'hint.delete')), s);
+  assert.ok(!s.includes(t('ru', 'ext.store.hint.remove')), s);
+  assert.ok(!s.includes(t('ru', 'ext.store.orphan')), s);
+  assert.ok(!s.includes(t('ru', 'ext.store.orphans', { n: 1 })), s);
+});
+
+test('осиротевшие пакеты: сводка есть и когда выбран пакет, и когда выбрана кнопка', () => {
+  const envs = [env('dev-supo', ['npm:pi-zentui'])];
+  for (const selected of [0, 1, 2]) {
+    const state = { ...st, storePackages: [pkg('pi-zentui'), pkg('pi-orphan-ext')], selected };
+    const s = render({ state, envs, width: 90, height: 20, ...base });
+    assert.ok(s.includes(t('ru', 'ext.store.orphans', { n: 1 })), `selected=${selected}`);
+  }
+});
+
+// Строка пакета с ⚠ остаётся ровно leftWidth: построчный дифф живёт на фиксированной ширине.
+test('кадр с осиротевшим пакетом: ровно height строк фиксированной ширины', () => {
+  const envs = [env('dev-supo', ['npm:pi-zentui'])];
+  const state = { ...st, storePackages: [pkg('pi-zentui'), pkg('pi-orphan-ext')], selected: 1 };
+  for (const width of [40, 62, 90]) {
+    const s = render({ state, envs, width, height: 20, ...base });
+    const lines = s.split('\n');
+    assert.equal(lines.length, 20, `width=${width}`);
+    for (const line of lines) {
+      assert.equal(lastCol(line, () => 1, width), width, `1-клеточный w=${width}: ${JSON.stringify(line)}`);
+      assert.equal(lastCol(line, wide, width), width, `2-клеточный w=${width}: ${JSON.stringify(line)}`);
+      assert.equal(visibleWidth(line) <= width, true, `ширина w=${width}: ${JSON.stringify(line)}`);
+    }
+  }
+});
+
+test('подтверждение удаления осиротевшего пакета: не используется, список окружений не врал бы', () => {
+  const envs = [env('dev-supo', ['npm:pi-zentui'])];
+  const state = {
+    ...st,
+    storePackages: [pkg('pi-orphan-ext')],
+    ext: { view: 'confirm-remove' as const, cursor: 0, updating: null, installing: null, removing: 'pi-orphan-ext', catalog: [], catalogStatus: 'ready' as const, query: '' },
+  };
+  const s = render({ state, envs, width: 90, height: 20, ...base });
+  assert.ok(s.includes(t('ru', 'busy.delete-ext', { name: 'pi-orphan-ext' })), s);
+  assert.ok(s.includes(t('ru', 'ext.store.orphan-unused')), s);
+  // «Перестанут использовать: …» при пустом списке окружений было бы пустой строкой-обманкой
+  const usedBy = t('ru', 'ext.store.used-by', { v: 'dev-supo' });
+  assert.ok(!s.includes(usedBy.slice(0, usedBy.indexOf(':') + 1)), s);
+});

@@ -3,7 +3,7 @@ import assert from 'node:assert';
 import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { basename, join } from 'node:path';
-import { scan, withMain, realEnvNames, packageConflicts, pkgNameOfSource, storePackageUsage } from '../src/environments.js';
+import { scan, withMain, realEnvNames, packageConflicts, pkgNameOfSource, storeOrphanNames, storePackageUsage } from '../src/environments.js';
 import { symlinkSync } from 'node:fs';
 
 test('scan: отсутствующий корень → null', () => {
@@ -318,5 +318,43 @@ test('storePackageUsage: имена окружений, объявивших п�
     assert.deepEqual(storePackageUsage(scan(root)!, 'pi-ssh-remote'), []);
   } finally {
     rmSync(root, { recursive: true });
+  }
+});
+
+// Осиротевший пакет: реестр хранилища его помнит, а объявлений не осталось ни у кого
+// (окружение уехало в корзину или с него сняли отметку) — его надо убрать из реестра.
+test('storeOrphanNames: имена реестра без объявлений во всех окружениях', () => {
+  const root = mkEnvRoot([['dev-supo', ['npm:pi-zentui']], ['test-ai', []]]);
+  try {
+    const envs = scan(root)!;
+    assert.deepEqual(
+      storeOrphanNames(envs, ['pi-zentui', 'pi-ssh-remote', 'pi-old-ext']),
+      ['pi-old-ext', 'pi-ssh-remote'],
+    );
+  } finally {
+    rmSync(root, { recursive: true });
+  }
+});
+
+test('storeOrphanNames: scoped-имя из package.json — не сирота при объявлении с версией', () => {
+  const root = mkEnvRoot([['dev-supo', ['npm:@sfroment/pi-obsidian@1.2.3']]]);
+  try {
+    assert.deepEqual(storeOrphanNames(scan(root)!, ['@sfroment/pi-obsidian', '@sfroment/pi-gone']), ['@sfroment/pi-gone']);
+  } finally {
+    rmSync(root, { recursive: true });
+  }
+});
+
+test('storeOrphanNames: основной агент тоже пользователь пакета', () => {
+  const root = mkEnvRoot([['test-ai', []]]);
+  const agent = mkdtempSync(join(tmpdir(), 'pienv-agent-'));
+  try {
+    mkdirSync(join(agent, 'x'), { recursive: true });
+    writeFileSync(join(agent, 'x', 'settings.json'), JSON.stringify({ packages: ['npm:pi-zentui'] }));
+    const envs = withMain(scan(root)!, join(agent, 'x'));
+    assert.deepEqual(storeOrphanNames(envs, ['pi-zentui', 'pi-ssh-remote']), ['pi-ssh-remote']);
+  } finally {
+    rmSync(root, { recursive: true });
+    rmSync(agent, { recursive: true });
   }
 });

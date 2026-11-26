@@ -170,3 +170,26 @@ test('сквозной прогон: обновление пакета с вкл
   assert.ok(upd.length >= 1, painted.join('\n'));
   assert.ok(upd.every((l) => l.agentDir === join(rt, '.store')), JSON.stringify(upd));
 });
+
+// Реестр хранилища помнит пакет, а объявлений не осталось ни у кого (окружение уехало
+// в корзину / снята отметка) — вкладка помечает его и предлагает убрать из реестра.
+test('сквозной: осиротевший пакет помечен, X убирает его из реестра хранилища', async () => {
+  const agent = agentWithPackage(); // main объявляет pi-zentui — осиротевший пакет не его
+  const rt = tmpDir();
+  writeFileSync(join(rt, '.pi-env.json'), JSON.stringify({ ...DEFAULT_APP_SETTINGS, language: 'ru' }));
+  mkdirSync(join(rt, 'e0'), { recursive: true });
+  writeFileSync(join(rt, 'e0', 'settings.json'), JSON.stringify({}));
+  const store = join(rt, '.store');
+  mkdirSync(join(store, 'npm', 'node_modules', 'pi-orphan-ext'), { recursive: true });
+  writeFileSync(join(store, 'npm', 'node_modules', 'pi-orphan-ext', 'package.json'),
+    JSON.stringify({ name: 'pi-orphan-ext', version: '1.0.0' }));
+  writeFileSync(join(store, 'settings.json'), JSON.stringify({ packages: ['npm:pi-orphan-ext'] }));
+  const { painted, launches } = await driveAt(rt, ['tab', 'x', 'enter', 'ctrlc'], agent);
+  assert.ok(painted.some((f) => f.includes(t('ru', 'ext.store.orphan'))), painted.join('\n').slice(-2500));
+  assert.ok(painted.some((f) => f.includes(t('ru', 'ext.store.orphans', { n: 1 }))), painted.join('\n').slice(-2500));
+  assert.ok(painted.some((f) => f.includes(t('ru', 'ext.store.orphan-unused'))), painted.join('\n').slice(-2500));
+  const rem = launches.filter((l) => piLaunch(l) && l.args[0] === 'remove');
+  assert.equal(rem.length, 1, JSON.stringify(launches));
+  assert.deepEqual(rem[0].args, ['remove', 'npm:pi-orphan-ext']);
+  assert.equal(rem[0].agentDir, store, 'pi remove идёт в каталог хранилища, не в окружение');
+});

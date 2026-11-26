@@ -158,6 +158,16 @@ export function storePackageUsage(envs: Environment[], pkgName: string): string[
     .sort();
 }
 
+/**
+ * Пакеты реестра хранилища, которые не объявил ни один агент (`<store>/settings.json`
+ * помнит их, а `settings.packages` — нет): такие пакеты остаются в `<store>/npm`
+ * и зря обновляются «Обновить все». Ключ сравнения — имя из объявления, поэтому
+ * scoped-имя из `package.json` считается тем же пакетом.
+ */
+export function storeOrphanNames(envs: Environment[], pkgNames: string[]): string[] {
+  return pkgNames.filter((n) => storePackageUsage(envs, n).length === 0).sort((a, b) => a.localeCompare(b));
+}
+
 /** Конфликты источников: одно имя пакета объявлено по-разному в разных окружениях. */
 export function packageConflicts(envs: Environment[]): Array<{ name: string; declarations: Array<{ env: string; source: string }> }> {
   const byName = new Map<string, Array<{ env: string; source: string }>>();
