@@ -1,6 +1,6 @@
 import { type EnvSettings } from './create.js';
 import type { Catalog, PkgItem, Provider } from './catalog.js';
-import { pkgIdentity, type PackageConflict } from './environments.js';
+import { pkgIdentity, type PackageConflict, type RegistryGap } from './environments.js';
 import { localeCodes } from './i18n.js';
 import type { McpLiveReport, McpServer } from './mcp.js';
 import { mcpMachine, freshMcpForm, freshMcpTab, applyMcpLiveMain, onRefreshMcp } from './state-mcp.js';
@@ -67,6 +67,8 @@ export interface AppState {
   catalog: Catalog;
   /** Реестр общего хранилища пакетов — список вкладки «Расширения» (форма правки пользуется `catalog`). */
   storePackages: PkgItem[];
+  /** Разрыв реестра хранилища: пакет объявлен окружениями, но не установлен в `<store>`. */
+  storeGaps: RegistryGap[];
   create: CreateState | null;
   ext: ExtState | null;
   mcp: McpTab | null;
@@ -94,10 +96,12 @@ export const TABS: readonly Tab[] = ['envs', 'extensions', 'mcp', 'settings', 'a
 export const SETTINGS_COUNT = 5;
 export const LANGUAGE_ROW = 4; // «Язык» — последняя строка, после переключателей
 
-export function initialState(catalog: Catalog = emptyCatalog(), storePackages: PkgItem[] = catalog.packages): AppState {
+export function initialState(
+  catalog: Catalog = emptyCatalog(), storePackages: PkgItem[] = catalog.packages, storeGaps: RegistryGap[] = [],
+): AppState {
   return {
     tab: 'envs', focus: 'left', selected: 0, sub: null, colorToggle: true, recheckUpdates: false, recheckMcp: false, quit: false, language: 'ru',
-    catalog, storePackages, create: null, ext: null, mcp: null, trash: null, clone: null, catalogProgress: null, opSeconds: null, pkgCheck: 'idle', pkgLatest: {}, mcpCheck: 'idle', mcpLive: null, selfUpdate: null, updateUi: null, selfCheck: 'idle',
+    catalog, storePackages, storeGaps, create: null, ext: null, mcp: null, trash: null, clone: null, catalogProgress: null, opSeconds: null, pkgCheck: 'idle', pkgLatest: {}, mcpCheck: 'idle', mcpLive: null, selfUpdate: null, updateUi: null, selfCheck: 'idle',
   };
 }
 
@@ -167,6 +171,11 @@ export interface ReducerCtx {
    * конфликт» выбирает источник, а не имя — без снимка reducer не знает, есть ли конфликт.
    */
   conflicts?: PackageConflict[];
+  /**
+   * Разрывы реестра хранилища из того же снимка: `S` без конфликта на строке открывает
+   * суб-экран приведения хранилища, только если они есть.
+   */
+  gaps?: RegistryGap[];
 }
 
 /** Имена для проверки уникальности: обычное окружение, основная запись вне списка имён. */
@@ -196,9 +205,9 @@ export function busyProcessView(state: AppState): boolean {
  */
 export function makeCtx(
   envNames: string[], twoColumns: boolean, trashNames: string[] = [], realNames: string[] = envNames,
-  conflicts: PackageConflict[] = [],
+  conflicts: PackageConflict[] = [], gaps: RegistryGap[] = [],
 ): ReducerCtx {
-  return { envNames, realNames, twoColumns, trashNames, conflicts };
+  return { envNames, realNames, twoColumns, trashNames, conflicts, gaps };
 }
 
 /** Действие — результат сервисной команды (не клавиша): явная проверка для createReducer. */
@@ -412,16 +421,25 @@ function onSpace(state: AppState): AppState {
 }
 
 /**
- * `S` на строке пакета с конфликтом источников — суб-экран выбора победителя.
- * Ключ — идентичность источника строки (`pkgIdentity`), поэтому пакет с другим scope
- * (другой пакет по меркам pi) конфликта не имеет и действие на нём игнорируется.
+ * `S` на вкладке «Расширения»: (а) на строке пакета с конфликтом источников — суб-экран
+ * выбора победителя; (б) если конфликта на строке нет, но реестр хранилища отстал от
+ * объявлений окружений (`ctx.gaps`) — суб-экран приведения хранилища. Ключ строки —
+ * идентичность её источника (`pkgIdentity`), поэтому пакет с другим scope (другой пакет по
+ * меркам pi) конфликта не имеет и разрешение на нём не открывается.
+ *
+ * (б) — это и точка повтора после провала шага в хранилище: объявления уже переписаны,
+ * `packageConflicts` пуст, и без этого входа привести реестр к победителю было нечем.
  */
 function onS(state: AppState, ctx: ReducerCtx): AppState {
   const p = packagesOf(state, 'extensions')[state.selected];
-  if (p === undefined) return state;
-  const key = pkgIdentity(p.source);
-  if (!ctx.conflicts?.some((c) => c.name === key)) return state;
-  return { ...state, ext: freshExt({ view: 'resolve', conflictName: key, cursor: 0 }) };
+  if (p !== undefined) {
+    const key = pkgIdentity(p.source);
+    if (ctx.conflicts?.some((c) => c.name === key) === true) {
+      return { ...state, ext: freshExt({ view: 'resolve', conflictName: key, cursor: 0 }) };
+    }
+  }
+  if ((ctx.gaps?.length ?? 0) === 0) return state;
+  return { ...state, ext: freshExt({ view: 'gap', cursor: 0 }) };
 }
 
 function onX(state: AppState): AppState {

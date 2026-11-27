@@ -565,6 +565,7 @@ export function renderExtTab(ext: ExtState | null, ctx: Ctx): Section {
     ext === null ? extList(ctx)
     : ext.view === 'catalog' ? extCatalogView(ext, ctx)
     : ext.view === 'resolve' ? extResolveView(ext, ctx)
+    : ext.view === 'gap' ? extGapView(ext, ctx)
     : busySection(EXT_BUSY, ext.view, ext, ctx);
   if (!ctx.twoCol) r.left.push(...r.right);
   return r;
@@ -632,12 +633,15 @@ function extList(ctx: Ctx): Section {
   const pkey = (p: PkgItem): string => pkgIdentity(p.source);
   // Осиротевшие: объявлены реестром хранилища, но не объявлены ни одним агентом.
   const orphans = new Set(storeOrphanNames(ctx.envs, ctx.state.storePackages.map((p) => p.source)));
+  // Разрыв реестра: пакет объявлен окружениями хранилища, но не установлен в нём (`S` лечит).
+  const gaps = ctx.state.storeGaps ?? [];
+  const gapOf = new Map(gaps.map((g) => [g.identity, g]));
   left.push(c(ANSI.bold, ctx.useColor) + t(ctx.lang, 'ext.title.store') + c(ANSI.reset, ctx.useColor));
   if (pkgs.length === 0) left.push(c(ANSI.dim, ctx.useColor) + t(ctx.lang, 'ext.store.empty') + c(ANSI.reset, ctx.useColor));
   pkgs.forEach((p, i) => {
     const users = storePackageUsage(ctx.envs, p.source);
     const text = truncateName(p.name, PKG_NAME_MAX) + '  ' + (orphans.has(p.source) ? '⚠ ' : '')
-      + t(ctx.lang, 'ext.store.usage', { n: users.length }) + (conflicts.has(pkey(p)) ? ' ⚠' : '') + '  '
+      + t(ctx.lang, 'ext.store.usage', { n: users.length }) + (conflicts.has(pkey(p)) || gapOf.has(pkey(p)) ? ' ⚠' : '') + '  '
       + pkgMarker(p, ctx.state.pkgCheck, ctx.state.pkgLatest, ctx.lang);
     left.push(listRow(i, ctx.state.selected, text, ctx.L.leftWidth, ctx.useColor));
   });
@@ -666,6 +670,14 @@ function extList(ctx: Ctx): Section {
       for (const d of conf.declarations) right.push('  ' + d.env + ': ' + d.source);
       right.push(c(ANSI.dim, ctx.useColor) + t(ctx.lang, 'ext.conflict.hint') + c(ANSI.reset, ctx.useColor));
     }
+    const gap = gapOf.get(pkey(selectedPkg));
+    if (gap !== undefined) {
+      right.push(c(ANSI.bold, ctx.useColor) + '⚠ ' + t(ctx.lang, 'ext.store.gap.row') + c(ANSI.reset, ctx.useColor));
+      right.push('  ' + t(ctx.lang, 'ext.gap.declared', { v: gap.declared }));
+      right.push('  ' + (gap.registered.length === 0
+        ? t(ctx.lang, 'ext.gap.absent')
+        : t(ctx.lang, 'ext.gap.registered', { v: gap.registered.join(', ') })));
+    }
     for (const u of storePackageUsage(ctx.envs, selectedPkg.source)) right.push('  ' + u);
     if (orphans.has(selectedPkg.source)) {
       right.push(c(ANSI.bold, ctx.useColor) + '⚠ ' + t(ctx.lang, 'ext.store.orphan') + c(ANSI.reset, ctx.useColor));
@@ -677,10 +689,16 @@ function extList(ctx: Ctx): Section {
     right.push(c(ANSI.dim, ctx.useColor) + t(ctx.lang, 'ext.hint.enter') + c(ANSI.reset, ctx.useColor));
     const removeKey = selectedPkg !== undefined && orphans.has(pkey(selectedPkg)) ? 'ext.store.hint.remove' : 'hint.delete';
     right.push(c(ANSI.dim, ctx.useColor) + t(ctx.lang, removeKey) + c(ANSI.reset, ctx.useColor));
+    if (gaps.length > 0) {
+      right.push(c(ANSI.dim, ctx.useColor) + t(ctx.lang, 'ext.store.hint.gap') + c(ANSI.reset, ctx.useColor));
+    }
   }
   // Общая сводка: чистить хранилище нужно не только у выбранного пакета.
   if (orphans.size > 0) {
     right.push(c(ANSI.dim, ctx.useColor) + '⚠ ' + t(ctx.lang, 'ext.store.orphans', { n: orphans.size }) + c(ANSI.reset, ctx.useColor));
+  }
+  if (gaps.length > 0) {
+    right.push(c(ANSI.dim, ctx.useColor) + '⚠ ' + t(ctx.lang, 'ext.store.gaps', { n: gaps.length }) + c(ANSI.reset, ctx.useColor));
   }
   const n = pkgs.length;
   const s = ctx.state.selected;
@@ -733,6 +751,35 @@ function extResolveView(ext: ExtState, ctx: Ctx): Section {
 }
 
 // Вкладка «Расширения»: состояния установки/обновления/удаления
+// Вкладка «Расширения»: суб-экран «Приведение реестра хранилища» — пакет объявлен
+// окружениями, но в реестре его нет (или он стоит на проигравшем источнике). Это и точка
+// повтора после отмены/провала шага в хранилище: конфликта в снимке уже нет, а операции те же.
+function extGapView(ext: ExtState, ctx: Ctx): Section {
+  const left: string[] = [];
+  const right: string[] = [];
+  const dim = (s: string): string => c(ANSI.dim, ctx.useColor) + s + c(ANSI.reset, ctx.useColor);
+  const bold = (s: string): string => c(ANSI.bold, ctx.useColor) + s + c(ANSI.reset, ctx.useColor);
+  const gaps = ctx.state.storeGaps ?? [];
+  left.push(bold(t(ctx.lang, 'ext.gap.title', { n: gaps.length })));
+  if (gaps.length === 0) left.push(dim(t(ctx.lang, 'empty')));
+  const srcMax = Math.max(PKG_NAME_MAX, ctx.L.leftWidth - 4);
+  gaps.forEach((g, i) => left.push(listRow(i, ext.cursor, truncateName(g.declared, srcMax), ctx.L.leftWidth, ctx.useColor)));
+  const g = gaps[ext.cursor];
+  if (g !== undefined) {
+    right.push(bold('⚠ ' + t(ctx.lang, 'ext.store.gap.row')));
+    right.push(t(ctx.lang, 'ext.gap.declared', { v: g.declared }));
+    right.push(g.registered.length === 0
+      ? t(ctx.lang, 'ext.gap.absent')
+      : t(ctx.lang, 'ext.gap.registered', { v: g.registered.join(', ') }));
+    const users = storePackageUsage(ctx.envs, g.declared);
+    if (users.length > 0) right.push(t(ctx.lang, 'ext.gap.envs', { v: users.join(', ') }));
+    right.push(dim(t(ctx.lang, 'ext.gap.apply')));
+  }
+  right.push(dim(t(ctx.lang, 'hint.confirm')));
+  right.push(dim(t(ctx.lang, 'hint.cancel')));
+  return { left, right, cursorRow: gaps.length === 0 ? -1 : 1 + Math.min(ext.cursor, gaps.length - 1) };
+}
+
 const EXT_BUSY: Record<string, { text: (ext: ExtState, lang: string) => string; bold?: boolean; hints: StrKey[]; extra?: (ext: ExtState, ctx: Ctx) => string[] }> = {
   'installing': { text: (ext, lang) => t(lang, 'busy.installing', { name: ext.installing ?? '' }), hints: ['hint.kill'] },
   'updating': { text: (ext, lang) => ext.updating === null ? t(lang, 'busy.updating') : t(lang, 'busy.updating.named', { name: ext.updating }), hints: ['hint.kill'] },

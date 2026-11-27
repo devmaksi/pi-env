@@ -253,3 +253,51 @@ test('кадр суб-экрана выбора источника: ровно h
     }
   }
 });
+
+// Разрыв реестра (объявлен окружениями, не установлен в <store>) помечен в списке и
+// объяснён в инфо-панели: иначе остаток отменённого шага в хранилище был бы невидим.
+test('разрыв реестра: метка в списке, инфо-панель и подсказка S', () => {
+  const envs = [env('dev-supo', ['npm:pi-open-tui'])];
+  const state = {
+    ...st,
+    storePackages: [pkg('pi-open-tui')],
+    storeGaps: [{ identity: 'npm:pi-open-tui', declared: 'npm:pi-open-tui', registered: ['npm:pi-open-tui@0.4.6'] }],
+  };
+  const s = render({ state, envs, width: 110, height: 20, ...base });
+  assert.ok(s.includes(t('ru', 'ext.store.gap.row')), s);
+  assert.ok(s.includes(t('ru', 'ext.gap.declared', { v: 'npm:pi-open-tui' })), s);
+  assert.ok(s.includes(t('ru', 'ext.gap.registered', { v: 'npm:pi-open-tui@0.4.6' })), s);
+  assert.ok(s.includes(t('ru', 'ext.store.hint.gap')), s);
+  assert.ok(s.includes(t('ru', 'ext.store.gaps', { n: 1 })), s);
+});
+
+test('подсказка приведения только при разрыве реестра', () => {
+  const envs = [env('dev-supo', ['npm:pi-open-tui'])];
+  const clean = render({ state: { ...st, storePackages: [pkg('pi-open-tui')] }, envs, width: 110, height: 20, ...base });
+  assert.ok(!clean.includes(t('ru', 'ext.store.hint.gap')), clean);
+});
+
+test('суб-экран приведения реестра: разрывы, что в реестре и что применится', () => {
+  const envs = [env('dev-supo', ['npm:pi-open-tui']), env('dev-vtb', ['npm:pi-zentui'])];
+  const state = {
+    ...st,
+    storePackages: [pkg('pi-open-tui'), pkg('pi-zentui')],
+    ext: freshExt({ view: 'gap', cursor: 0 }),
+    storeGaps: [
+      { identity: 'npm:pi-open-tui', declared: 'npm:pi-open-tui', registered: ['npm:pi-open-tui@0.4.6'] },
+      { identity: 'npm:pi-zentui', declared: 'npm:pi-zentui', registered: [] },
+    ],
+  };
+  const s = render({ state, envs, width: 110, height: 22, ...base });
+  assert.ok(s.includes(t('ru', 'ext.gap.title', { n: 2 })), s);
+  assert.ok(s.includes(t('ru', 'ext.gap.registered', { v: 'npm:pi-open-tui@0.4.6' })), s);
+  assert.ok(s.includes(t('ru', 'ext.gap.envs', { v: 'dev-supo' })), s);
+  assert.ok(s.includes(t('ru', 'ext.gap.apply')), s);
+  const lines = s.split('\n');
+  assert.equal(lines.length, 22, s);
+  for (const line of lines) {
+    assert.equal(lastCol(line, () => 1, 110), 110, JSON.stringify(line));
+    assert.equal(lastCol(line, wide, 110), 110, JSON.stringify(line));
+    assert.equal(visibleWidth(line) <= 110, true, JSON.stringify(line));
+  }
+});

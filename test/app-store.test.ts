@@ -269,7 +269,11 @@ test('сквозной: после разрешения конфликт исч�
   const after = await driveAt(fx.rt, ['tab', 'ctrlc'], fx.agent);
   const frames = after.painted.join('\n');
   assert.ok(!frames.includes(t('ru', 'ext.store.conflict', { name: 'npm:pi-open-tui' })), frames.slice(0, 1500));
-  assert.ok(!frames.includes(conflictRow), 'маркер конфликта уходит из строки пакета');
+  // Маркер на строке остаётся, но это уже другой случай: победитель не установлен в
+  // хранилище (разрыв реестра), и вкладка предлагает привести реестр к объявлениям.
+  assert.ok(frames.includes(conflictRow), 'разрыв реестра остаётся помечен');
+  assert.ok(frames.includes(t('ru', 'ext.store.gaps', { n: 2 })), frames.slice(0, 1500));
+  assert.ok(!frames.includes(t('ru', 'ext.conflict.hint')), 'подсказки выбора победителя больше нет');
 });
 
 // Отмена: процесс в хранилище снимается Esc, и статус честно говорит, что хранилище
@@ -328,4 +332,113 @@ test('сквозной: scoped- и unscoped-объявление одного и
   assert.ok(!all.includes(t('ru', 'ext.conflict.title')), 'суб-экран выбора победителя не открыт');
   assert.equal(launches.filter((l) => l.cmd === 'pi').length, 0, JSON.stringify(launches));
   assert.deepEqual(settingsOf(dir).packages, ['npm:@wangjq4214/pi-open-tui'], 'объявление другого пакета не тронуто');
+});
+
+// Победитель не доехал до реестра (шаг в хранилище отменён или упал): конфликта в снимке
+// больше нет — и без входа «привести реестр» повторить операцию было бы нечем.
+test('сквозной: недоведённый шаг в хранилище — S повторяет приведение и доводит реестр', async () => {
+  const fx = conflictRoot();
+  const regOf = (): string[] => (JSON.parse(readFileSync(join(fx.store, 'settings.json'), 'utf8')).packages ?? []) as string[];
+
+  // Первый заход: объявления переписаны, а шаг в хранилище не выполнен (реестр не меняется).
+  const first = await driveAt(fx.rt, ['tab', 'S', 'enter', 'ctrlc'], fx.agent);
+  const ff = first.painted.join('\n');
+  assert.ok(ff.includes(t('ru', 'status.conflict-resolved', { name: 'npm:pi-open-tui', winner: 'npm:pi-open-tui', envs: 3 })), ff.slice(-1200));
+  const gap = await driveAt(fx.rt, ['tab', 'ctrlc'], fx.agent);
+  const gf = gap.painted.join('\n');
+  // Два разрыва: победитель конфликта и пакет окружений, которого в реестре нет вовсе.
+  assert.ok(gf.includes(t('ru', 'ext.store.gaps', { n: 2 })), gf.slice(0, 1500));
+  assert.ok(gf.includes(t('ru', 'ext.store.hint.gap')), gf.slice(0, 1500));
+  assert.deepEqual(regOf(), ['npm:pi-open-tui@0.4.6'], 'реестр всё ещё на проигравшем источнике');
+
+  const log2: Launch[] = [];
+  const log3: Launch[] = [];
+  // Фейковый pi пишет реестр хранилища, как настоящий: remove убирает объявление, install добавляет.
+  const writing = (log: Launch[]): RunFn => (cmd, args, timeoutMs, opts = {}) => {
+    log.push({ cmd, args, agentDir: opts.env?.PI_CODING_AGENT_DIR ?? '' });
+    if (cmd === 'pi' && (args[0] === 'remove' || args[0] === 'install')) {
+      const file = join(opts.env?.PI_CODING_AGENT_DIR ?? '', 'settings.json');
+      const cur = JSON.parse(readFileSync(file, 'utf8')) as { packages?: string[] };
+      const set = new Set(cur.packages ?? []);
+      if (args[0] === 'remove') set.delete(args[1]); else set.add(args[1]);
+      writeFileSync(file, JSON.stringify({ ...cur, packages: [...set] }));
+    }
+    return Promise.resolve({ ok: true, stdout: '', stderr: '', code: 0, timedOut: false, timeoutMs } satisfies CmdResult);
+  };
+  const opsOf = (log: Launch[]): string[][] =>
+    log.filter((l) => l.cmd === 'pi' && (l.args[0] === 'remove' || l.args[0] === 'install')).map((l) => l.args);
+
+  // Один заход = одно разрыв: процесс прошлого захода должен закончиться до следующего `S`
+  // (на экране процесса клавиши не обрабатываются), поэтому каждый заход — отдельный прогон.
+  const second = await driveAt(fx.rt, ['tab', 'S', 'enter', 'ctrlc'], fx.agent, writing(log2));
+  const sf = second.painted.join('\n');
+  assert.ok(sf.includes(t('ru', 'ext.gap.title', { n: 2 })), 'S открыл суб-экран приведения, а не выбор победителя');
+  assert.ok(sf.includes(t('ru', 'status.registry-repaired', { name: 'npm:pi-open-tui', winner: 'npm:pi-open-tui' })), sf.slice(-1500));
+  assert.deepEqual(opsOf(log2), [['remove', 'npm:pi-open-tui@0.4.6'], ['install', 'npm:pi-open-tui']], JSON.stringify(log2));
+  assert.ok(log2.filter((l) => l.cmd === 'pi').every((l) => l.agentDir === fx.store), 'операции идут в каталог хранилища');
+
+  // Второй разрыв — пакет окружений, которого в реестре не было вовсе: только install.
+  const third = await driveAt(fx.rt, ['tab', 'S', 'enter', 'ctrlc'], fx.agent, writing(log3));
+  assert.ok(third.painted.join('\n').includes(t('ru', 'ext.gap.title', { n: 1 })), third.painted.join('\n').slice(0, 1500));
+  assert.deepEqual(opsOf(log3), [['install', 'npm:pi-zentui']], JSON.stringify(log3));
+  assert.deepEqual(regOf(), ['npm:pi-open-tui', 'npm:pi-zentui']);
+  // Приведение реестра не трогает объявления окружений: они уже едины.
+  assert.deepEqual(settingsOf(join(fx.rt, 'dev-supo')).packages, ['npm:pi-open-tui', 'npm:pi-zentui']);
+
+  // Повтор идемпотентен: разрыва нет — экран приведения не открывается, операций ноль.
+  const log4: Launch[] = [];
+  const fourth = await driveAt(fx.rt, ['tab', 'S', 'ctrlc'], fx.agent, okCmd(log4));
+  const tf = fourth.painted.join('\n');
+  assert.ok(!tf.includes(t('ru', 'ext.gap.title')), tf.slice(0, 1500));
+  assert.ok(!tf.includes(t('ru', 'ext.store.gaps')), tf.slice(0, 1500));
+  assert.deepEqual(opsOf(log4), [], JSON.stringify(log4));
+});
+
+// Замок хранилища: пока в `<store>` идёт пакетная команда, вторая не получает право писать —
+// иначе два npm-процесса разойдутся на общем `package.json`. Отказ обязан закрыть экран
+// приведения и объяснить причину, а не сделать вид, что реестр приведён.
+test('сквозной: замок хранилища занят — приведение реестра отклонено, причина в статусе', async () => {
+  // Общий корень уже наполнен: включение не «первое», реестр сам не дозаполняется, и
+  // объявление окружения уходит в фоновую очередь `pi install` — она и держит замок.
+  const agent = tmpDir();
+  writeFileSync(join(agent, 'settings.json'), JSON.stringify({ packages: [] }));
+  writeFileSync(join(agent, 'models.json'), JSON.stringify({ providers: { p: { models: { m: {} } } } }));
+  const rt = tmpDir();
+  writeFileSync(join(rt, '.pi-env.json'), JSON.stringify({ ...DEFAULT_APP_SETTINGS, language: 'ru' }));
+  const store = join(rt, '.store');
+  const storePkg = join(store, 'npm', 'node_modules', 'pi-open-tui');
+  mkdirSync(storePkg, { recursive: true });
+  writeFileSync(join(storePkg, 'package.json'), JSON.stringify({ name: 'pi-open-tui', version: '0.4.6' }));
+  writeFileSync(join(store, 'settings.json'), JSON.stringify({ packages: ['npm:pi-open-tui'] }));
+  const dir = join(rt, 'e0');
+  mkdirSync(dir, { recursive: true });
+  writeFileSync(join(dir, 'settings.json'), JSON.stringify({ packages: ['npm:pi-zentui'] }));
+  mkdirSync(join(dir, 'npm', 'node_modules', 'pi-zentui'), { recursive: true });
+
+  const installs: Array<{ args: string[]; agentDir: string; signal: AbortSignal }> = [];
+  const hangInstall: RunFn = (cmd, args, timeoutMs, opts = {}) => {
+    const signal = opts.signal ?? new AbortController().signal;
+    if (cmd === 'pi' && args[0] === 'install') {
+      installs.push({ args, agentDir: opts.env?.PI_CODING_AGENT_DIR ?? '', signal });
+      return new Promise((resolve) => signal.addEventListener('abort', () => {
+        resolve({ ok: false, stdout: '', stderr: '', cancelled: true, timedOut: false, timeoutMs });
+      }, { once: true }));
+    }
+    return Promise.resolve({ ok: true, stdout: '', stderr: '', code: 0, timedOut: false, timeoutMs } satisfies CmdResult);
+  };
+
+  // down/e — форма e0; три down — строка «Хранилище»; enter+enter — включить; esc — из формы;
+  // tab/S/enter — приведение реестра, пока очередь установки ещё не закончилась.
+  const { painted } = await driveAt(
+    rt, ['down', 'e', 'down', 'down', 'down', 'enter', 'enter', 'esc', 'tab', 'S', 'enter', 'ctrlc'], agent, hangInstall,
+  );
+  const all = painted.join('\n');
+  assert.ok(all.includes(t('ru', 'ext.gap.title', { n: 1 })), all.slice(0, 2000));
+  assert.ok(all.includes(t('ru', 'status.store-busy')), all.slice(-2000));
+  assert.ok(!all.includes(t('ru', 'status.registry-repaired')), 'отказ не выдаётся за успех');
+  assert.equal(installs.length, 1, 'вторая пакетная команда в хранилище не запустилась: ' + JSON.stringify(installs.map((i) => i.args)));
+  assert.deepEqual(installs[0]!.args, ['install', 'npm:pi-zentui'], 'замок держит очередь доноса реестра');
+  assert.equal(installs[0]!.agentDir, store);
+  assert.deepEqual(settingsOf(dir).packages, ['npm:pi-zentui'], 'отказ не трогает объявления окружения');
+  assert.deepEqual((JSON.parse(readFileSync(join(store, 'settings.json'), 'utf8')).packages ?? []) as string[], ['npm:pi-open-tui']);
 });

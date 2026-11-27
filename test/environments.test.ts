@@ -3,7 +3,7 @@ import assert from 'node:assert';
 import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { basename, join } from 'node:path';
-import { conflictSources, scan, withMain, realEnvNames, packageConflicts, pkgIdentity, storeOrphanNames, storePackageUsage } from '../src/environments.js';
+import { conflictSources, scan, withMain, realEnvNames, packageConflicts, pkgIdentity, storeOrphanNames, storePackageUsage, storeRegistryGaps, type Environment } from '../src/environments.js';
 import { rewritePackages } from '../src/store.js';
 import { patchSettings } from '../src/create.js';
 import { symlinkSync } from 'node:fs';
@@ -442,4 +442,55 @@ test('разрешение конфликта: переписка объявле
   } finally {
     rmSync(root, { recursive: true });
   }
+});
+
+
+// ─── разрыв реестра хранилища: пакет объявлен окружениями, но не установлен в <store> ───
+
+const detG = (over: Partial<Environment['details']> = {}): Environment['details'] => ({
+  hasSettings: true, model: null, tools: [], skills: [], packages: [], mcp: [],
+  settingsError: null, mcpError: null, mcpSkipped: [],
+  modelsLink: 'off', rootLinks: { npm: 'off', git: 'off' }, missingPackages: [], ...over,
+});
+// Пакетные корни окружения смотрят в хранилище — его объявления обязан содержать реестр.
+const shared = (name: string, packages: string[]): Environment =>
+  ({ name, path: '/root/' + name, details: detG({ packages, rootLinks: { npm: 'linked', git: 'linked' } }) });
+// Свои npm/git: в общий реестр такой пакет не просится.
+const own = (name: string, packages: string[]): Environment =>
+  ({ name, path: '/root/' + name, details: detG({ packages }) });
+
+test('storeRegistryGaps: реестр стоит на другом источнике — разрыв с обоими объявлениями', () => {
+  const envs = [shared('dev-supo', ['npm:pi-open-tui']), shared('dev-vtb', ['npm:pi-open-tui'])];
+  assert.deepEqual(storeRegistryGaps(envs, ['npm:pi-open-tui@0.4.6']), [
+    { identity: 'npm:pi-open-tui', declared: 'npm:pi-open-tui', registered: ['npm:pi-open-tui@0.4.6'] },
+  ]);
+});
+
+test('storeRegistryGaps: объявление совпало с реестром — разрыва нет', () => {
+  assert.deepEqual(storeRegistryGaps([shared('dev-supo', ['npm:pi-zentui'])], ['npm:pi-zentui']), []);
+});
+
+test('storeRegistryGaps: пакета нет в реестре вовсе — registered пусто', () => {
+  assert.deepEqual(storeRegistryGaps([shared('e0', ['npm:pi-new'])], ['npm:pi-other']), [
+    { identity: 'npm:pi-new', declared: 'npm:pi-new', registered: [] },
+  ]);
+});
+
+// Разные объявления одного пакета — это конфликт: его лечит выбор победителя человеком,
+// а не автоматический выбор одного из них экраном приведения.
+test('storeRegistryGaps: разные объявления одного пакета — не разрыв (это конфликт)', () => {
+  const envs = [shared('a', ['npm:pi-open-tui']), shared('b', ['npm:pi-open-tui@0.4.6'])];
+  assert.deepEqual(storeRegistryGaps(envs, ['npm:pi-open-tui@0.4.6']), []);
+});
+
+test('storeRegistryGaps: окружение вне хранилища не даёт разрыва', () => {
+  assert.deepEqual(storeRegistryGaps([own('e0', ['npm:pi-own'])], ['npm:pi-store-pkg']), []);
+});
+
+// Scope — часть идентичности пакета (как у pi): реестр с `npm:pi-open-tui` не покрывает
+// `npm:@wangjq4214/pi-open-tui`, поэтому разрыв считается по пакету, а не по короткому имени.
+test('storeRegistryGaps: scoped- и unscoped-объявление — разные пакеты', () => {
+  assert.deepEqual(storeRegistryGaps([shared('a', ['npm:@wangjq4214/pi-open-tui'])], ['npm:pi-open-tui']), [
+    { identity: 'npm:@wangjq4214/pi-open-tui', declared: 'npm:@wangjq4214/pi-open-tui', registered: [] },
+  ]);
 });

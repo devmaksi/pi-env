@@ -2,7 +2,10 @@ import { existsSync, writeSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { withShutdown } from './shutdown.js';
-import { packageConflicts, pkgIdentity, realEnvNames, type Environment, type PackageConflict } from './environments.js';
+import {
+  packageConflicts, pkgIdentity, realEnvNames, storeRegistryGaps,
+  type Environment, type PackageConflict, type RegistryGap,
+} from './environments.js';
 import { createScanCache } from './env-cache.js';
 import { repairModelsLink, repairStoreRootLinks, rewritePackages, storeModelsFile, storeRegistrySources, storeRoot, STORE_ROOTS, type StoreResult } from './store.js';
 import { loadAppSettings, saveAppSettings } from './appsettings.js';
@@ -91,6 +94,11 @@ export async function run(root: string, term: Term = createTerm(), deps: RunDeps
   const storeDir = storeRoot(root, app.storeDir, process.env.PI_ENV_STORE);
   const storeFile = storeModelsFile(storeDir);
   let storePackages = loadCatalog(storeDir).packages;
+  // `<store>`: пакет объявлен окружениями общего хранилища, но не установлен в нём.
+  // Это остаток отменённого или провалившегося шага в хранилище, в том числе после
+  // разрешения конфликта: конфликта в снимке уже нет, и вход `S` выбора победителя
+  // был бы слепым — поэтому `S` без конфликта на строке открывает приведение реестра.
+  let storeGaps: RegistryGap[] = [];
   let state: AppState = { ...initialState(catalog, storePackages), colorToggle: app.color, recheckUpdates: app.recheckUpdates, recheckMcp: app.recheckMcp, language: lang0 };
   let statusMsg: string | null = null;
   /** Снимок окружений и корзины: перечитывается при смене подписи дерева или после инвалидации. */
@@ -177,6 +185,10 @@ export async function run(root: string, term: Term = createTerm(), deps: RunDeps
    */
   const log: DebugLogFn = dedupedLog(deps.debugLog ?? (() => {}));
   const errText = (e: unknown): string => (e instanceof Error ? e.message : String(e));
+  // Разрывы читаются по снимку и журналу,
+  // поэтому после создания кэша и журнала.
+  storeGaps = readStoreGaps();
+  state = { ...state, storeGaps };
 
   function load(): { envs: Environment[]; status: string | null } {
     const scanned = cache.get().envs;
@@ -220,11 +232,18 @@ export async function run(root: string, term: Term = createTerm(), deps: RunDeps
    * Именованные поля, а не три позиционных `string[]`: переставленные местами список строк и
    * список имён компилируются и воспроизводят ровно этот дефект.
    */
-  function rctx(over: { rows?: string[]; tnames?: string[]; names?: string[]; conflicts?: PackageConflict[] } = {}): ReducerCtx {
+  function rctx(over: {
+    rows?: string[]; tnames?: string[]; names?: string[]; conflicts?: PackageConflict[]; gaps?: RegistryGap[];
+  } = {}): ReducerCtx {
     return makeCtx(
       over.rows ?? envRows(), twoColumns(), over.tnames ?? trashNames(), over.names ?? realNames(),
-      over.conflicts ?? packageConflicts(load().envs),
+      over.conflicts ?? packageConflicts(load().envs), over.gaps ?? storeGaps,
     );
+  }
+
+  function readStoreGaps(): RegistryGap[] {
+    const registry = storeRegistrySources(storeDir);
+    return registry === null ? [] : storeRegistryGaps(load().envs, registry);
   }
 
   /**
@@ -243,7 +262,8 @@ export async function run(root: string, term: Term = createTerm(), deps: RunDeps
     } catch (err) {
       log('catalog', `${storeDir}: ${errText(err)}`);
     }
-    state = { ...state, catalog, storePackages };
+    storeGaps = readStoreGaps();
+    state = { ...state, catalog, storePackages, storeGaps };
   }
 
   /** Общий финал pi-команды: результат в reducer, перечитка каталога, отрисовка. */
@@ -357,24 +377,34 @@ export async function run(root: string, term: Term = createTerm(), deps: RunDeps
    * окружений и «осиротевший» пакет на вкладке, то есть видимые ⚠, которые лечатся
    * повторной операцией. Реестр правят сами `pi remove`/`pi install` — своего писателя нет.
    */
-  async function doResolveConflict(name: string, winner: string): Promise<void> {
+  async function doResolveConflict(name: string, winner: string, mode: 'conflict' | 'store' = 'conflict'): Promise<void> {
     const lang = state.language;
+    const okText = (envCount: number): string => (mode === 'conflict'
+      ? t(lang, 'status.conflict-resolved', { name, winner, envs: envCount })
+      : t(lang, 'status.registry-repaired', { name, winner }));
+    const failText = (v: string): string => (mode === 'conflict'
+      ? t(lang, 'status.conflict-error', { name, v })
+      : t(lang, 'status.registry-repair-error', { name, v }));
     const finish = (ok: boolean, message: string): void => {
       statusMsg = message;
       state = reducer(state, { type: 'resolve-result', ok, message }, rctx());
       repaint();
     };
     if (winner === '') {
-      finish(false, t(lang, 'status.conflict-error', { name, v: t(lang, 'err.conflict-no-source') }));
+      finish(false, failText(t(lang, 'err.conflict-no-source')));
       return;
     }
     const envs = load().envs;
     const group = envs.filter((e) => e.details.packages.some((s) => pkgIdentity(s) === name));
     try {
-      for (const e of group) patchSettings(e.path, { packages: rewritePackages(e.details.packages, name, winner) });
+      for (const e of group) {
+        const next = rewritePackages(e.details.packages, name, winner);
+        if (sameSources(next, e.details.packages)) continue;
+        patchSettings(e.path, { packages: next });
+      }
     } catch (err) {
       log('store', `конфликт «${name}»: settings.json — ${errText(err)}`);
-      finish(false, t(lang, 'status.conflict-error', { name, v: errText(err) }));
+      finish(false, failText(errText(err)));
       return;
     }
     cache.invalidate(); // settings.json окружений группы переписаны
@@ -400,9 +430,11 @@ export async function run(root: string, term: Term = createTerm(), deps: RunDeps
     reloadCatalog();
     void checkUpdates(storeDir, 'main');
     const failed = got.value;
-    finish(failed === null, failed === null
-      ? t(lang, 'status.conflict-resolved', { name, winner, envs: group.length })
-      : t(lang, 'status.conflict-error', { name, v: failed }));
+    finish(failed === null, failed === null ? okText(group.length) : failText(failed));
+  }
+
+  function sameSources(a: string[], b: string[]): boolean {
+    return a.length === b.length && a.every((s, i) => s === b[i]);
   }
 
   /**
@@ -528,7 +560,7 @@ export async function run(root: string, term: Term = createTerm(), deps: RunDeps
     doUpdateAll: (dir, scope) => { void doUpdateAll(dir, scope); },
     doUpdateOne: (dir, source) => { void doUpdateOne(dir, source); },
     doInstall: (dir, source, envName) => { void doInstall(dir, source, envName); },
-    doResolveConflict: (name, winner) => { void doResolveConflict(name, winner); },
+    doResolveConflict: (name, winner, mode) => { void doResolveConflict(name, winner, mode); },
     storeInstallSources: (sources) => { void doStoreInstallSources(sources); },
     doMcpAdd: (dir, form, scope) => { void doMcpAdd(dir, form, scope); },
     doMcpCheck: (dir, scope) => { void doMcpCheck(dir, scope); },

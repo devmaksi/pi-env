@@ -54,8 +54,16 @@ export interface Loop {
   doUpdateAll(targetDir: string, scope: 'main' | 'create'): void;
   doUpdateOne(dir: string, source: string): void;
   doInstall(installDir: string, source: string, envName: string | null): void;
-  /** Разрешить конфликт источников: объявления окружений группы + переустановка в <store>. */
-  doResolveConflict(name: string, winner: string): void;
+  /**
+   * Привести окружения группы и хранилище к одному источнику: объявления группы
+   * переписываются, хранилище переустанавливается в `<store>` (`pi remove` проигравшего,
+   * `pi install` победителя).
+   *
+   * `mode` выбирает набор сообщений статуса: `'conflict'` — выбор победителя из
+   * источников (объявления группы различаются), `'store'` — разрыв реестра, где
+   * объявления уже едины и нужно только довести хранилище. Цикл операций тот же.
+   */
+  doResolveConflict(name: string, winner: string, mode?: 'conflict' | 'store'): void;
   doMcpAdd(dir: string, form: McpFormAdd, scope: 'main' | 'create'): void;
   doMcpCheck(dir: string, scope: 'main' | 'create'): void;
   /** Снять процесс, которому принадлежит текущий busy-экран (Esc). */
@@ -245,8 +253,8 @@ function hooksExt(loop: Loop, prevExt: ExtState | null): void {
   } else if (e.view === 'removing' && prevExt !== null && prevExt.view === 'confirm-remove') {
     const pkg = loop.state().storePackages.find((p) => p.name === e.removing);
     if (pkg) loop.doRemove(loop.storeDir, pkg.source);
-  } else if (e.view === 'resolving' && prevExt !== null && prevExt.view === 'resolve') {
-    loop.doResolveConflict(e.conflictName ?? '', e.resolving ?? '');
+  } else if (e.view === 'resolving' && prevExt !== null && (prevExt.view === 'resolve' || prevExt.view === 'gap')) {
+    loop.doResolveConflict(e.conflictName ?? '', e.resolving ?? '', prevExt.view === 'gap' ? 'store' : 'conflict');
   } else if (e.view === 'updating' && prevExt === null) {
     if (e.updating === null) {
       loop.doUpdateAll(loop.storeDir, 'main');

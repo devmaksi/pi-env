@@ -40,7 +40,7 @@ function makeLoop(initial: AppState, root = '/root', agentDir = '/agent', envs: 
     doUpdateAll: (d, s) => { log.push(`doUpdateAll:${d}:${s}`); },
     doUpdateOne: (d, src) => { log.push(`doUpdateOne:${d}:${src}`); },
     doInstall: (d, src, env) => { log.push(`doInstall:${d}:${src}:${env}`); },
-    doResolveConflict: (name, winner) => { log.push(`doResolveConflict:${name}:${winner}`); },
+    doResolveConflict: (name, winner, mode) => { log.push(`doResolveConflict:${name}:${winner}${mode ? ':' + mode : ''}`); },
     storeInstallSources: (srcs) => { log.push('storeInstallSources:' + srcs.join(',')); },
     doMcpAdd: (d, f, s) => { log.push(`doMcpAdd:${d}:${f.name}:${s}`); },
     doMcpCheck: (d, s) => { log.push(`doMcpCheck:${d}:${s}`); },
@@ -130,7 +130,17 @@ test('ext: resolve → resolving — конфликт источников ух�
     { ...initialState(CATALOG), tab: 'extensions', ext: freshExt({ view: 'resolving', conflictName: 'pi-open-tui', resolving: 'npm:pi-open-tui' }) },
     { tab: 'extensions', ext: freshExt({ view: 'resolve', conflictName: 'pi-open-tui' }) },
   );
-  assert.deepEqual(h.log, ['doResolveConflict:pi-open-tui:npm:pi-open-tui']);
+  assert.deepEqual(h.log, ['doResolveConflict:pi-open-tui:npm:pi-open-tui:conflict']);
+});
+
+// Разрыв реестра (объявления уже едины, хранилище отстаёт) — тот же цикл, но `mode: 'store'`:
+// иначе статус обещал бы «конфликт разрешён», которого в снимке уже нет.
+test('ext: gap → resolving — разрыв реестра ведётся в цикл с mode store', async () => {
+  const h = await run(
+    { ...initialState(CATALOG), tab: 'extensions', ext: freshExt({ view: 'resolving', conflictName: 'npm:pkg-a', resolving: 'npm:pkg-a' }) },
+    { tab: 'extensions', ext: freshExt({ view: 'gap', cursor: 0 }) },
+  );
+  assert.deepEqual(h.log, ['doResolveConflict:npm:pkg-a:npm:pkg-a:store']);
 });
 
 test('ext: resolving без экрана выбора до перехода — операция не перезапускается', async () => {

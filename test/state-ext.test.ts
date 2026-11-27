@@ -5,6 +5,7 @@ import {
   type AppState, type PackageConflict, type PkgItem, type ReducerCtx,
 } from '../src/state.js';
 import { conflictSourcesOf } from '../src/state-ext.js';
+import { type RegistryGap } from '../src/environments.js';
 
 /**
  * Вкладка «Расширения» как реестр хранилища: группа конфликта ищется по идентичности пакета
@@ -28,8 +29,8 @@ const conflict: PackageConflict = {
 
 const tab = (): AppState => ({ ...initialState(undefined, [pkg('pi-open-tui')]), tab: 'extensions' });
 
-const rc = (conflicts: PackageConflict[] = [conflict]): ReducerCtx =>
-  makeCtx(['main', 'dev-java', 'dev-supo', 'dev-vtb'], true, [], ['dev-java', 'dev-supo', 'dev-vtb'], conflicts);
+const rc = (conflicts: PackageConflict[] = [conflict], gaps: RegistryGap[] = []): ReducerCtx =>
+  makeCtx(['main', 'dev-java', 'dev-supo', 'dev-vtb'], true, [], ['dev-java', 'dev-supo', 'dev-vtb'], conflicts, gaps);
 
 test('S на пакете с конфликтом — суб-экран выбора источника', () => {
   const s = reducer(tab(), 'S', rc());
@@ -129,4 +130,53 @@ test('conflictSourcesOf: конфликта в снимке нет — пуст�
   assert.deepEqual(conflictSourcesOf(rc(), 'npm:pi-zentui'), []);
   assert.deepEqual(conflictSourcesOf(rc(), 'pi-open-tui'), []);
   assert.deepEqual(conflictSourcesOf(rc(), null), []);
+});
+
+
+// ─── разрыв реестра хранилища: точка повтора после провала/отмены шага в <store> ───
+// Разрешение конфликта сначала переписывает объявления, поэтому конфликта в снимке больше
+// нет, а реестр может остаться на проигравшем источнике. Без этого входа привести хранилище
+// к победителю было бы нечем — действие `S` должно пережить исчезновение конфликта.
+const gaps: RegistryGap[] = [
+  { identity: 'npm:pi-open-tui', declared: 'npm:pi-open-tui', registered: ['npm:pi-open-tui@0.4.6'] },
+  { identity: 'npm:pi-zentui', declared: 'npm:pi-zentui', registered: [] },
+];
+
+test('S без конфликта на строке, но с разрывом реестра — суб-экран приведения', () => {
+  const s = reducer(tab(), 'S', rc([], gaps));
+  assert.equal(s.ext!.view, 'gap');
+  assert.equal(s.ext!.cursor, 0);
+});
+
+test('S без конфликта и без разрыва реестра — ничего', () => {
+  assert.equal(reducer(tab(), 'S', rc([], [])).ext, null);
+});
+
+test('суб-экран приведения: ↑↓ по разрывам, Enter — цикл операций, Esc — закрыть', () => {
+  let s = reducer(tab(), 'S', rc([], gaps));
+  s = reducer(s, 'down', rc([], gaps));
+  assert.equal(s.ext!.cursor, 1);
+  s = reducer(s, 'up', rc([], gaps));
+  assert.equal(s.ext!.cursor, 0);
+  s = reducer(s, 'enter', rc([], gaps));
+  assert.equal(s.ext!.view, 'resolving');
+  assert.equal(s.ext!.conflictName, 'npm:pi-open-tui');
+  assert.equal(s.ext!.resolving, 'npm:pi-open-tui');
+  let c = reducer(tab(), 'S', rc([], gaps));
+  c = reducer(c, 'esc', rc([], gaps));
+  assert.equal(c.ext, null);
+});
+
+test('суб-экран приведения пуст (разрывы исчезли) — ↑↓/Enter ничего не делают', () => {
+  let s = reducer(tab(), 'S', rc([], gaps));
+  s = { ...s, ext: { ...s.ext!, cursor: 0 } };
+  const ctx = rc([], []);
+  assert.deepEqual(reducer(s, 'down', ctx), s);
+  assert.deepEqual(reducer(s, 'enter', ctx), s);
+});
+
+// Экран выбора разрыва — не процесс: Esc на нём закрывает экран, а не снимает pi-команду.
+test('экран приведения — не процесс; процесс — только resolving', () => {
+  assert.equal(busyProcessView({ ...tab(), ext: freshExt({ view: 'gap', cursor: 0 }) }), false);
+  assert.equal(busyProcessView({ ...tab(), ext: freshExt({ view: 'resolving', resolving: 'npm:pi-open-tui' }) }), true);
 });

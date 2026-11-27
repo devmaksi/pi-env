@@ -170,6 +170,49 @@ export function storeOrphanNames(envs: Environment[], pkgSources: string[]): str
 }
 
 /**
+ * Разрыв реестра хранилища: пакет объявлен окружениями (все — одним и тем же объявлением),
+ * но такого объявления нет в реестре `<store>/settings.json`: реестр стоит на другом
+ * источнике той же идентичности или на этом пакете вообще. Это остаток пропавшего или
+ * отменённого шага `pi install`/`pi remove` в хранилище, в том числе после разрешения
+ * конфликта, когда объявления уже переписаны и `packageConflicts` пуст.
+ */
+export interface RegistryGap {
+  /** Идентичность пакета (`pkgIdentity`). */
+  identity: string;
+  /** Объявление окружений — к нему и надо привести хранилище. */
+  declared: string;
+  /** Объявления реестра той же идентичности; пусто — в реестре этого пакета нет. */
+  registered: string[];
+}
+
+/**
+ * Разрывы реестра по всем окружениям. Разные объявления одного пакета пропускаются:
+ * их описывает `packageConflicts`, и лечить их должен выбор победителя, а не этот вход.
+ */
+export function storeRegistryGaps(envs: Environment[], registry: string[]): RegistryGap[] {
+  const byIdentity = new Map<string, Set<string>>();
+  for (const env of envs) {
+    // Только окружения, чьи пакетные корни смотрят в хранилище: объявление окружения,
+    // живущего своими `npm/`/`git/`, в общий реестр не просится.
+    if (env.details.rootLinks.npm !== 'linked' && env.details.rootLinks.git !== 'linked') continue;
+    for (const src of env.details.packages) {
+      const identity = pkgIdentity(src);
+      const set = byIdentity.get(identity) ?? new Set<string>();
+      set.add(src);
+      byIdentity.set(identity, set);
+    }
+  }
+  const out: RegistryGap[] = [];
+  for (const [identity, sources] of byIdentity) {
+    if (sources.size !== 1) continue;
+    const declared = [...sources][0]!;
+    if (registry.includes(declared)) continue;
+    out.push({ identity, declared, registered: registry.filter((s) => pkgIdentity(s) === identity) });
+  }
+  return out.sort((a, b) => a.identity.localeCompare(b.identity));
+}
+
+/**
  * Один пакет (по идентичности pi), объявленный разными источниками. `name` — сама
  * идентичность (`npm:@scope/name`), она же ключ `ExtState.conflictName`.
  */

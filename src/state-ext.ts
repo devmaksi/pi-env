@@ -7,7 +7,7 @@ import type { AppState, Action, ReducerCtx } from './state.js';
 /** Подэкраны вкладки «Расширения». */
 export type ExtView =
   | 'catalog' | 'installing' | 'updating' | 'confirm-remove' | 'removing'
-  | 'resolve' | 'resolving';
+  | 'resolve' | 'resolving' | 'gap';
 
 export interface ExtState {
   view: ExtView;
@@ -16,9 +16,9 @@ export interface ExtState {
   updating: string | null;
   installing: string | null;
   removing: string | null;
-  /** Идентичность пакета (`pkgIdentity`) конфликта, который разрешает суб-экран. */
+  /** Идентичность пакета (`pkgIdentity`), которое разрешает суб-экран: конфликт или разрыв реестра. */
   conflictName: string | null;
-  /** Выбранный источник-победитель (view `resolving`). */
+  /** Источник, к которому приводится хранилище (view `resolving`). */
   resolving: string | null;
   catalog: CatalogPkg[];
   catalogStatus: 'loading' | 'ready' | 'error';
@@ -42,6 +42,7 @@ export function extMachine(state: AppState, action: Action, ctx: ReducerCtx): Ap
   const ext = state.ext!;
   if (ext.view === 'catalog') return extCatalog(state, ext, action);
   if (ext.view === 'resolve') return extResolve(state, ext, action, ctx);
+  if (ext.view === 'gap') return extGap(state, ext, action, ctx);
   if (ext.view === 'confirm-remove') {
     if (action === 'esc') return { ...state, ext: null };
     if (action === 'enter') return { ...state, ext: { ...ext, view: 'removing' } };
@@ -71,6 +72,28 @@ function extResolve(state: AppState, ext: ExtState, action: Action, ctx: Reducer
     return { ...state, ext: { ...ext, view: 'resolving', resolving: chosen.source } };
   }
   return null;
+}
+
+/**
+ * Суб-экран «Привести хранилище к объявлениям окружений» (`view: 'gap'`): ↑↓ по разрывам
+ * реестра, Enter — применить выбранный (тот же цикл, что и у разрешения конфликта:
+ * объявления окружений группы + `pi remove`/`pi install` в `<store>`), Esc — закрыть.
+ * Повтор идемпотентен: если реестр уже приведён, разрыва в снимке нет и экран не открывается.
+ */
+function extGap(state: AppState, ext: ExtState, action: Action, ctx: ReducerCtx): AppState | null {
+  const gaps = ctx.gaps ?? [];
+  if (action === 'up' || action === 'down') {
+    if (gaps.length === 0) return state;
+    const delta = action === 'up' ? -1 : 1;
+    return { ...state, ext: { ...ext, cursor: (ext.cursor + delta + gaps.length) % gaps.length } };
+  }
+  if (action === 'esc') return { ...state, ext: null };
+  if (action === 'enter') {
+    const gap = gaps[ext.cursor];
+    if (gap === undefined) return state;
+    return { ...state, ext: { ...ext, view: 'resolving', conflictName: gap.identity, resolving: gap.declared } };
+  }
+  return state;
 }
 
 /** Источники конфликта по имени пакета; конфликта в снимке нет — пустой список. */
