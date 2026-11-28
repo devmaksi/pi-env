@@ -183,7 +183,8 @@ test('listRegistryPackages: объявление без файлов получ�
     assert.equal(gone.missing, true);
     assert.equal(gone.source, 'npm:pkg-gone');
     // путь показывается в инфо-панели: там pi кладёт файлы пакета
-    assert.equal(gone.path, join(dir, 'npm', 'node_modules', 'pkg-gone'));
+    // путь относительный: абсолют не влезает в правую колонку, а адрес хранилища один
+    assert.equal(gone.path, join('npm', 'node_modules', 'pkg-gone'));
     assert.equal(gone.version, null);
     // scope — часть имени пакета (pi считает так же), версия объявления — не часть имени
     assert.equal(rows.find((r) => r.source === 'npm:@scope/pkg-gone@1.2.3')!.name, '@scope/pkg-gone');
@@ -599,6 +600,19 @@ test('loadCatalog: нет mcp.json — catalog.mcp пуст', () => {
   const dir = makeAgentDir();
   try {
     assert.deepEqual(loadCatalog(dir).mcp, []);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+// «npm:» без имени — не пакет: `resolvePkgPath` его не разрешает, а строка с пустым именем
+// ещё и предлагала бы `pi install npm:`.
+test('listRegistryPackages: вырожденное объявление «npm:» строки не даёт', () => {
+  const dir = makeAgentDir();
+  try {
+    writeFileSync(join(dir, 'settings.json'), JSON.stringify({ packages: ['npm:', 'npm:x'] }));
+    const rows = listRegistryPackages(dir);
+    assert.deepEqual(rows.map((r) => r.source), ['npm:x']);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

@@ -7,7 +7,7 @@ import {
   type Environment, type PackageConflict, type RegistryGap,
 } from './environments.js';
 import { createScanCache } from './env-cache.js';
-import { repairModelsLink, repairStoreRootLinks, rewritePackages, storeModelsFile, storeRegistrySources, storeRoot, STORE_ROOTS, type StoreResult } from './store.js';
+import { repairModelsLink, repairStoreRootLinks, rewritePackages, storeModelsFile, storeRegistrySources, storeRoot, storeRootExists, STORE_ROOTS, type StoreResult } from './store.js';
 import { loadAppSettings, saveAppSettings } from './appsettings.js';
 import { listProviders, loadCatalog, listRegistryPackages, fetchPackageCatalog, normalizePkgSource, type CatalogPkg } from './catalog.js';
 import { computeLayout } from './layout.js';
@@ -101,7 +101,13 @@ export async function run(root: string, term: Term = createTerm(), deps: RunDeps
   // разрешения конфликта: конфликта в снимке уже нет, и вход `S` выбора победителя
   // был бы слепым — поэтому `S` без конфликта на строке открывает приведение реестра.
   let storeGaps: RegistryGap[] = [];
-  let state: AppState = { ...initialState(catalog, storePackages), colorToggle: app.color, recheckUpdates: app.recheckUpdates, recheckMcp: app.recheckMcp, language: lang0 };
+  let state: AppState = {
+    ...initialState(catalog, storePackages),
+    // «нет файлов» у всех пакетов сразу объясняется отсутствием общего корня — об этом говорит
+    // вкладка, поэтому состояние корня читается вместе со списком
+    storeNpmRoot: storeRootExists(storeDir, 'npm'),
+    colorToggle: app.color, recheckUpdates: app.recheckUpdates, recheckMcp: app.recheckMcp, language: lang0,
+  };
   let statusMsg: string | null = null;
   /** Снимок окружений и корзины: перечитывается при смене подписи дерева или после инвалидации. */
   const cache = createScanCache(root, agentDir, {}, storeDir);
@@ -265,7 +271,7 @@ export async function run(root: string, term: Term = createTerm(), deps: RunDeps
       log('catalog', `${storeDir}: ${errText(err)}`);
     }
     storeGaps = readStoreGaps();
-    state = { ...state, catalog, storePackages, storeGaps };
+    state = { ...state, catalog, storePackages, storeGaps, storeNpmRoot: storeRootExists(storeDir, 'npm') };
   }
 
   /** Общий финал pi-команды: результат в reducer, перечитка каталога, отрисовка. */

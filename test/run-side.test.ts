@@ -162,7 +162,8 @@ test('ext: installing — pi install глобально (envName null)', async (
 });
 
 test('ext: confirm-remove → removing — doRemove в хранилище', async () => {
-  const h = await run({ ...initialState(CATALOG), tab: 'extensions', ext: freshExt({ view: 'removing', removing: 'pkg-a' }) }, { tab: 'extensions', ext: freshExt({ view: 'confirm-remove' }) });
+  // `removing` — источник объявления, а не имя из package.json
+  const h = await run({ ...initialState(CATALOG), tab: 'extensions', ext: freshExt({ view: 'removing', removing: 'npm:pkg-a' }) }, { tab: 'extensions', ext: freshExt({ view: 'confirm-remove' }) });
   assert.deepEqual(h.log, ['doRemove:/root/.store:npm:pkg-a']);
 });
 
@@ -172,7 +173,7 @@ test('ext: updating «Обновить все» — doUpdateAll main', async () 
 });
 
 test('ext: updating пакета — doUpdateOne', async () => {
-  const h = await run({ ...initialState(CATALOG), tab: 'extensions', ext: freshExt({ view: 'updating', updating: 'pkg-a' }) }, { tab: 'extensions' });
+  const h = await run({ ...initialState(CATALOG), tab: 'extensions', ext: freshExt({ view: 'updating', updating: 'npm:pkg-a' }) }, { tab: 'extensions' });
   assert.deepEqual(h.log, ['doUpdateOne:/root/.store:npm:pkg-a']);
 });
 

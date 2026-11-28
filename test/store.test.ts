@@ -7,7 +7,7 @@ import {
   STORE_DIR, storeRoot, storeModelsFile, modelsLinkState, ensureStoreModels,
   snapshotStoreModels, linkModels, unlinkModels, archiveEnvModelsIntoStore, envModelsFile, storeSnapshotName,
   enableModelsStorage, restoreFromStoreSnapshot,
-  STORE_ROOTS, storeSettingsFile, storePackagesRoot, envRootDir, rootLinkState,
+  STORE_ROOTS, storeSettingsFile, storePackagesRoot, envRootDir, rootLinkState, storeRootExists,
   storeLinkSummary, snapshotStoreManifest, storeRegistrySources,
   enableStoreRoots, disableStoreRoots, repairStoreRootLinks, mergeStoreRegistry, rewritePackages,
 } from '../src/store.js';
@@ -514,4 +514,23 @@ test('rewritePackages: дубликаты одной идентичности с
       'git:github.com/x/pi-open-tui', 'git:github.com/x/pi-open-tui@v1'),
     ['git:github.com/x/pi-open-tui@v1'],
   );
+});
+
+// «нет файлов» у каждого пакета — это одна общая причина, когда пропал сам корень:
+// вкладка обязана уметь её различить.
+test('storeRootExists: каталог есть, отсутствует и симлинк на каталог', () => {
+  const store = mkdtempSync(join(tmpdir(), 'pienv-store-'));
+  try {
+    assert.equal(storeRootExists(store, 'npm'), false, 'каталога нет');
+    mkdirSync(join(store, 'npm'), { recursive: true });
+    assert.equal(storeRootExists(store, 'npm'), true);
+    const moved = join(store, 'npm-real');
+    renameSync(join(store, 'npm'), moved);
+    symlinkSync(moved, join(store, 'npm'), 'dir');
+    assert.equal(storeRootExists(store, 'npm'), true, 'корень может быть симлинком');
+    unlinkSync(join(store, 'npm'));
+    assert.equal(storeRootExists(store, 'npm'), false, 'битый симлинк — корня нет');
+  } finally {
+    rmSync(store, { recursive: true, force: true });
+  }
 });

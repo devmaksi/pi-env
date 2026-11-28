@@ -3,7 +3,7 @@
  * связывание/разрыв симлинка и снимки общего файла. Вся работа с файлами — здесь,
  * слой эффектов (`run-side.ts`) только вызывает и убирает копии в корзину.
  */
-import { copyFileSync, existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, readlinkSync, renameSync, rmSync, symlinkSync, unlinkSync, writeFileSync } from 'node:fs';
+import { copyFileSync, existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, readlinkSync, renameSync, rmSync, statSync, symlinkSync, unlinkSync, writeFileSync } from 'node:fs';
 import { basename, dirname, isAbsolute, join, resolve } from 'node:path';
 import { t } from './i18n.js';
 import { copyRecursive } from './fscopy.js';
@@ -57,6 +57,20 @@ export function storePackagesRoot(storeDir: string, root: StoreRoot): string {
 /** Пакетный корень внутри окружения: обычный каталог либо симлинк на хранилище. */
 export function envRootDir(envDir: string, root: StoreRoot): string {
   return join(envDir, root);
+}
+
+/**
+ * Есть ли общий пакетный корень хранилища как каталог. `false` — корень пропал (чистка,
+ * переезд `PI_ENV_STORE`): тогда «нет файлов» у каждого пакета — это одна общая причина,
+ * а не N разных поломок.
+ */
+export function storeRootExists(storeDir: string, root: StoreRoot): boolean {
+  try {
+    // `statSync` идёт по симлинку: корень мог быть перемещён и связан ссылкой
+    return statSync(storePackagesRoot(storeDir, root)).isDirectory();
+  } catch {
+    return false;
+  }
 }
 
 /** Состояние связи пакетного корня окружения с хранилищем. */

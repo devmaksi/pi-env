@@ -69,6 +69,12 @@ export interface AppState {
   storePackages: PkgItem[];
   /** Разрыв реестра хранилища: пакет объявлен окружениями, но не установлен в `<store>`. */
   storeGaps: RegistryGap[];
+  /**
+   * Есть ли общий пакетный корень `<store>/npm` как каталог. `false` — корень пропал,
+   * и «нет файлов» у всех пакетов объясняется одной причиной (вкладка говорит о корне,
+   * а не сводкой по пакетам). `undefined` — не проверялось (тестовые фикстуры).
+   */
+  storeNpmRoot?: boolean;
   create: CreateState | null;
   ext: ExtState | null;
   mcp: McpTab | null;
@@ -404,7 +410,8 @@ function enterExtensions(state: AppState): AppState {
     // Файлов пакета в хранилище нет — «обновлять» нечего: Enter переустанавливает объявление
     // целиком (`pi install <source>`), потому что `pi update` закреплённые версии не трогает.
     if (p.missing === true) return { ...state, ext: freshExt({ view: 'installing', installing: p.source }) };
-    return { ...state, ext: freshExt({ view: 'updating', updating: p.name }) };
+    // источник, а не имя из package.json: два объявления могут называться одинаково
+    return { ...state, ext: freshExt({ view: 'updating', updating: p.source }) };
   }
   if (state.selected === n) return { ...state, ext: freshExt({ view: 'updating', updating: null }) };
   return { ...state, ext: freshExt({ view: 'catalog', catalogStatus: 'loading' }) };
@@ -442,6 +449,9 @@ function onS(state: AppState, ctx: ReducerCtx): AppState {
       return { ...state, ext: freshExt({ view: 'resolve', conflictName: key, cursor: 0 }) };
     }
   }
+  // На строке «нет файлов» `S` открывает разрывы ДРУГИХ пакетов — подписать её нечем,
+  // поэтому вход только для строк, у которых есть свой разрыв (см. `storeRegistryGaps`).
+  if (p !== undefined && p.missing === true) return state;
   if ((ctx.gaps?.length ?? 0) === 0) return state;
   return { ...state, ext: freshExt({ view: 'gap', cursor: 0 }) };
 }
@@ -451,7 +461,8 @@ function onX(state: AppState): AppState {
     const pkgs = packagesOf(state, 'extensions');
     const n = pkgs.length;
     if (state.selected < n) {
-      return { ...state, ext: freshExt({ view: 'confirm-remove', removing: pkgs[state.selected].name }) };
+      // ключ — источник объявления: имя из package.json не различает объявления
+      return { ...state, ext: freshExt({ view: 'confirm-remove', removing: pkgs[state.selected].source }) };
     }
   }
   if (state.tab === 'mcp') {

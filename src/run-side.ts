@@ -256,8 +256,9 @@ function hooksExt(loop: Loop, prevExt: ExtState | null): void {
     const source = e.installing ?? '';
     if (source !== '') loop.doInstall(loop.storeDir, source, null);
   } else if (e.view === 'removing' && prevExt !== null && prevExt.view === 'confirm-remove') {
-    const pkg = loop.state().storePackages.find((p) => p.name === e.removing);
-    if (pkg) loop.doRemove(loop.storeDir, pkg.source);
+    // `removing` — сам источник объявления: поиск по имени из package.json снимал чужое
+    // объявление, когда два объявления называются одинаково
+    if (e.removing !== null) loop.doRemove(loop.storeDir, e.removing);
   } else if (e.view === 'resolving' && prevExt !== null && (prevExt.view === 'resolve' || prevExt.view === 'gap')) {
     loop.doResolveConflict(e.conflictName ?? '', e.resolving ?? '', prevExt.view === 'gap' ? 'store' : 'conflict');
   } else if (e.view === 'updating' && prevExt === null) {
@@ -265,8 +266,7 @@ function hooksExt(loop: Loop, prevExt: ExtState | null): void {
       loop.doUpdateAll(loop.storeDir, 'main');
       return;
     }
-    const pkg = loop.state().storePackages.find((p) => p.name === e.updating);
-    if (pkg) loop.doUpdateOne(loop.storeDir, pkg.source);
+    loop.doUpdateOne(loop.storeDir, e.updating);
   }
 }
 

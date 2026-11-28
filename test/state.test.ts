@@ -279,11 +279,11 @@ test('вкладка extensions: ↑↓ по пакетам и двум кноп
   assert.equal(s.selected, 2);
 });
 
-test('вкладка extensions: Enter — пакет → updating(имя), кнопка → updating(null), каталог', () => {
+test('вкладка extensions: Enter — пакет → updating(источник), кнопка → updating(null), каталог', () => {
   let s = extTabState(2);
   s = reducer(s, 'enter', rc(envs(0)));
   assert.equal(s.ext!.view, 'updating');
-  assert.equal(s.ext!.updating, 'pkg-0');
+  assert.equal(s.ext!.updating, 'npm:pkg-0', 'ключ — источник объявления');
   s = reducer({ ...extTabState(2), selected: 2 }, 'enter', rc(envs(0)));
   assert.equal(s.ext!.view, 'updating');
   assert.equal(s.ext!.updating, null);
@@ -295,13 +295,13 @@ test('вкладка extensions: Enter — пакет → updating(имя), кн
 test('вкладка extensions: X по пакету → confirm-remove, Esc отмена, Enter → removing', () => {
   let s = reducer({ ...extTabState(2), selected: 1 }, 'x', rc(envs(0)));
   assert.equal(s.ext!.view, 'confirm-remove');
-  assert.equal(s.ext!.removing, 'pkg-1');
+  assert.equal(s.ext!.removing, 'npm:pkg-1', 'ключ — источник, имя из package.json не различает объявления');
   s = reducer(s, 'esc', rc(envs(0)));
   assert.equal(s.ext, null);
   s = reducer({ ...extTabState(2), selected: 1 }, 'X', rc(envs(0)));
   s = reducer(s, 'enter', rc(envs(0)));
   assert.equal(s.ext!.view, 'removing');
-  assert.equal(s.ext!.removing, 'pkg-1');
+  assert.equal(s.ext!.removing, 'npm:pkg-1');
 });
 
 test('вкладка extensions: X на строках кнопок ничего не делает', () => {
@@ -485,7 +485,7 @@ test('extensions: X → confirm-remove → Enter → removing; после remove
   let s: AppState = { ...initialState(emptyCatalog(), pkgs), tab: 'extensions', selected: 1 };
   s = reducer(s, 'x', rc(envs(0)));
   assert.equal(s.ext!.view, 'confirm-remove');
-  assert.equal(s.ext!.removing, 'b');
+  assert.equal(s.ext!.removing, 'npm:b');
   s = reducer(s, 'enter', rc(envs(0)));
   assert.equal(s.ext!.view, 'removing');
   // пакет удалён из реестра — курсор не должен выйти за список

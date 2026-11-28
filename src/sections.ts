@@ -721,7 +721,15 @@ function extList(ctx: Ctx): Section {
     right.push(c(ANSI.dim, ctx.useColor) + '⚠ ' + t(ctx.lang, 'ext.store.gaps', { n: gaps.length }) + c(ANSI.reset, ctx.useColor));
   }
   if (nofiles.length > 0) {
-    right.push(c(ANSI.dim, ctx.useColor) + '⚠ ' + t(ctx.lang, 'ext.store.nofiles.summary', { n: nofiles.length }) + c(ANSI.reset, ctx.useColor));
+    // Пропавший общий корень объясняет сразу все строки: сводка «N пакетов без файлов»
+    // прятала бы одну общую причину за N пометками
+    const line = ctx.state.storeNpmRoot === false
+      ? 'ext.store.noroot'
+      : 'ext.store.nofiles.summary';
+    right.push(c(ANSI.dim, ctx.useColor) + '⚠ ' + t(ctx.lang, line, { n: nofiles.length }) + c(ANSI.reset, ctx.useColor));
+    if (ctx.state.storeNpmRoot === false) {
+      right.push(c(ANSI.dim, ctx.useColor) + t(ctx.lang, 'ext.store.noroot.hint') + c(ANSI.reset, ctx.useColor));
+    }
   }
   const n = pkgs.length;
   const s = ctx.state.selected;
@@ -814,8 +822,8 @@ const EXT_BUSY: Record<string, { text: (ext: ExtState, lang: string) => string; 
     bold: true,
     hints: ['hint.confirm', 'hint.cancel'],
     extra: (ext, ctx) => {
-      const row = ctx.state.storePackages.find((p) => p.name === ext.removing);
-      const users = storePackageUsage(ctx.envs, row?.source ?? ext.removing ?? '');
+      // `removing` — источник объявления (имя из package.json не различает объявления)
+      const users = storePackageUsage(ctx.envs, ext.removing ?? '');
       if (users.length > 0) return [c(ANSI.dim, ctx.useColor) + t(ctx.lang, 'ext.store.used-by', { v: users.join(', ') }) + c(ANSI.reset, ctx.useColor)];
       return [c(ANSI.dim, ctx.useColor) + t(ctx.lang, 'ext.store.orphan-unused') + c(ANSI.reset, ctx.useColor)];
     },

@@ -80,6 +80,8 @@ export interface PkgItem {
    * Объявление реестра хранилища, у которого файлов пакета нет на диске. Строка с такой
    * пометкой существует только в списке вкладки «Расширения» (`listRegistryPackages`):
    * разобрать пакет нельзя, но скрыть его — значит оставить реестр мусореть невидимо.
+   * У таких строк `path` — путь ОТНОСИТЕЛЬНО каталога хранилища (`npm/node_modules/<имя>`):
+   * абсолютный путь не влезает в правую колонку кадра, а адрес хранилища один на все строки.
    */
   missing?: boolean;
 }
@@ -117,6 +119,9 @@ export function listCustomTools(agentDir: string): ToolItem[] {
     .sort((a, b) => a.name.localeCompare(b.name));
 }
 
+/** Куда pi кладёт npm-пакеты: `<каталог агента>/npm/node_modules/<имя без версии>`. */
+const NPM_ROOT = 'npm';
+
 /** Объявления `settings.json → packages` каталога агента (строки, без разбора путей). */
 function packageSourcesOf(agentDir: string): string[] {
   const settings = readJsonFile(join(agentDir, 'settings.json'));
@@ -132,8 +137,9 @@ function packageSourcesOf(agentDir: string): string[] {
  * `listPackages` пропускает объявление, у которого нет каталога пакета или манифеста. Такое
  * объявление остаётся в `<store>/settings.json` (сбой `pi install`, ручная чистка дерева,
  * переезд `PI_ENV_STORE`, оборванный `pi remove`) — без строки реестр мусореет невидимо: ни `X`,
- * ни `⚠`, ни счётчика. Правило: у каждого объявления реестра есть строка, а если файлов нет,
- * строка это говорит (`missing`).
+ * ни `⚠`, ни счётчика. Правило: у каждого СТРОКОВОГО объявления реестра есть строка, а если
+ * файлов нет, строка это говорит (`missing`). Object-записи `settings.packages`, которые умеет
+ * pi, pi-env не читает — это отдельная карточка.
  *
  * Границы, чтобы не плодить ложные пометки:
  * - `git:` строк не получает — `resolvePkgPath` для него всегда `null` (pi кладёт пакет в
@@ -147,14 +153,18 @@ export function listRegistryPackages(storeDir: string): PkgItem[] {
   const seen = new Set(rows.map((p) => pkgIdentity(p.source)));
   for (const source of packageSourcesOf(storeDir)) {
     if (!source.startsWith('npm:')) continue;
+    // имя — из объявления: scope является частью имени пакета, версия — не часть пути;
+    // вырожденное «npm:» (пустое имя) не разрешается и `resolvePkgPath` — строки не даёт
+    const name = npmNameOfSource(source);
+    if (name === '') continue;
     const identity = pkgIdentity(source);
     if (seen.has(identity)) continue;
     seen.add(identity);
     rows.push({
       source,
-      // имя — из объявления: scope является частью имени пакета, версия — не часть пути
-      name: npmNameOfSource(source),
-      path: expectedNpmPath(storeDir, source),
+      name,
+      // путь относительно хранилища: он и есть ответ на вопрос «куда класть файлы»
+      path: join(NPM_ROOT, 'node_modules', name),
       version: null,
       description: null,
       extensions: [],
@@ -424,7 +434,7 @@ export function uniqueName(base: string, used: Set<string>): string {
 
 /** Куда pi кладёт npm-пакет: `npm/node_modules/<имя без версии>` (версия объявления — не часть пути). */
 function expectedNpmPath(agentDir: string, source: string): string {
-  return join(agentDir, 'npm', 'node_modules', npmNameOfSource(source));
+  return join(agentDir, NPM_ROOT, 'node_modules', npmNameOfSource(source));
 }
 
 function resolvePkgPath(agentDir: string, source: string): string | null {

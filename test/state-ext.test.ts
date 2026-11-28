@@ -206,7 +206,7 @@ test('переустановка снимается результатом; X в
   assert.equal(s.ext, null);
   s = reducer(tabNoFiles(), 'x', rc([], []));
   assert.equal(s.ext!.view, 'confirm-remove');
-  assert.equal(s.ext!.removing, 'pi-gone');
+  assert.equal(s.ext!.removing, 'npm:pi-gone@1.2.3');
 });
 
 test('экран переустановки — процесс: Esc снимает команду, «⏳ N с» показывается', () => {
@@ -219,5 +219,28 @@ test('экран переустановки — процесс: Esc снимае
 test('установленный пакет: Enter по-прежнему обновляет', () => {
   const s = reducer(tab(), 'enter', rc());
   assert.equal(s.ext!.view, 'updating');
-  assert.equal(s.ext!.updating, 'pi-open-tui');
+  assert.equal(s.ext!.updating, 'npm:pi-open-tui');
+});
+
+// Строка «нет файлов» не имеет своего разрыва реестра: `S` на ней открывал бы приведение
+// ЧУЖИХ пакетов, а ⚠ на строке как раз провоцирует клавишу.
+test('S на строке без файлов — суб-экран разрывов не открывается', () => {
+  const gaps: RegistryGap[] = [
+    { identity: 'npm:pi-open-tui', declared: 'npm:pi-open-tui', registered: [] },
+  ];
+  const s = reducer(tabNoFiles(), 'S', rc([], gaps));
+  assert.equal(s.ext, null);
+});
+
+// Имя из package.json не различает объявлений, поэтому суб-экран обязан нести источник:
+// иначе «X» ищет первую строку с таким именем и снимает чужое объявление.
+test('Enter и X несут источник объявления, а не имя пакета', () => {
+  const installed: PkgItem = {
+    source: '/store/local/pi-dup', name: 'pi-dup', path: '/store/local/pi-dup',
+    version: '1.0.0', description: null, extensions: [], skills: [],
+  };
+  const state = { ...initialState(undefined, [installed, nofiles('npm:pi-dup', 'pi-dup')]), tab: 'extensions' as const, selected: 1 };
+  assert.equal(reducer(state, 'x', rc([], [])).ext!.removing, 'npm:pi-dup');
+  const upd = { ...state, selected: 0, ext: null };
+  assert.equal(reducer(upd, 'enter', rc([], [])).ext!.updating, '/store/local/pi-dup');
 });

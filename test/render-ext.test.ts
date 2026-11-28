@@ -102,10 +102,10 @@ test('подтверждение удаления из хранилища: сп�
   const state = {
     ...st,
     storePackages: [pkg('pi-zentui')],
-    ext: freshExt({ view: 'confirm-remove', removing: 'pi-zentui' }),
+    ext: freshExt({ view: 'confirm-remove', removing: 'npm:pi-zentui' }),
   };
   const s = render({ state, envs, width: 90, height: 20, ...base });
-  assert.ok(s.includes(t('ru', 'busy.delete-ext', { name: 'pi-zentui' })), s);
+  assert.ok(s.includes(t('ru', 'busy.delete-ext', { name: 'npm:pi-zentui' })), s);
   assert.ok(s.includes(t('ru', 'ext.store.used-by', { v: 'admin, dev-supo' })), s);
 });
 
@@ -162,10 +162,10 @@ test('подтверждение удаления осиротевшего па�
   const state = {
     ...st,
     storePackages: [pkg('pi-orphan-ext')],
-    ext: freshExt({ view: 'confirm-remove', removing: 'pi-orphan-ext' }),
+    ext: freshExt({ view: 'confirm-remove', removing: 'npm:pi-orphan-ext' }),
   };
   const s = render({ state, envs, width: 90, height: 20, ...base });
-  assert.ok(s.includes(t('ru', 'busy.delete-ext', { name: 'pi-orphan-ext' })), s);
+  assert.ok(s.includes(t('ru', 'busy.delete-ext', { name: 'npm:pi-orphan-ext' })), s);
   assert.ok(s.includes(t('ru', 'ext.store.orphan-unused')), s);
   // «Перестанут использовать: …» при пустом списке окружений было бы пустой строкой-обманкой
   const usedBy = t('ru', 'ext.store.used-by', { v: 'dev-supo' });
@@ -368,5 +368,57 @@ test('кадр с объявлением без файлов: ровно height 
       assert.equal(lastCol(line, wide, width), width, `2-клеточный w=${width}: ${JSON.stringify(line)}`);
       assert.equal(visibleWidth(line) <= width, true, `ширина w=${width}: ${JSON.stringify(line)}`);
     }
+  }
+});
+
+// Закреплённое объявление (`npm:x@1.2.3`): осиротевший пакет ищется по строке объявления,
+// а не по идентичности, иначе подсказка «X — убрать из реестра» появлялась бы только у
+// незакреплённых пакетов.
+test('осиротевшее закреплённое объявление: пометка, подсказка X и подтверждение', () => {
+  const pinned = {
+    source: 'npm:pi-orphan@1.2.3', name: 'pi-orphan', path: 'npm/node_modules/pi-orphan',
+    version: '1.2.3', description: null, extensions: [], skills: [],
+  };
+  const envs = [env('dev-supo', ['npm:pi-zentui'])];
+  const state = { ...st, storePackages: [pkg('pi-zentui'), pinned], selected: 1 };
+  const s = render({ state, envs, width: 110, height: 20, ...base });
+  assert.ok(s.includes('⚠ ' + t('ru', 'ext.store.usage', { n: 0 })), s);
+  assert.ok(s.includes(t('ru', 'ext.store.orphan')), s);
+  assert.ok(s.includes(t('ru', 'ext.store.hint.remove')), s);
+  const conf = render({
+    state: { ...state, ext: freshExt({ view: 'confirm-remove', removing: 'npm:pi-orphan@1.2.3' }) },
+    envs, width: 110, height: 20, ...base,
+  });
+  assert.ok(conf.includes(t('ru', 'busy.delete-ext', { name: 'npm:pi-orphan@1.2.3' })), conf);
+  assert.ok(conf.includes(t('ru', 'ext.store.orphan-unused')), conf);
+});
+
+// Пропавший общий корень объясняет сразу все строки: сводка «N пакетов без файлов»
+// прятала бы одну причину за N пометками.
+test('общий каталог пакетов отсутствует: одно объяснение вместо сводки по пакетам', () => {
+  const envs = [env('dev-supo', ['npm:pi-gone', 'npm:pi-gone2'])];
+  const state = {
+    ...st,
+    storePackages: [nofiles('npm:pi-gone', 'pi-gone'), nofiles('npm:pi-gone2', 'pi-gone2')],
+    storeNpmRoot: false,
+  };
+  const s = render({ state, envs, width: 110, height: 20, ...base });
+  assert.ok(s.includes(t('ru', 'ext.store.noroot')), s);
+  assert.ok(s.includes(t('ru', 'ext.store.noroot.hint')), s);
+  assert.ok(!s.includes(t('ru', 'ext.store.nofiles.summary', { n: 2 })), s);
+  // корень на месте — обычная сводка по пакетам
+  const ok = render({ state: { ...state, storeNpmRoot: true }, envs, width: 110, height: 20, ...base });
+  assert.ok(ok.includes(t('ru', 'ext.store.nofiles.summary', { n: 2 })), ok);
+  assert.ok(!ok.includes(t('ru', 'ext.store.noroot')), ok);
+});
+
+// Путь показан относительно хранилища: абсолютный обрезался правой колонкой и не отвечал
+// на вопрос «куда класть файлы».
+test('объявление без файлов: путь в хранилище читается и на узком кадре', () => {
+  const envs = [env('dev-supo', ['npm:pi-gone'])];
+  const state = { ...st, storePackages: [nofiles('npm:pi-gone', 'pi-gone')] };
+  for (const width of [90, 110, 120]) {
+    const s = render({ state, envs, width, height: 20, ...base });
+    assert.ok(s.includes('npm/node_modules/pi-gone'), `width=${width}: ${s}`);
   }
 });

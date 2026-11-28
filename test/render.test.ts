@@ -258,8 +258,9 @@ test('вкладка «Расширения»: пометки процессов
   assert.ok(updAll.includes('Обновление…'));
   const rm = render({ state: { ...initialState(extCatalog), tab: 'extensions' as const, ext: freshExt({ view: 'removing' }) }, envs, width: 100, height: 10, ...base });
   assert.ok(rm.includes('Удаление…'));
-  const conf = render({ state: { ...initialState(extCatalog), tab: 'extensions' as const, ext: freshExt({ view: 'confirm-remove', removing: 'pkg-a' }) }, envs, width: 100, height: 10, ...base });
-  assert.ok(conf.includes('Удалить расширение «pkg-a»?'));
+  // подтверждение оперирует источником объявления — он и показан, и уходит в `pi remove`
+  const conf = render({ state: { ...initialState(extCatalog), tab: 'extensions' as const, ext: freshExt({ view: 'confirm-remove', removing: 'npm:pkg-a' }) }, envs, width: 100, height: 10, ...base });
+  assert.ok(conf.includes('Удалить расширение «npm:pkg-a»?'));
   assert.ok(conf.includes('Enter — подтвердить'));
 });
 
@@ -269,7 +270,7 @@ test('вкладка «Расширения»: busy-вью процесса по
     assert.ok(s.includes(t('ru', 'hint.kill')), view);
     assert.ok(!s.includes(t('ru', 'hint.back')), view);
   }
-  const confirm = render({ state: { ...initialState(extCatalog), tab: 'extensions' as const, ext: freshExt({ view: 'confirm-remove', removing: 'pkg-a' }) }, envs, width: 100, height: 10, ...base });
+  const confirm = render({ state: { ...initialState(extCatalog), tab: 'extensions' as const, ext: freshExt({ view: 'confirm-remove', removing: 'npm:pkg-a' }) }, envs, width: 100, height: 10, ...base });
   assert.ok(confirm.includes(t('ru', 'hint.cancel')));
   assert.ok(!confirm.includes(t('ru', 'hint.kill')));
 });

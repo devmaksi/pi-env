@@ -523,3 +523,47 @@ test('сквозной: после переустановки строка ст�
   assert.ok(!last.includes(t('ru', 'ext.store.nofiles.row')), last);
   assert.ok(!last.includes(t('ru', 'ext.store.nofiles.summary', { n: 1 })), last);
 });
+
+// Два объявления одного имени: локальный путь с манифестом `name: pi-dup` и `npm:pi-dup`
+// без файлов. Ключом суб-экрана было имя из package.json — и `X` по строке «нет файлов»
+// снимал чужое объявление (локальное). Теперь ключ — источник объявления.
+function collisionRoot(): { rt: string; store: string } {
+  const rt = tmpDir();
+  const store = join(rt, '.store');
+  writeFileSync(join(rt, '.pi-env.json'), JSON.stringify({ ...DEFAULT_APP_SETTINGS, language: 'ru' }));
+  mkdirSync(join(rt, 'e0'), { recursive: true });
+  writeFileSync(join(rt, 'e0', 'settings.json'), JSON.stringify({}));
+  const local = join(store, 'local', 'pi-dup');
+  mkdirSync(local, { recursive: true });
+  writeFileSync(join(local, 'package.json'), JSON.stringify({ name: 'pi-dup', version: '1.0.0' }));
+  mkdirSync(join(store, 'npm'), { recursive: true });
+  symlinkSync(join(store, 'npm'), join(rt, 'e0', 'npm'), 'dir');
+  writeFileSync(join(store, 'settings.json'), JSON.stringify({ packages: [local, 'npm:pi-dup'] }));
+  return { rt, store };
+}
+
+test('сквозной: X по строке без файлов снимает именно её объявление при коллизии имён', async () => {
+  const { rt, store } = collisionRoot();
+  // строки отсортированы по имени (оно одинаковое): 0 — локальное, 1 — «нет файлов»
+  const { launches, painted } = await driveAt(rt, ['tab', 'down', 'x', 'enter', 'ctrlc'], agentWithPackage());
+  const rem = launches.filter((l) => piLaunch(l) && l.args[0] === 'remove');
+  assert.deepEqual(rem.map((l) => l.args), [['remove', 'npm:pi-dup']], JSON.stringify(launches));
+  assert.equal(rem[0]!.agentDir, store);
+  assert.ok(painted.some((f) => f.includes(t('ru', 'ext.store.nofiles.row'))), painted.join('\n').slice(-2500));
+});
+
+// Пропал общий корень — «нет файлов» у всех пакетов по одной причине, и вкладка говорит
+// про причину, а не про N отдельных поломок.
+test('сквозной: общий каталог пакетов отсутствует — вкладка объясняет корень', async () => {
+  const rt = tmpDir();
+  writeFileSync(join(rt, '.pi-env.json'), JSON.stringify({ ...DEFAULT_APP_SETTINGS, language: 'ru' }));
+  mkdirSync(join(rt, 'e0'), { recursive: true });
+  writeFileSync(join(rt, 'e0', 'settings.json'), JSON.stringify({ packages: ['npm:pi-gone'] }));
+  const store = join(rt, '.store');
+  mkdirSync(store, { recursive: true }); // `<store>/npm` отсутствует намеренно
+  writeFileSync(join(store, 'settings.json'), JSON.stringify({ packages: ['npm:pi-gone'] }));
+  const { painted } = await driveAt(rt, ['tab', 'ctrlc'], agentWithPackage());
+  const frame = painted.join('\n');
+  assert.ok(painted.some((f) => f.includes(t('ru', 'ext.store.noroot'))), frame.slice(-2500));
+  assert.ok(!painted.some((f) => f.includes(t('ru', 'ext.store.nofiles.summary', { n: 1 }))), frame.slice(-2500));
+});
