@@ -400,7 +400,11 @@ function enterExtensions(state: AppState): AppState {
   const pkgs = packagesOf(state, 'extensions');
   const n = pkgs.length;
   if (state.selected < n) {
-    return { ...state, ext: freshExt({ view: 'updating', updating: pkgs[state.selected].name }) };
+    const p = pkgs[state.selected];
+    // Файлов пакета в хранилище нет — «обновлять» нечего: Enter переустанавливает объявление
+    // целиком (`pi install <source>`), потому что `pi update` закреплённые версии не трогает.
+    if (p.missing === true) return { ...state, ext: freshExt({ view: 'installing', installing: p.source }) };
+    return { ...state, ext: freshExt({ view: 'updating', updating: p.name }) };
   }
   if (state.selected === n) return { ...state, ext: freshExt({ view: 'updating', updating: null }) };
   return { ...state, ext: freshExt({ view: 'catalog', catalogStatus: 'loading' }) };

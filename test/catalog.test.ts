@@ -3,7 +3,7 @@ import assert from 'node:assert';
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { listProviders, listCustomTools, listPackages, listSkills, parseOutdated, interpretOutdated, parsePackageCatalog, normalizePkgSource, filterPackages, type PkgItem } from '../src/catalog.js';
+import { listProviders, listCustomTools, listPackages, listRegistryPackages, listSkills, parseOutdated, interpretOutdated, parsePackageCatalog, normalizePkgSource, filterPackages, type PkgItem } from '../src/catalog.js';
 import { loadCatalog } from '../src/catalog.js';
 
 function makeAgentDir(): string {
@@ -159,6 +159,85 @@ test('listPackages: объявление npm с версией и scoped-имя 
     assert.equal(a.path, join(dir, 'npm', 'node_modules', 'pkg-a'));
     const b = pkgs.find((p) => p.name === '@sfroment/pkg-b')!;
     assert.equal(b.path, join(dir, 'npm', 'node_modules', '@sfroment', 'pkg-b'));
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+// Реестр хранилища обязан показываться ЦЕЛИКОМ: объявление, пережившее удаление файлов
+// (сбой `pi install`, ручная чистка дерева, переезд `PI_ENV_STORE`), лежало в settings.json
+// без строки вкладки — ни `X`, ни `⚠`, ни счётчика.
+test('listRegistryPackages: объявление без файлов получает строку с missing', () => {
+  const dir = makeAgentDir();
+  try {
+    makePkg(join(dir, 'npm', 'node_modules'), 'pkg-a', { name: 'pkg-a', version: '1.0.0' });
+    // каталог есть, манифеста нет (оборванный `pi install`) — пакет тоже неразбираем
+    mkdirSync(join(dir, 'npm', 'node_modules', 'pkg-nomanifest'), { recursive: true });
+    writeFileSync(join(dir, 'settings.json'), JSON.stringify({
+      packages: ['npm:pkg-a', 'npm:pkg-gone', 'npm:@scope/pkg-gone@1.2.3', 'npm:pkg-nomanifest'],
+    }));
+    const rows = listRegistryPackages(dir);
+    assert.deepEqual(rows.map((r) => r.name),
+      ['@scope/pkg-gone', 'pkg-a', 'pkg-gone', 'pkg-nomanifest']);
+    const gone = rows.find((r) => r.name === 'pkg-gone')!;
+    assert.equal(gone.missing, true);
+    assert.equal(gone.source, 'npm:pkg-gone');
+    // путь показывается в инфо-панели: там pi кладёт файлы пакета
+    assert.equal(gone.path, join(dir, 'npm', 'node_modules', 'pkg-gone'));
+    assert.equal(gone.version, null);
+    // scope — часть имени пакета (pi считает так же), версия объявления — не часть имени
+    assert.equal(rows.find((r) => r.source === 'npm:@scope/pkg-gone@1.2.3')!.name, '@scope/pkg-gone');
+    assert.equal(rows.find((r) => r.name === 'pkg-a')!.missing, undefined);
+    assert.equal(rows.find((r) => r.name === 'pkg-nomanifest')!.missing, true);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+// Сравнение — по идентичности пакета, как у pi (`npm:pkg-a` и `npm:pkg-a@1.0.0` — один пакет),
+// поэтому два пропавших объявления одного пакета не плодят две строки «нет файлов».
+test('listRegistryPackages: два объявления одного пакета без файлов — одна строка', () => {
+  const dir = makeAgentDir();
+  try {
+    writeFileSync(join(dir, 'settings.json'),
+      JSON.stringify({ packages: ['npm:pkg-gone', 'npm:pkg-gone@1.0.0'] }));
+    const rows = listRegistryPackages(dir);
+    assert.equal(rows.length, 1, JSON.stringify(rows));
+    assert.equal(rows[0]!.missing, true);
+    assert.equal(rows[0]!.source, 'npm:pkg-gone');
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+// Файлы на месте у одного из двух объявлений одного пакета — это конфликт источников
+// (`S` выбирает победителя), а не «нет файлов»: пометки ни у одной строки нет.
+test('listRegistryPackages: конфликт объявлений с файлами — пометки «нет файлов» нет', () => {
+  const dir = makeAgentDir();
+  try {
+    makePkg(join(dir, 'npm', 'node_modules'), 'pkg-a', { name: 'pkg-a', version: '1.0.0' });
+    writeFileSync(join(dir, 'settings.json'),
+      JSON.stringify({ packages: ['npm:pkg-a', 'npm:pkg-a@1.0.0'] }));
+    const rows = listRegistryPackages(dir);
+    assert.equal(rows.length, 2, JSON.stringify(rows));
+    assert.ok(rows.every((r) => r.missing === undefined), JSON.stringify(rows));
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+// git-путь pi кладёт в `<agent>/git/<host>/<путь>`, и pi-env его не разрешает: пометка
+// «нет файлов» для установленного git-пакета была бы неправдой. Локальный путь переустановить
+// нечем. Поэтому такие объявления остаются как были — без строк и без пометок.
+test('listRegistryPackages: git- и локальные объявления строк не получают', () => {
+  const dir = makeAgentDir();
+  try {
+    mkdirSync(join(dir, 'git', 'github.com', 'x', 'pi-git-ext'), { recursive: true });
+    writeFileSync(join(dir, 'settings.json'), JSON.stringify({
+      packages: ['git:github.com/x/pi-git-ext@v1', join(dir, 'gone-local'), 'npm:pkg-gone'],
+    }));
+    const rows = listRegistryPackages(dir);
+    assert.deepEqual(rows.map((r) => r.source), ['npm:pkg-gone']);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

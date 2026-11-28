@@ -126,6 +126,8 @@ test('app: первое включение хранилища на окруже�
   writeFileSync(join(agent, 'models.json'), '{"providers":{}}');
   writeFileSync(join(agent, 'settings.json'), JSON.stringify({ packages: ['npm:pi-zentui'] }));
   mkdirSync(join(agent, 'npm', 'node_modules', 'pi-zentui'), { recursive: true });
+  writeFileSync(join(agent, 'npm', 'node_modules', 'pi-zentui', 'package.json'),
+    JSON.stringify({ name: 'pi-zentui', version: '1.0.0' }));
   mkdirSync(join(agent, 'git'), { recursive: true });
   const saved = process.env.PI_CODING_AGENT_DIR;
   process.env.PI_CODING_AGENT_DIR = agent;

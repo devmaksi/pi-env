@@ -250,6 +250,11 @@ function hooksExt(loop: Loop, prevExt: ExtState | null): void {
     loop.loadPackageCatalog();
   } else if (e.view === 'installing' && prevExt !== null && prevExt.view === 'catalog') {
     loop.doInstall(loop.storeDir, 'npm:' + (e.installing ?? ''), null);
+  } else if (e.view === 'installing' && prevExt === null) {
+    // Enter по строке «нет файлов»: переустановка объявления штатным `pi install <source>`
+    // в каталог хранилища. Источник — целиком из реестра, чтобы закреплённая версия не уехала.
+    const source = e.installing ?? '';
+    if (source !== '') loop.doInstall(loop.storeDir, source, null);
   } else if (e.view === 'removing' && prevExt !== null && prevExt.view === 'confirm-remove') {
     const pkg = loop.state().storePackages.find((p) => p.name === e.removing);
     if (pkg) loop.doRemove(loop.storeDir, pkg.source);

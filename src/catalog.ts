@@ -1,7 +1,7 @@
 import { existsSync, readdirSync, statSync } from 'node:fs';
 import { homedir as osHomedir } from 'node:os';
 import { readMcpServers, readJsonFile, type McpServer } from './mcp.js';
-import { npmNameOfSource } from './store.js';
+import { npmNameOfSource, pkgIdentity } from './store.js';
 import { basename, isAbsolute, join } from 'node:path';
 
 export interface ModelInfo {
@@ -76,6 +76,12 @@ export interface PkgItem {
   description: string | null;
   extensions: string[];
   skills: string[];
+  /**
+   * Объявление реестра хранилища, у которого файлов пакета нет на диске. Строка с такой
+   * пометкой существует только в списке вкладки «Расширения» (`listRegistryPackages`):
+   * разобрать пакет нельзя, но скрыть его — значит оставить реестр мусореть невидимо.
+   */
+  missing?: boolean;
 }
 
 export interface Catalog {
@@ -111,16 +117,60 @@ export function listCustomTools(agentDir: string): ToolItem[] {
     .sort((a, b) => a.name.localeCompare(b.name));
 }
 
+/** Объявления `settings.json → packages` каталога агента (строки, без разбора путей). */
+function packageSourcesOf(agentDir: string): string[] {
+  const settings = readJsonFile(join(agentDir, 'settings.json'));
+  const pkgs = settings && typeof settings === 'object'
+    ? (settings as { packages?: unknown }).packages
+    : undefined;
+  return Array.isArray(pkgs) ? pkgs.filter((s): s is string => typeof s === 'string') : [];
+}
+
+/**
+ * Строки вкладки «Расширения»: реестр хранилища ЦЕЛИКОМ.
+ *
+ * `listPackages` пропускает объявление, у которого нет каталога пакета или манифеста. Такое
+ * объявление остаётся в `<store>/settings.json` (сбой `pi install`, ручная чистка дерева,
+ * переезд `PI_ENV_STORE`, оборванный `pi remove`) — без строки реестр мусореет невидимо: ни `X`,
+ * ни `⚠`, ни счётчика. Правило: у каждого объявления реестра есть строка, а если файлов нет,
+ * строка это говорит (`missing`).
+ *
+ * Границы, чтобы не плодить ложные пометки:
+ * - `git:` строк не получает — `resolvePkgPath` для него всегда `null` (pi кладёт пакет в
+ *   `<agent>/git/<host>/<путь>`), поэтому «нет файлов» для установленного git-пакета было бы
+ *   неправдой;
+ * - локальные `path:` тоже — переустановить их нечем (`pi install` требует существующего пути),
+ *   строка без действенного предложения только пугает.
+ */
+export function listRegistryPackages(storeDir: string): PkgItem[] {
+  const rows = listPackages(storeDir);
+  const seen = new Set(rows.map((p) => pkgIdentity(p.source)));
+  for (const source of packageSourcesOf(storeDir)) {
+    if (!source.startsWith('npm:')) continue;
+    const identity = pkgIdentity(source);
+    if (seen.has(identity)) continue;
+    seen.add(identity);
+    rows.push({
+      source,
+      // имя — из объявления: scope является частью имени пакета, версия — не часть пути
+      name: npmNameOfSource(source),
+      path: expectedNpmPath(storeDir, source),
+      version: null,
+      description: null,
+      extensions: [],
+      skills: [],
+      missing: true,
+    });
+  }
+  return rows.sort((a, b) => a.name.localeCompare(b.name));
+}
+
 /**
  * Установленные пакеты (settings.json → packages) с их pi-ресурсами.
  * Неразрешимые источники (git, отсутствующие) пропускаются.
  */
 export function listPackages(agentDir: string): PkgItem[] {
-  const settings = readJsonFile(join(agentDir, 'settings.json'));
-  const sources: string[] =
-    settings && Array.isArray((settings as { packages?: unknown }).packages)
-      ? ((settings as { packages: string[] }).packages).filter((s) => typeof s === 'string')
-      : [];
+  const sources = packageSourcesOf(agentDir);
   const out: PkgItem[] = [];
   for (const source of sources) {
     const path = resolvePkgPath(agentDir, source);
@@ -372,12 +422,17 @@ export function uniqueName(base: string, used: Set<string>): string {
   return name;
 }
 
+/** Куда pi кладёт npm-пакет: `npm/node_modules/<имя без версии>` (версия объявления — не часть пути). */
+function expectedNpmPath(agentDir: string, source: string): string {
+  return join(agentDir, 'npm', 'node_modules', npmNameOfSource(source));
+}
+
 function resolvePkgPath(agentDir: string, source: string): string | null {
   if (source.startsWith('npm:')) {
     // имя без версии: pi кладёт пакет в npm/node_modules/<имя>, версия объявления — не часть пути
     const name = npmNameOfSource(source);
     if (name === '') return null;
-    const path = join(agentDir, 'npm', 'node_modules', name);
+    const path = expectedNpmPath(agentDir, source);
     return existsSync(path) ? path : null;
   }
   // ponytail: git-источники и прочие схемы не поддерживаются — только локальные пути

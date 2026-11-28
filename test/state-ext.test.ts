@@ -180,3 +180,44 @@ test('экран приведения — не процесс; процесс �
   assert.equal(busyProcessView({ ...tab(), ext: freshExt({ view: 'gap', cursor: 0 }) }), false);
   assert.equal(busyProcessView({ ...tab(), ext: freshExt({ view: 'resolving', resolving: 'npm:pi-open-tui' }) }), true);
 });
+
+// ─── объявление реестра без файлов пакета в <store>/npm ──────────────
+
+// Обновлять нечего: файлов нет. Enter переустанавливает объявление целиком (закреплённая
+// версия сохраняется), X убирает его из реестра — оба действия штатными командами pi в <store>.
+const nofiles = (source: string, name: string): PkgItem => ({
+  source, name, path: '/store/npm/node_modules/' + name,
+  version: null, description: null, extensions: [], skills: [], missing: true,
+});
+
+const tabNoFiles = (): AppState =>
+  ({ ...initialState(undefined, [nofiles('npm:pi-gone@1.2.3', 'pi-gone')]), tab: 'extensions' });
+
+test('Enter по строке без файлов — переустановка объявления, а не обновление', () => {
+  const s = reducer(tabNoFiles(), 'enter', rc([], []));
+  assert.equal(s.ext!.view, 'installing');
+  // источник — строка реестра целиком: `pi update` закреплённые версии не трогает
+  assert.equal(s.ext!.installing, 'npm:pi-gone@1.2.3');
+});
+
+test('переустановка снимается результатом; X ведёт к подтверждению удаления из реестра', () => {
+  let s = reducer(tabNoFiles(), 'enter', rc([], []));
+  s = reducer(s, { type: 'install-result', ok: true, message: 'npm:pi-gone@1.2.3' }, rc([], []));
+  assert.equal(s.ext, null);
+  s = reducer(tabNoFiles(), 'x', rc([], []));
+  assert.equal(s.ext!.view, 'confirm-remove');
+  assert.equal(s.ext!.removing, 'pi-gone');
+});
+
+test('экран переустановки — процесс: Esc снимает команду, «⏳ N с» показывается', () => {
+  assert.equal(busyProcessView({
+    ...tabNoFiles(), ext: freshExt({ view: 'installing', installing: 'npm:pi-gone@1.2.3' }),
+  }), true);
+});
+
+// Обычный пакет: Enter остаётся обновлением — переустановка только для строк без файлов.
+test('установленный пакет: Enter по-прежнему обновляет', () => {
+  const s = reducer(tab(), 'enter', rc());
+  assert.equal(s.ext!.view, 'updating');
+  assert.equal(s.ext!.updating, 'pi-open-tui');
+});

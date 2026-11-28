@@ -96,6 +96,9 @@ function driveWithRoot(rt: string, keys: string[], agent: string): Promise<{ pai
   mkdirSync(join(rt, 'e0'), { recursive: true });
   writeFileSync(join(rt, 'e0', 'settings.json'), JSON.stringify({ packages: ['npm:pi-zentui'] }));
   mkdirSync(join(rt, 'e0', 'npm', 'node_modules', 'pi-zentui'), { recursive: true });
+  // «установлен» без package.json — pi-env не разобрал бы пакет и считал бы его без файлов
+  writeFileSync(join(rt, 'e0', 'npm', 'node_modules', 'pi-zentui', 'package.json'),
+    JSON.stringify({ name: 'pi-zentui', version: '1.0.0' }));
   return driveAt(rt, keys, agent);
 }
 
@@ -105,6 +108,8 @@ function agentWithPackage(): string {
   writeFileSync(join(agent, 'settings.json'), JSON.stringify({ packages: ['npm:pi-zentui'] }));
   writeFileSync(join(agent, 'models.json'), JSON.stringify({ providers: { p: { models: { m: {} } } } }));
   mkdirSync(join(agent, 'npm', 'node_modules', 'pi-zentui'), { recursive: true });
+  writeFileSync(join(agent, 'npm', 'node_modules', 'pi-zentui', 'package.json'),
+    JSON.stringify({ name: 'pi-zentui', version: '1.0.0' }));
   writeFileSync(join(agent, 'npm', 'package.json'), JSON.stringify({ dependencies: { 'pi-zentui': '1.0.0' } }));
   return agent;
 }
@@ -320,6 +325,8 @@ test('сквозной: scoped- и unscoped-объявление одного и
   writeFileSync(join(rt, '.pi-env.json'), JSON.stringify({ ...DEFAULT_APP_SETTINGS, language: 'ru' }));
   const store = join(rt, '.store');
   mkdirSync(join(store, 'npm', 'node_modules', 'pi-open-tui'), { recursive: true });
+  writeFileSync(join(store, 'npm', 'node_modules', 'pi-open-tui', 'package.json'),
+    JSON.stringify({ name: 'pi-open-tui', version: '1.0.0' }));
   writeFileSync(join(store, 'settings.json'), JSON.stringify({ packages: ['npm:pi-open-tui'] }));
   const dir = join(rt, 'dev-vtb');
   mkdirSync(dir, { recursive: true });
@@ -414,6 +421,8 @@ test('сквозной: замок хранилища занят — приве�
   mkdirSync(dir, { recursive: true });
   writeFileSync(join(dir, 'settings.json'), JSON.stringify({ packages: ['npm:pi-zentui'] }));
   mkdirSync(join(dir, 'npm', 'node_modules', 'pi-zentui'), { recursive: true });
+  writeFileSync(join(dir, 'npm', 'node_modules', 'pi-zentui', 'package.json'),
+    JSON.stringify({ name: 'pi-zentui', version: '1.0.0' }));
 
   const installs: Array<{ args: string[]; agentDir: string; signal: AbortSignal }> = [];
   const hangInstall: RunFn = (cmd, args, timeoutMs, opts = {}) => {
@@ -441,4 +450,76 @@ test('сквозной: замок хранилища занят — приве�
   assert.equal(installs[0]!.agentDir, store);
   assert.deepEqual(settingsOf(dir).packages, ['npm:pi-zentui'], 'отказ не трогает объявления окружения');
   assert.deepEqual((JSON.parse(readFileSync(join(store, 'settings.json'), 'utf8')).packages ?? []) as string[], ['npm:pi-open-tui']);
+});
+
+// ─── объявление реестра без файлов пакета в <store>/npm ──────────────
+
+/**
+ * Реестр хранилища помнит пакет, файлов которого в `<store>/npm` нет: сбой `pi install`,
+ * ручная чистка дерева, переезд корня. Раньше строки для него не было вовсе — реестр мусорел
+ * невидимо.
+ */
+function noFilesRoot(): { rt: string; store: string } {
+  const rt = tmpDir();
+  const store = join(rt, '.store');
+  writeFileSync(join(rt, '.pi-env.json'), JSON.stringify({ ...DEFAULT_APP_SETTINGS, language: 'ru' }));
+  mkdirSync(join(rt, 'e0'), { recursive: true });
+  writeFileSync(join(rt, 'e0', 'settings.json'), JSON.stringify({ packages: ['npm:pi-gone'] }));
+  mkdirSync(join(store, 'npm'), { recursive: true });
+  symlinkSync(join(store, 'npm'), join(rt, 'e0', 'npm'), 'dir');
+  writeFileSync(join(store, 'settings.json'), JSON.stringify({ packages: ['npm:pi-gone'] }));
+  return { rt, store };
+}
+
+test('сквозной: объявление реестра без файлов видно во вкладке с пометкой и подсказками', async () => {
+  const { rt } = noFilesRoot();
+  const { painted } = await driveAt(rt, ['tab', 'ctrlc'], agentWithPackage());
+  const frame = painted.join('\n');
+  assert.ok(painted.some((f) => f.includes(t('ru', 'ext.store.nofiles.row'))), frame.slice(-2500));
+  assert.ok(painted.some((f) => f.includes(t('ru', 'ext.store.nofiles'))), frame.slice(-2500));
+  assert.ok(painted.some((f) => f.includes(t('ru', 'ext.store.nofiles.summary', { n: 1 }))), frame.slice(-2500));
+  // путь к ожидаемому каталогу обрезается шириной правой колонки — проверяем саму строку
+  assert.ok(painted.some((f) => f.includes(t('ru', 'ext.store.nofiles.path').split('{v}')[0]!)), frame.slice(-2500));
+  assert.ok(painted.some((f) => f.includes(t('ru', 'ext.store.nofiles.hint'))), frame.slice(-2500));
+});
+
+test('сквозной: Enter по строке без файлов переустанавливает объявление в каталог хранилища', async () => {
+  const { store } = noFilesRoot();
+  const agent = agentWithPackage();
+  const { launches, painted } = await driveAt(join(store, '..'), ['tab', 'enter', 'ctrlc'], agent);
+  const inst = launches.filter((l) => piLaunch(l) && l.args[0] === 'install');
+  assert.deepEqual(inst.map((l) => l.args), [['install', 'npm:pi-gone']], JSON.stringify(launches));
+  assert.equal(inst[0]!.agentDir, store, 'pi install идёт в каталог хранилища');
+  assert.ok(painted.some((f) => f.includes(t('ru', 'busy.installing', { name: 'npm:pi-gone' }))), painted.join('\n').slice(-2500));
+});
+
+test('сквозной: X по строке без файлов убирает объявление из реестра хранилища', async () => {
+  const { rt, store } = noFilesRoot();
+  const { launches, painted } = await driveAt(rt, ['tab', 'x', 'enter', 'ctrlc'], agentWithPackage());
+  const rem = launches.filter((l) => piLaunch(l) && l.args[0] === 'remove');
+  assert.deepEqual(rem.map((l) => l.args), [['remove', 'npm:pi-gone']], JSON.stringify(launches));
+  assert.equal(rem[0]!.agentDir, store, 'pi remove идёт в каталог хранилища');
+  assert.ok(painted.some((f) => f.includes(t('ru', 'ext.store.hint.remove'))), painted.join('\n').slice(-2500));
+});
+
+// Переустановка чинит строку: файлы появились — и вкладка перестаёт врать про «нет файлов»
+// (список перечитывается после pi-команды, а не берётся снимком запуска).
+test('сквозной: после переустановки строка становится обычной', async () => {
+  const { rt, store } = noFilesRoot();
+  const agent = agentWithPackage();
+  const runFn: RunFn = (cmd, args, timeoutMs, opts = {}) => {
+    if (args[0] === 'install') {
+      const dir = join(store, 'npm', 'node_modules', 'pi-gone');
+      mkdirSync(dir, { recursive: true });
+      writeFileSync(join(dir, 'package.json'), JSON.stringify({ name: 'pi-gone', version: '1.2.3' }));
+    }
+    void opts.signal;
+    return Promise.resolve({ ok: true, stdout: '', stderr: '', code: 0, timedOut: false, timeoutMs } satisfies CmdResult);
+  };
+  const { painted } = await driveAt(rt, ['tab', 'enter', 'ctrlc'], agent, runFn);
+  const last = painted[painted.length - 1] ?? '';
+  // строка пакета в последнем репаке есть, а пометки «нет файлов» на ней больше нет
+  assert.ok(last.includes('pi-gone') && last.includes(t('ru', 'ext.store.usage', { n: 1 })), last);
+  assert.ok(!last.includes(t('ru', 'ext.store.nofiles.row')), last);
+  assert.ok(!last.includes(t('ru', 'ext.store.nofiles.summary', { n: 1 })), last);
 });

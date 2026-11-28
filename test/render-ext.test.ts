@@ -3,7 +3,7 @@ import assert from 'node:assert';
 import { render, visibleWidth } from '../src/render.js';
 import { freshExt, initialState } from '../src/state.js';
 import { type Environment } from '../src/environments.js';
-import { type CatalogPkg } from '../src/catalog.js';
+import { type CatalogPkg, type PkgItem } from '../src/catalog.js';
 import { t } from '../src/i18n.js';
 
 const WIDE = ['↑', '↓', '←', '→', '—', '…', '✓', '⚠', '▌', '＋', '⏳'];
@@ -299,5 +299,74 @@ test('суб-экран приведения реестра: разрывы, ч�
     assert.equal(lastCol(line, () => 1, 110), 110, JSON.stringify(line));
     assert.equal(lastCol(line, wide, 110), 110, JSON.stringify(line));
     assert.equal(visibleWidth(line) <= 110, true, JSON.stringify(line));
+  }
+});
+
+// ─── объявление реестра без файлов пакета в <store>/npm ──────────────
+
+// Такое объявление переживает сбой `pi install`, ручную чистку дерева и переезд PI_ENV_STORE.
+// Без строки вкладки реестр мусореет невидимо: ни ⚠, ни X, ни переустановки.
+const nofiles = (source: string, name: string): PkgItem => ({
+  source, name, path: '/store/npm/node_modules/' + name,
+  version: null, description: null, extensions: [], skills: [], missing: true,
+});
+
+test('объявление без файлов: ⚠ и подпись в строке, текст, путь и подсказки в инфо-панели', () => {
+  const envs = [env('dev-supo', ['npm:pi-gone'])];
+  const state = { ...st, storePackages: [nofiles('npm:pi-gone', 'pi-gone')] };
+  const s = render({ state, envs, width: 120, height: 20, ...base });
+  assert.ok(s.includes('⚠ ' + t('ru', 'ext.store.nofiles.row')), s);
+  // счётчик окружений остаётся: объявления окружений настоящие, нет только файлов
+  assert.ok(s.includes(t('ru', 'ext.store.usage', { n: 1 })), s);
+  assert.ok(s.includes(t('ru', 'ext.store.nofiles')), s);
+  assert.ok(s.includes('/store/npm/node_modules/pi-gone'), s);
+  assert.ok(s.includes(t('ru', 'ext.store.nofiles.hint')), s);
+  assert.ok(s.includes(t('ru', 'ext.store.hint.remove')), s);
+  assert.ok(s.includes(t('ru', 'ext.store.nofiles.summary', { n: 1 })), s);
+});
+
+// Обновлять нечего,latest не сравнить: обычного маркера и обычной подсказки Enter нет.
+test('объявление без файлов: маркера обновления и подсказки «обновить пакет» нет', () => {
+  const envs = [env('dev-supo', ['npm:pi-gone'])];
+  const state = { ...st, storePackages: [nofiles('npm:pi-gone', 'pi-gone')] };
+  const s = render({ state, envs, width: 120, height: 20, ...base });
+  assert.ok(!s.includes(t('ru', 'ext.hint.enter')), s);
+  assert.ok(!s.includes(t('ru', 'pkg.up-to-date')), s);
+});
+
+// У установленного пакета пометки быть не должно — иначе вкладка пугает на пустом месте.
+test('установленный пакет: обычной подсказки хватает, пометки «нет файлов» нет', () => {
+  const envs = [env('dev-supo', ['npm:pi-zentui'])];
+  const state = { ...st, storePackages: [pkg('pi-zentui')] };
+  const s = render({ state, envs, width: 120, height: 20, ...base });
+  assert.ok(s.includes(t('ru', 'ext.hint.enter')), s);
+  assert.ok(!s.includes(t('ru', 'ext.store.nofiles')), s);
+  assert.ok(!s.includes(t('ru', 'ext.store.nofiles.summary', { n: 1 })), s);
+});
+
+// Чистить хранилище нужно не только у выбранного пакета: сводка видна и на кнопках.
+test('объявления без файлов: сводка есть и на пакете, и на строках кнопок', () => {
+  const envs = [env('dev-supo', ['npm:pi-zentui', 'npm:pi-gone'])];
+  const state = { ...st, storePackages: [pkg('pi-zentui'), nofiles('npm:pi-gone', 'pi-gone')] };
+  // 0,1 — пакеты; 2 — «Обновить все»; 3 — «Установить»
+  for (const selected of [0, 1, 2, 3]) {
+    const s = render({ state: { ...state, selected }, envs, width: 90, height: 20, ...base });
+    assert.ok(s.includes(t('ru', 'ext.store.nofiles.summary', { n: 1 })), `selected=${selected}`);
+  }
+});
+
+// Строка с «⚠ нет файлов» обязана оставаться ровно leftWidth: построчный дифф на этом живёт.
+test('кадр с объявлением без файлов: ровно height строк фиксированной ширины', () => {
+  const envs = [env('dev-supo', ['npm:pi-gone'])];
+  const state = { ...st, storePackages: [nofiles('npm:pi-gone', 'pi-gone'), pkg('pi-zentui')] };
+  for (const width of [40, 62, 90]) {
+    const s = render({ state, envs, width, height: 20, ...base });
+    const lines = s.split('\n');
+    assert.equal(lines.length, 20, `width=${width}`);
+    for (const line of lines) {
+      assert.equal(lastCol(line, () => 1, width), width, `1-клеточный w=${width}: ${JSON.stringify(line)}`);
+      assert.equal(lastCol(line, wide, width), width, `2-клеточный w=${width}: ${JSON.stringify(line)}`);
+      assert.equal(visibleWidth(line) <= width, true, `ширина w=${width}: ${JSON.stringify(line)}`);
+    }
   }
 });

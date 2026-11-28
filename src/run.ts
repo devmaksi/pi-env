@@ -9,7 +9,7 @@ import {
 import { createScanCache } from './env-cache.js';
 import { repairModelsLink, repairStoreRootLinks, rewritePackages, storeModelsFile, storeRegistrySources, storeRoot, STORE_ROOTS, type StoreResult } from './store.js';
 import { loadAppSettings, saveAppSettings } from './appsettings.js';
-import { listProviders, loadCatalog, fetchPackageCatalog, normalizePkgSource, type CatalogPkg } from './catalog.js';
+import { listProviders, loadCatalog, listRegistryPackages, fetchPackageCatalog, normalizePkgSource, type CatalogPkg } from './catalog.js';
 import { computeLayout } from './layout.js';
 import { frameKey, paintFrame, type PrevFrame } from './diff.js';
 import { createThrottle, type Throttle, type ThrottleDeps } from './throttle.js';
@@ -93,7 +93,9 @@ export async function run(root: string, term: Term = createTerm(), deps: RunDeps
   // или `PI_ENV_STORE`. Окружение подключается к нему сам — без переключателя «вообще».
   const storeDir = storeRoot(root, app.storeDir, process.env.PI_ENV_STORE);
   const storeFile = storeModelsFile(storeDir);
-  let storePackages = loadCatalog(storeDir).packages;
+  // Список вкладки — реестр целиком, а не только разобранные пакеты: объявление без файлов
+  // в <store>/npm обязано иметь строку, иначе реестр мусореет невидимо.
+  let storePackages = listRegistryPackages(storeDir);
   // `<store>`: пакет объявлен окружениями общего хранилища, но не установлен в нём.
   // Это остаток отменённого или провалившегося шага в хранилище, в том числе после
   // разрешения конфликта: конфликта в снимке уже нет, и вход `S` выбора победителя
@@ -258,7 +260,7 @@ export async function run(root: string, term: Term = createTerm(), deps: RunDeps
       /* каталог не перечитан — остаётся старый */
     }
     try {
-      storePackages = loadCatalog(storeDir).packages;
+      storePackages = listRegistryPackages(storeDir);
     } catch (err) {
       log('catalog', `${storeDir}: ${errText(err)}`);
     }

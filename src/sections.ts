@@ -636,13 +636,19 @@ function extList(ctx: Ctx): Section {
   // Разрыв реестра: пакет объявлен окружениями хранилища, но не установлен в нём (`S` лечит).
   const gaps = ctx.state.storeGaps ?? [];
   const gapOf = new Map(gaps.map((g) => [g.identity, g]));
+  // Объявление реестра без файлов пакета в <store>/npm: строка есть, разобрать пакет нельзя.
+  const nofiles = pkgs.filter((p) => p.missing === true);
   left.push(c(ANSI.bold, ctx.useColor) + t(ctx.lang, 'ext.title.store') + c(ANSI.reset, ctx.useColor));
   if (pkgs.length === 0) left.push(c(ANSI.dim, ctx.useColor) + t(ctx.lang, 'ext.store.empty') + c(ANSI.reset, ctx.useColor));
   pkgs.forEach((p, i) => {
     const users = storePackageUsage(ctx.envs, p.source);
+    // «нет файлов» заменяет маркер обновления: сравнивать с latest нечего, пакета нет
+    const marker = p.missing === true
+      ? '⚠ ' + t(ctx.lang, 'ext.store.nofiles.row')
+      : pkgMarker(p, ctx.state.pkgCheck, ctx.state.pkgLatest, ctx.lang);
     const text = truncateName(p.name, PKG_NAME_MAX) + '  ' + (orphans.has(p.source) ? '⚠ ' : '')
       + t(ctx.lang, 'ext.store.usage', { n: users.length }) + (conflicts.has(pkey(p)) || gapOf.has(pkey(p)) ? ' ⚠' : '') + '  '
-      + pkgMarker(p, ctx.state.pkgCheck, ctx.state.pkgLatest, ctx.lang);
+      + marker;
     left.push(listRow(i, ctx.state.selected, text, ctx.L.leftWidth, ctx.useColor));
   });
   if (pkgs.length > 0) left.push(c(ANSI.dim, ctx.useColor) + '─'.repeat(ctx.L.leftWidth - 2) + c(ANSI.reset, ctx.useColor));
@@ -652,7 +658,13 @@ function extList(ctx: Ctx): Section {
   });
   const p = pkgs[ctx.state.selected];
   if (p !== undefined) {
-    right.push(...pkgInfoLines(p, ctx.state.pkgCheck, ctx.state.pkgLatest, ctx.L, ctx.useColor, ctx.lang));
+    if (p.missing === true) {
+      // версий, ресурсов и обновлений у такого пакета нет — только имя и объявление реестра
+      right.push(c(ANSI.bold, ctx.useColor) + p.name + c(ANSI.reset, ctx.useColor));
+      right.push(t(ctx.lang, 'pkg.source', { v: p.source }));
+    } else {
+      right.push(...pkgInfoLines(p, ctx.state.pkgCheck, ctx.state.pkgLatest, ctx.L, ctx.useColor, ctx.lang));
+    }
   } else if (ctx.state.selected === pkgs.length) {
     right.push(t(ctx.lang, 'btn.update-all'));
     right.push('pi update --extensions');
@@ -678,6 +690,10 @@ function extList(ctx: Ctx): Section {
         ? t(ctx.lang, 'ext.gap.absent')
         : t(ctx.lang, 'ext.gap.registered', { v: gap.registered.join(', ') })));
     }
+    if (selectedPkg.missing === true) {
+      right.push(c(ANSI.bold, ctx.useColor) + '⚠ ' + t(ctx.lang, 'ext.store.nofiles') + c(ANSI.reset, ctx.useColor));
+      right.push('  ' + t(ctx.lang, 'ext.store.nofiles.path', { v: selectedPkg.path }));
+    }
     for (const u of storePackageUsage(ctx.envs, selectedPkg.source)) right.push('  ' + u);
     if (orphans.has(selectedPkg.source)) {
       right.push(c(ANSI.bold, ctx.useColor) + '⚠ ' + t(ctx.lang, 'ext.store.orphan') + c(ANSI.reset, ctx.useColor));
@@ -686,8 +702,12 @@ function extList(ctx: Ctx): Section {
   if (pkgs.length === 0) {
     right.push(c(ANSI.dim, ctx.useColor) + t(ctx.lang, 'ext.hint.store-off') + c(ANSI.reset, ctx.useColor));
   } else {
-    right.push(c(ANSI.dim, ctx.useColor) + t(ctx.lang, 'ext.hint.enter') + c(ANSI.reset, ctx.useColor));
-    const removeKey = selectedPkg !== undefined && orphans.has(pkey(selectedPkg)) ? 'ext.store.hint.remove' : 'hint.delete';
+    // Для строки без файлов Enter — переустановка, а не обновление
+    const enterKey = selectedPkg !== undefined && selectedPkg.missing === true ? 'ext.store.nofiles.hint' : 'ext.hint.enter';
+    right.push(c(ANSI.dim, ctx.useColor) + t(ctx.lang, enterKey) + c(ANSI.reset, ctx.useColor));
+    // `orphans` держит строки-объявления, поэтому поиск — по `source`, как у строки списка
+    const removeKey = selectedPkg !== undefined && (orphans.has(selectedPkg.source) || selectedPkg.missing === true)
+      ? 'ext.store.hint.remove' : 'hint.delete';
     right.push(c(ANSI.dim, ctx.useColor) + t(ctx.lang, removeKey) + c(ANSI.reset, ctx.useColor));
     if (gaps.length > 0) {
       right.push(c(ANSI.dim, ctx.useColor) + t(ctx.lang, 'ext.store.hint.gap') + c(ANSI.reset, ctx.useColor));
@@ -699,6 +719,9 @@ function extList(ctx: Ctx): Section {
   }
   if (gaps.length > 0) {
     right.push(c(ANSI.dim, ctx.useColor) + '⚠ ' + t(ctx.lang, 'ext.store.gaps', { n: gaps.length }) + c(ANSI.reset, ctx.useColor));
+  }
+  if (nofiles.length > 0) {
+    right.push(c(ANSI.dim, ctx.useColor) + '⚠ ' + t(ctx.lang, 'ext.store.nofiles.summary', { n: nofiles.length }) + c(ANSI.reset, ctx.useColor));
   }
   const n = pkgs.length;
   const s = ctx.state.selected;
