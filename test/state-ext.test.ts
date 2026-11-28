@@ -222,14 +222,33 @@ test('установленный пакет: Enter по-прежнему обн�
   assert.equal(s.ext!.updating, 'npm:pi-open-tui');
 });
 
-// Строка «нет файлов» не имеет своего разрыва реестра: `S` на ней открывал бы приведение
-// ЧУЖИХ пакетов, а ⚠ на строке как раз провоцирует клавишу.
-test('S на строке без файлов — суб-экран разрывов не открывается', () => {
+// Случай 1: у строки «нет файлов» ЕСТЬ свой разрыв — реестр стоит на другом объявлении той
+// же идентичности (`npm:pi-gone@1.2.3` против объявления окружений `npm:pi-gone`), файлов нет
+// ни у одного. Это единственный вход: `Enter` по строке переустанавливает объявление реестра,
+// а разрыв остаётся. Курсор — на своём разрыве, а не на первом попавшемся.
+test('S на строке без файлов — своё приведение реестра, курсор на своём разрыве', () => {
+  const gaps: RegistryGap[] = [
+    { identity: 'npm:pi-other', declared: 'npm:pi-other', registered: [] },
+    { identity: 'npm:pi-gone', declared: 'npm:pi-gone', registered: ['npm:pi-gone@1.2.3'] },
+  ];
+  let s = reducer(tabNoFiles(), 'S', rc([], gaps));
+  assert.equal(s.ext!.view, 'gap');
+  assert.equal(s.ext!.cursor, 1, 'курсор на разрыве своей идентичности');
+  // Enter по своему разрыву приводит реестр к объявлению окружений, а не к закреплённой строке
+  s = reducer(s, 'enter', rc([], gaps));
+  assert.equal(s.ext!.view, 'resolving');
+  assert.equal(s.ext!.conflictName, 'npm:pi-gone');
+  assert.equal(s.ext!.resolving, 'npm:pi-gone');
+});
+
+// Случай 2: своего разрыва у строки нет — `S` ничего не открывает: подписать чужие разрывы
+// такой строке нечем, а до своих есть вход с обычной строки пакета.
+test('S на строке без файлов без своего разрыва — суб-экрана нет', () => {
   const gaps: RegistryGap[] = [
     { identity: 'npm:pi-open-tui', declared: 'npm:pi-open-tui', registered: [] },
   ];
-  const s = reducer(tabNoFiles(), 'S', rc([], gaps));
-  assert.equal(s.ext, null);
+  assert.equal(reducer(tabNoFiles(), 'S', rc([], gaps)).ext, null);
+  assert.equal(reducer(tabNoFiles(), 'S', rc([], [])).ext, null);
 });
 
 // Имя из package.json не различает объявлений, поэтому суб-экран обязан нести источник:

@@ -440,6 +440,12 @@ function onSpace(state: AppState): AppState {
  *
  * (б) — это и точка повтора после провала шага в хранилище: объявления уже переписаны,
  * `packageConflicts` пуст, и без этого входа привести реестр к победителю было нечем.
+ *
+ * Строка «нет файлов» (`PkgItem.missing`) входит в (б) только по СВОЕМУ разрыву и открывает
+ * суб-экран на нём: у такого пакета другой строки нет, а разрыв «реестр стоит на другом
+ * объявлении той же идентичности» иначе остался бы показан (`ext.store.gaps`), но не снимался
+ * бы ничем — `Enter` по строке переустанавливает собственное объявление реестра и разрыв
+ * не закрывает.
  */
 function onS(state: AppState, ctx: ReducerCtx): AppState {
   const p = packagesOf(state, 'extensions')[state.selected];
@@ -449,10 +455,14 @@ function onS(state: AppState, ctx: ReducerCtx): AppState {
       return { ...state, ext: freshExt({ view: 'resolve', conflictName: key, cursor: 0 }) };
     }
   }
-  // На строке «нет файлов» `S` открывает разрывы ДРУГИХ пакетов — подписать её нечем,
-  // поэтому вход только для строк, у которых есть свой разрыв (см. `storeRegistryGaps`).
-  if (p !== undefined && p.missing === true) return state;
-  if ((ctx.gaps?.length ?? 0) === 0) return state;
+  const gaps = ctx.gaps ?? [];
+  if (p !== undefined && p.missing === true) {
+    // Свой разрыв (`storeRegistryGaps`): реестр стоит на другом объявлении того же пакета,
+    // файлов нет ни у одного из них. Чужие разрывы такой строке подписать нечем.
+    const own = gaps.findIndex((g) => g.identity === pkgIdentity(p.source));
+    return own < 0 ? state : { ...state, ext: freshExt({ view: 'gap', cursor: own }) };
+  }
+  if (gaps.length === 0) return state;
   return { ...state, ext: freshExt({ view: 'gap', cursor: 0 }) };
 }
 
